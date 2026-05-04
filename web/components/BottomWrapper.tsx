@@ -1,0 +1,16 @@
+'use client'
+
+import { usePathname } from 'next/navigation'
+import BottomNav from '@/components/BottomNav'
+
+export default function BottomNavWrapper() {
+  const pathname = usePathname()
+
+  const hideBottomNav =
+    /^\/main\/home\/\d+/.test(pathname) ||
+    /^\/main\/messages\/chat\/\d+/.test(pathname)
+
+  if (hideBottomNav) return null
+
+  return <BottomNav />
+}

@@ -1,0 +1,444 @@
+'use client';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import toast from 'react-hot-toast';
+import { Toaster } from 'react-hot-toast';
+import ButtonLoader from "@/components/ButtonLoader";
+import Skeleton from '@/components/Skeleton';
+import { apiRequest } from '@/utils/api';
+import { uploadToCloudinary } from '@/utils/cloudinary';
+
+export default function CreatePostPage() {
+  const [content, setContent] = useState('');
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [images, setImages] = useState<(File | string)[]>([]);
+  const [video, setVideo] = useState<File | string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [fileProgress, setFileProgress] = useState<Record<string, number>>({});
+  const router = useRouter();
+  const isEdit = searchParams.get('edit') === 'true';
+  const postId = searchParams.get('postId');
+
+  // Selected community (could be from any tribe)
+  const [selectedCommunity, setSelectedCommunity] = useState<number | null>(
+    searchParams.get('communityId') ? Number(searchParams.get('communityId')) : null
+  );
+  const isCommunityPost = !!selectedCommunity;
+  
+  const [communityData, setCommunityData] = useState<any>(null);
+  const [isEntertainmentTribe, setIsEntertainmentTribe] = useState<boolean | null>(null);
+  const isGlobal = !selectedCommunity;
+  const isEntertainment = isEntertainmentTribe === true;
+  const isNormalCommunity = selectedCommunity && !isEntertainment;
+  
+  const allowReel = isEntertainmentTribe === true;
+  const allowImages = true;
+  const allowVideo = !isEntertainmentTribe;
+
+  const MAX_IMAGES = 5;
+
+  useEffect(() => {
+    const draft = {
+      content,
+      images,
+      video,
+      selectedCommunity,
+    };
+    localStorage.setItem("post_draft", JSON.stringify(draft));
+  }, [content, images, video, selectedCommunity]);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("post_draft");
+    if (saved && !isEdit) {
+      const draft = JSON.parse(saved);
+      setContent(draft.content || "");
+      setImages(draft.images || []);
+      setVideo(draft.video || null);
+      setSelectedCommunity(draft.selectedCommunity || null);
+    }
+  }, []);
+  
+  useEffect(() => {
+    setImages([]);
+    setVideo(null);
+  }, [selectedCommunity]);
+  
+  useEffect(() => {
+    if (!selectedCommunity) return;
+  
+    if (isEntertainmentTribe) {
+      isEntertainmentTribe;
+    } else {
+      !!selectedCommunity && !isEntertainmentTribe;
+    }
+  }, [selectedCommunity, isEntertainmentTribe]);
+
+  // Handle adding images
+  const handleImagesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!allowImages) return;
+
+    if (!e.target.files) return;
+    const files = Array.from(e.target.files);
+    if (files.length + images.length > MAX_IMAGES) {
+      alert(`You can only upload up to ${MAX_IMAGES} images`);
+      return;
+    }
+    setImages(prev => [...prev, ...files]);
+    setVideo(null); // prevent video selection
+  };
+
+  // Handle video selection (max 1)
+  const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files?.[0]) return;
+
+    const file = e.target.files[0];
+  
+    if (isEntertainmentTribe) {
+      // ✅ ONLY REELS
+      setVideo(file);
+      setImages([]);
+      return;
+    }
+  
+    if (!allowVideo) {
+      alert("Video not allowed here");
+      return;
+    }
+  
+    setVideo(file);
+    setImages([]);
+  };
+
+  const removeImage = (index: number) => {
+    setImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const removeVideo = () => setVideo(null);
+  
+  // =============================
+  // 🔥 EDIT MODE LOAD
+  // =============================
+  useEffect(() => {
+    if (!isEdit || !postId) return;
+  
+    const fetchPost = async () => {
+      try {
+        const data = await apiRequest(`api/post/${postId}/`);
+  
+        setContent(data.caption || "");
+  
+        if (data.media_files?.length) {
+          let imageUrls: string[] = [];
+          let videoUrl: string | null = null;
+  
+          data.media_files.forEach((m: any) => {
+            if (m.media_type === "video") {
+              videoUrl = m.file_url;
+            } else if (m.media_type === "image") {
+              imageUrls.push(m.file_url);
+            }
+          });
+  
+          setImages(imageUrls);
+          if (videoUrl) setVideo(videoUrl);
+        }
+  
+        setSelectedCommunity(data.community);
+  
+      } catch (err) {
+        console.error("Failed to fetch post", err);
+      }
+    };
+  
+    fetchPost();
+  }, [isEdit, postId]);
+
+  const handlePost = async () => {
+    if (!content.trim() && images.length === 0 && !video) return;
+    if (!!selectedCommunity && !isEntertainmentTribe && !selectedCommunity) {
+      alert("Please select a community");
+      return;
+    }
+    
+    if (isEntertainmentTribe && !selectedCommunity) {
+      alert("Reels must belong to a community");
+      return;
+    }
+
+    setLoading(true);
+    setFileProgress({});
+  
+    try {
+      let mediaUrls: any[] = [];
+
+      const filesToUpload = [
+        ...(images.filter(i => i instanceof File) as File[]),
+        ...(video instanceof File ? [video] : [])
+      ];
+
+      for (let file of filesToUpload) {
+        const url = await uploadToCloudinary({
+          file,
+          onProgress: (percent) => {
+            setFileProgress((prev) => ({ ...prev, [file.name]: percent }));
+          },
+        });
+        mediaUrls.push({
+          url,
+          type: file.type.startsWith("video") ? "video" : "image",
+          thumbnail: file.type.startsWith("video")
+            ? url.replace("/upload/", "/upload/so_0,w_300,h_300,c_fill/")
+            : null
+        });
+      }
+      
+      const existingMedia = [
+        ...images.filter(i => typeof i === "string").map(url => ({ url, type: "image" })),
+        ...(typeof video === "string" ? [{ url: video, type: "video" }] : [])
+      ];
+
+      let contentType = "text";
+
+      if (isEntertainmentTribe && video) {
+        contentType = "short_video";
+      } else if (video) {
+        contentType = "long_video";
+      } else if (images.length > 0) {
+        contentType = "image";
+      }
+      
+      contentType = String(contentType);
+      
+      const payload = {
+        caption: content,
+        content_type: contentType,
+        media_files: [...existingMedia, ...mediaUrls],
+        community: selectedCommunity,
+      };
+  
+      if (isEdit) {
+        await apiRequest(`api/post/${postId}/`, {
+          method: "PUT",
+          data: payload,
+        });
+  
+        toast.success("Post updated!");
+      } else {
+        await apiRequest(`api/post/`, {
+          method: "POST",
+          data: payload,
+        });
+  
+        toast.success("Post created!");
+      }
+  
+      alert('Post created successfully!');
+      setContent('');
+      setImages([]);
+      setVideo(null);
+      setFileProgress({});
+      localStorage.removeItem("post_draft");
+      router.push('/main/home');
+    } catch (err:any) {
+      console.log("FULL ERROR:", err.data || err);
+      toast.error('Failed to create post');
+      setFileProgress({});
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  useEffect(() => {
+    const fetchCommunity = async () => {
+      if (!selectedCommunity) return;
+  
+      try {
+        const data = await apiRequest(`api/communities/${selectedCommunity}/`);
+        setCommunityData(data);
+  
+        // 🔥 THIS IS THE REAL CHECK
+        if (data.tribe?.name === "Entertainment") {
+          setIsEntertainmentTribe(true);
+        } else {
+          setIsEntertainmentTribe(false);
+        }
+  
+      } catch (err) {
+        console.error("Failed to fetch community", err);
+      }
+    };
+  
+    fetchCommunity();
+  }, [selectedCommunity]);
+  
+  // Render individual progress bar
+    const renderProgressBar = (file: File) => {
+      const progress = fileProgress[file.name] || 0;
+      return (
+        <div key={file.name} className="w-full bg-gray-200 rounded-full h-2 mt-1">
+          <div
+            className="bg-indigo-600 h-2 rounded-full transition-all"
+            style={{ width: `${progress}%` }}
+          ></div>
+        </div>
+      );
+    };
+  
+  if (selectedCommunity && isEntertainmentTribe === null) {
+    return <Skeleton />;
+  }
+  if (loading && (!video && images.length === 0)) return <div className="text-center mt-10"><Skeleton onComplete={() => setLoading(false)} /></div>;
+
+  return (
+    <div className="max-w-3xl mx-auto p-4 space-y-4">
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{allowReel ? "Create Reel" : selectedCommunity ? "Create Community Post" : isEdit ? "Edit Post" : "Create Post"}
+      </h1>
+
+      <div className="bg-white dark:bg-gray-900 p-4 rounded-2xl shadow-sm transition-colors space-y-3">
+        {/* Mode Switch */}
+        <div className="flex gap-2 mb-2">
+
+          {/* GLOBAL */}
+          <button
+            onClick={() => {
+              !selectedCommunity;
+              setSelectedCommunity(null);
+            }}
+            disabled={!isGlobal}
+            className={`px-3 py-1 rounded-full font-medium ${
+              isGlobal
+                ? 'bg-indigo-600 text-white'
+                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+            }`}
+          >
+            Global
+          </button>
+        
+          {/* COMMUNITY */}
+          <button
+            onClick={() => !!selectedCommunity && !isEntertainmentTribe}
+            disabled={!isNormalCommunity}
+            className={`px-3 py-1 rounded-full font-medium ${
+              isNormalCommunity
+                ? 'bg-indigo-600 text-white'
+                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+            }`}
+          >
+            Community
+          </button>
+        
+          {/* REEL */}
+          <button
+            onClick={() => isEntertainmentTribe}
+            disabled={!isEntertainment}
+            className={`px-3 py-1 rounded-full font-medium ${
+              isEntertainment
+                ? 'bg-indigo-600 text-white'
+                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+            }`}
+          >
+            Reel
+          </button>
+        
+        </div>
+
+        {/* Textarea */}
+        <textarea
+          placeholder="What's happening in your tribe?"
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          className="w-full p-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none"
+          rows={4}
+        />
+
+        {/* Images Preview */}
+        {images.length > 0 && (
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
+            {images.map((img, idx) => (
+              <div key={idx} className="relative group">
+                <img
+                  src={typeof img === "string" ? img : URL.createObjectURL(img)}
+                  alt={`preview-${idx}`}
+                  className="w-full h-24 object-cover rounded-lg"
+                />
+                <button
+                  onClick={() => removeImage(idx)}
+                  className="absolute top-1 right-1 bg-gray-800 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-80 hover:opacity-100 transition"
+                  title="Remove image"
+                >
+                  ×
+                </button>
+                {loading && renderProgressBar(img)}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Video Preview */}
+        {video && (
+          <div className="relative mt-2">
+            <video
+              src={typeof video === "string" ? video : URL.createObjectURL(video)}
+              poster={
+                typeof video === "string"
+                  ? video.replace("/upload/", "/upload/so_0,w_300,h_300,c_fill/")
+                  : undefined
+              }
+              controls
+              className={`w-full ${allowReel ? 'h-[500px] object-cover' : 'max-h-48 object-contain'} rounded-lg`} />
+            <button
+              onClick={removeVideo}
+              className="absolute top-2 right-2 bg-gray-800 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600 transition"
+              title="Remove video"
+            >
+              ×
+            </button>
+            {loading && renderProgressBar(video)}
+          </div>
+        )}
+
+        {/* Upload buttons */}
+        <div className="flex gap-4 mt-2">
+          <label
+            className={`flex-1 flex items-center justify-center gap-2 border-2 border-dashed p-2 rounded-lg cursor-pointer transition 
+            ${!allowImages ? 'opacity-50 cursor-not-allowed' : 'hover:border-indigo-500'}`}
+          >
+            <span className="text-gray-500 dark:text-gray-400 text-sm">Add Images</span>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleImagesChange}
+              className="hidden"
+              disabled={!!video}
+            />
+          </label>
+
+          <label
+            className={`flex-1 flex items-center justify-center gap-2 border-2 border-dashed p-2 rounded-lg cursor-pointer transition 
+            ${(!allowVideo && !allowReel) ? 'opacity-50 cursor-not-allowed' : 'hover:border-indigo-500'}`}
+          >
+            <span className="text-gray-500 dark:text-gray-400 text-sm">{allowReel ? "Add Reel" : "Add Video"}</span>
+            <input
+              type="file"
+              accept="video/*"
+              onChange={handleVideoChange}
+              className="hidden"
+              disabled={images.length > 0}
+            />
+          </label>
+        </div>
+
+        {/* Post button */}
+        <button
+          onClick={handlePost}
+          disabled={loading}
+          className="w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium"
+        >
+          {loading ? <ButtonLoader /> : isEdit ? "Update Post" : "Post"}
+        </button>
+      </div>
+    </div>
+  );
+}

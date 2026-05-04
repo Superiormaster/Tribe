@@ -1,0 +1,115 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #F8FAFC;
+  --foreground: #111827;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0B0F19;
+    --foreground: #E5E7EB;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+  overflow-y: auto;
+}
+
+@keyframes blink {
+  0%, 50%, 100% { opacity: 1; }
+  25%, 75% { opacity: 0; }
+}
+
+.animate-blink {
+  animation: blink 1s infinite;
+}
+
+@keyframes loadingBar {
+  0% { left: -40%; }
+  100% { left: 100%; }
+}
+
+.animate-loading-bar {
+  position: absolute;
+  left: -40%;
+  top: 0;
+  animation: loadingBar 1.5s linear infinite;
+}
+
+/* Gradient Animation */
+.animated-bg {
+  background: linear-gradient(-45deg, #4f46e5, #6366f1, #9333ea, #3b82f6);
+  background-size: 400% 400%;
+  animation: gradientMove 15s ease infinite;
+}
+
+.dark .animated-bg {
+  background: linear-gradient(-45deg, #0f172a, #1e1b4b, #1e293b, #020617);
+}
+
+@keyframes gradientMove {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* Floating Blobs */
+.blob {
+  position: absolute;
+  width: 400px;
+  height: 400px;
+  filter: blur(120px);
+  opacity: 0.5;
+  border-radius: 50%;
+  animation: float 20s infinite alternate ease-in-out;
+}
+
+.blob1 { background: #6366f1; top: -100px; left: -100px; }
+.blob2 { background: #9333ea; bottom: -120px; right: -80px; }
+.blob3 { background: #3b82f6; top: 40%; left: 50%; }
+
+@keyframes float {
+  from { transform: translateY(0px) translateX(0px); }
+  to { transform: translateY(-80px) translateX(60px); }
+}
+
+#nprogress .bar {
+  background: #6366f1;
+  height: 3px;
+}
+
+#nprogress .peg {
+  box-shadow: 0 0 10px #6366f1, 0 0 5px #6366f1;
+}
+
+#nprogress .spinner {
+  display: none;
+}
+
+@keyframes slideIn {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out forwards;
+}
+
+@keyframes heartPop {
+  0% { transform: scale(0.5); opacity: 0; }
+  50% { transform: scale(1.2); opacity: 1; }
+  100% { transform: scale(1); opacity: 0; }
+}
