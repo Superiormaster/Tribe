@@ -1,10 +1,12 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
+from django.db import models
 from django.contrib.auth.password_validation import validate_password
 from django.core.validators import validate_email
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.db import IntegrityError
 from .models import Star
+from post.models import PostView
 
 User = get_user_model()
 
@@ -155,6 +157,32 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'avatar', 'bio']
+
+class MiniUserSerializer(serializers.ModelSerializer):
+    is_starred_by_user = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "username",
+            "avatar",
+            "is_starred_by_user",
+        ]
+
+    def get_is_starred_by_user(self, obj):
+        request = self.context.get("request")
+
+        if (
+            not request or
+            not request.user.is_authenticated
+        ):
+            return False
+
+        return Star.objects.filter(
+            star=request.user,
+            starred_user=obj
+        ).exists()
 
 class DiscoveryUserSerializer(serializers.ModelSerializer):
     stars_received_count = serializers.SerializerMethodField()

@@ -2,45 +2,104 @@
 import { useState, useEffect, useContext, useRef } from 'react';
 import { UserContext } from './UserContext';
 import { apiRequest } from '@/utils/api';
-import { Send as SendIcon, Mic, Video, Trash2, Lock, Pin } from 'lucide-react';
+import { uploadToCloudinary } from '@/utils/cloudinary';
+import { useCommunitySocket } from '@/lib/useCommunitySocket';
+import { Phone, Video } from 'lucide-react';
+import CommunityMessageBubbles from '@/components/communityChat/CommunityMessageBubble';
+import CommunityPinnedBar from '@/components/communityChat/CommunityPinnedBar';
+import CommunityChatInput from '@/components/communityChat/CommunityChatInput';
+import CommunityMediaPreview from '@/components/communityChat/CommunityMediaPreview';
 
 type ChatMessage = {
   id: number;
-  userId: number;
-  username: string;
+
   text?: string;
-  image?: string;
-  video?: string;
-  audio?: string;
+
+  media_url?: string;
+  media_type?: string;
+
   created_at: string;
+
+  sender: number;
+
+  sender_username: string;
+
+  sender_avatar?: string;
+
+  sender_role?: string;
+
+  is_pinned?: boolean;
+
+  deleted?: boolean;
+
+  deleted_by_admin?: boolean;
+
+  reactions?: any[];
+
+  reply_to?: any;
 };
 
 type Props = {
   communityId: number;
-  user: any;
 };
 
-export default function CommunityChat({ communityId, user }: Props) {
+export default function CommunityChat({ communityId }: Props) {
   const { user: currentUser } = useContext(UserContext);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [newMessage, setNewMessage] = useState('');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [communityData, setCommunityData] = useState<any>(null);
+  const [replyingTo, setReplyingTo] =
+  useState<any>(null);
+  const [onlineCount, setOnlineCount] = useState(0);
   const [chatLocked, setChatLocked] = useState(false);
+  const [typingUsers, setTypingUsers] =
+  useState<any[]>([]);
+  const [text, setText] = useState('');
+
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Fetch messages periodically
   useEffect(() => {
     fetchMessages();
-    const interval = setInterval(fetchMessages, 5000);
-    return () => clearInterval(interval);
   }, [communityId]);
+  
+  useEffect(() => {
+    const loadCommunity = async () => {
+      try {
+        const res = await apiRequest(`api/communities/${communityId}/`);
+        setCommunityData(res);
+  
+        setOnlineCount(
+          Math.floor((res?.members_count || 0) * 0.3)
+        );
+      } catch (err) {
+        console.error(err);
+      }
+    };
+  
+    loadCommunity();
+  }, [communityId]);
+
+  const {
+    socketRef,
+    sendMessage,
+    sendTyping,
+    reactToMessage,
+    deleteMessage,
+    pinMessage,
+  } = useCommunitySocket(
+    communityId,
+    setMessages,
+    setTypingUsers,
+    currentUser
+  );
 
   const fetchMessages = async () => {
     try {
       setLoading(true);
-      const data = await apiRequest(`/api/communities/${communityId}/chat/`);
+      const data = await apiRequest(`api/communities/${communityId}/chat/`);
       setMessages(data || []);
       scrollToBottom();
     } catch (err) {
@@ -49,11 +108,86 @@ export default function CommunityChat({ communityId, user }: Props) {
       setLoading(false);
     }
   };
+  
+  const pinnedMessages = messages.filter((m) => m.is_pinned);
+
+  const scrollToMessage = (id: number) => {
+    document.getElementById(`message-${id}`)?.scrollIntoView({
+      behavior: 'smooth',
+    });
+  };
 
   const scrollToBottom = () => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  const handleSend = async () => {
+    if (!text && !file) return;
+
+    const temp = {
+      id: Date.now(),
+    
+      text,
+    
+      created_at: new Date().toISOString(),
+    
+      sender: currentUser.id,
+    
+      sender_username: currentUser.username,
+    
+      sender_avatar: currentUser.avatar,
+    
+      sender_role: currentUser?.role || 'member',
+    
+      reactions: [],
+    
+      deleted: false,
+    
+      is_pinned: false,
+
+      reply_to: replyingTo
+        ? {
+            id: replyingTo.id,
+            username: replyingTo.username,
+            text: replyingTo.text,
+          }
+        : null,
+    };
+
+    setMessages((prev) => [...prev, temp]);
+    setText('');
+    setFile(null);
+    setPreview(null);
+    setReplyingTo(null);
+
+    sendMessage({
+      text,
+      sender: currentUser.id,
+      sender_username:
+        currentUser.username,
+    
+      sender_avatar:
+        currentUser.avatar,
+    
+      sender_role:
+        currentUser?.role || 'member',
+    
+      reply_to: replyingTo
+        ? {
+            id: replyingTo.id,
+            username:
+              replyingTo.username,
+            text: replyingTo.text,
+          }
+        : null,
+    });
+  };
+
+  const handleFile = (f: File) => {
+    setFile(f);
+    setPreview(URL.createObjectURL(f));
+  };
+  
   // Handle file selection
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -61,43 +195,15 @@ export default function CommunityChat({ communityId, user }: Props) {
     setFile(f);
     setPreview(URL.createObjectURL(f));
   };
-
-  // Send message with optional file
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() && !file) return;
-
-    const tempMessage: ChatMessage = {
-      id: Date.now(),
-      userId: currentUser.id,
-      username: currentUser.username,
-      text: newMessage || undefined,
-      image: file?.type.startsWith('image') ? preview || undefined : undefined,
-      video: file?.type.startsWith('video') ? preview || undefined : undefined,
-      audio: file?.type.startsWith('audio') ? preview || undefined : undefined,
-      created_at: new Date().toISOString(),
-    };
-    setMessages((prev) => [...prev, tempMessage]);
-    setNewMessage('');
-    setFile(null);
-    setPreview(null);
-    scrollToBottom();
-
-    try {
-      const formData = new FormData();
-      if (newMessage.trim()) formData.append('text', newMessage);
-      if (file) formData.append('file', file);
-
-      await apiRequest(`/api/communities/${communityId}/chat/`, {
-        method: 'POST',
-        data: formData,
-        headers: { 'Content-Type': 'multipart/form-data' },
+  
+  useEffect(() => {
+    if (replyingTo) {
+      window.scrollTo({
+        top: document.body.scrollHeight,
+        behavior: 'smooth',
       });
-    } catch (err) {
-      console.error(err);
-      alert('Failed to send message.');
-      setMessages((prev) => prev.filter((m) => m.id !== tempMessage.id));
     }
-  };
+  }, [replyingTo]);
 
   // Delete message (user or moderator)
   const handleDeleteMessage = async (messageId: number, ownerId: number) => {
@@ -105,7 +211,7 @@ export default function CommunityChat({ communityId, user }: Props) {
     setMessages((prev) => prev.filter((m) => m.id !== messageId));
 
     try {
-      await apiRequest(`/api/communities/${communityId}/chat/${messageId}/`, {
+      await apiRequest(`api/communities/${communityId}/chat/${messageId}/`, {
         method: 'DELETE',
       });
     } catch (err) {
@@ -114,90 +220,171 @@ export default function CommunityChat({ communityId, user }: Props) {
     }
   };
 
-  const isModerator = () => user?.role === 'moderator' || currentUser.id === user?.id;
+  const isModerator =
+  currentUser?.role === 'moderator' ||
+  currentUser?.role === 'admin';
 
   // Admin actions
   const toggleChatLock = async () => {
     setChatLocked(!chatLocked);
     // backend call to lock/unlock chat
-    await apiRequest(`/api/communities/${communityId}/lock/`, {
+    await apiRequest(`api/communities/${communityId}/lock/`, {
       method: 'POST',
       data: { lock: !chatLocked },
     });
   };
-
-  const scrollToMessage = (id: number) => {
-    document.getElementById(`msg-${id}`)?.scrollIntoView({ behavior: 'smooth' });
+  
+  const togglepinMessage = async (messageId: number) => {
+    try {
+      await apiRequest(
+        `api/messages/${messageId}/toggle_pin/`,
+        {
+          method: 'POST',
+        }
+      );
+  
+      setMessages((prev: any) =>
+        prev.map((msg: any) =>
+          msg.id === messageId
+            ? {
+                ...msg,
+                is_pinned: !msg.is_pinned,
+              }
+            : msg
+        )
+      );
+    } catch (err) {
+      console.error(err);
+    }
   };
-
+  
   return (
-    <div className="flex flex-col h-full border border-gray-300 dark:border-gray-700 rounded-xl p-2 bg-white dark:bg-gray-900">
-      {/* Header */}
-      <div className="flex justify-between items-center mb-2 px-2">
-        <h4 className="font-bold">Community Chat {chatLocked && '(Locked)'}</h4>
-        <div className="flex gap-2">
-          <button title="Voice Call" className="p-1 rounded bg-green-600 text-white"><Mic /></button>
-          <button title="Video Call" className="p-1 rounded bg-blue-600 text-white"><Video /></button>
-          {isModerator() && (
-            <>
-              <button onClick={toggleChatLock} title="Lock Chat" className="p-1 rounded bg-gray-600 text-white"><Lock /></button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-2 space-y-2">
-        {loading && <div className="text-center text-gray-500">Loading messages...</div>}
-        {messages.map((m) => (
-          <div key={m.id} id={`msg-${m.id}`} className="flex justify-between items-start">
-            <div className="flex flex-col">
-              <span className="font-semibold">{m.username}</span>
-              {m.text && <span>{m.text}</span>}
-              {m.image && <img src={m.image} className="max-w-xs rounded-lg mt-1" alt="attachment" />}
-              {m.video && <video src={m.video} controls className="max-w-xs rounded-lg mt-1" />}
-              {m.audio && <audio src={m.audio} controls className="mt-1" />}
-            </div>
-            {(m.userId === currentUser.id || isModerator()) && (
-              <button onClick={() => handleDeleteMessage(m.id, m.userId)} className="ml-2 text-red-600 p-1">
-                <Trash2 />
-              </button>
+    <div className="flex flex-col h-full bg-white dark:bg-gray-900 overflow-hidden">
+  
+      {/* HEADER */}
+      <div className="flex fixed top-0 left-0 right-0 md:left-64 bg-white dark:bg-gray-900 gap-3 justify-between px-3 py-2 border-b items-center z-40">
+      
+        {/* LEFT */}
+        <div className="flex items-center gap-3">
+      
+          {/* Back button */}
+          <button
+            onClick={() => window.history.back()}
+            className="text-xl px-2"
+          >
+            ←
+          </button>
+      
+          {/* Community Avatar */}
+          <div className="w-9 h-9 rounded-full overflow-hidden bg-gray-300 flex items-center justify-center">
+            {communityData?.cover_image ? (
+              <img
+                src={communityData.cover_image}
+                className="w-9 h-9 object-cover"
+              />
+            ) : (
+              <div className="text-xs font-bold text-white">
+                {communityData?.name?.slice(0, 2)?.toUpperCase() || "CM"}
+              </div>
             )}
           </div>
-        ))}
+      
+          {/* NAME + STATUS */}
+          <div className="flex flex-col leading-tight">
+            <span className="font-semibold">
+              {communityData?.name || "Community"}
+            </span>
+      
+            <span className="text-xs text-gray-500">
+              {communityData?.members_count || 0} members • {onlineCount} online
+            </span>
+      
+            {chatLocked && (
+              <span className="text-xs text-red-500">
+                locked
+              </span>
+            )}
+          </div>
+        </div>
+      
+        {/* RIGHT ACTIONS */}
+        <div className="flex items-center gap-3">
+      
+          <button className="p-2 rounded-full bg-green-600 text-white">
+            <Phone size={18} />
+          </button>
+      
+          <button className="p-2 rounded-full bg-blue-600 text-white">
+            <Video size={18} />
+          </button>
+      
+          {isModerator() && (
+            <button
+              onClick={toggleChatLock}
+              className="p-2 rounded-full bg-gray-700 text-white"
+            >
+              🔒
+            </button>
+          )}
+        </div>
+      
+      </div>
+  
+      {/* PINNED BAR */}
+      <CommunityPinnedBar
+        pinnedMessages={pinnedMessages}
+        onJumpToMessage={scrollToMessage}
+      />
+  
+      {/* MESSAGES */}
+      <div className="flex-1 overflow-y-auto">
+        <CommunityMessageBubbles
+          messages={messages}
+          currentUserId={currentUser.id}
+          onDelete={(id, ownerId) =>
+            handleDeleteMessage(id, ownerId)
+          }
+          onPin={togglepinMessage}
+          isModerator={user?.role === 'moderator'}
+          onReply={(message) => {
+        
+            setReplyingTo({
+              id: message.id,
+              username:
+                message.sender_username,
+              text: message.text,
+            });
+          }}
+        />
         <div ref={chatEndRef} />
       </div>
-
-      {/* Input */}
-      <div className="flex flex-col gap-2 mt-2">
-        {preview && (
-          <div className="relative">
-            {file?.type.startsWith('image') && <img src={preview} className="w-32 h-32 object-cover rounded-lg" />}
-            {file?.type.startsWith('video') && <video src={preview} className="w-48 h-32 rounded-lg" controls />}
-            {file?.type.startsWith('audio') && <audio src={preview} controls />}
-            <button onClick={() => { setFile(null); setPreview(null); }} className="absolute top-0 right-0 text-white bg-red-600 rounded-full p-1">X</button>
-          </div>
-        )}
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={newMessage}
-            onChange={(e) => setNewMessage(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-            className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-            placeholder={chatLocked ? "Chat is locked" : "Write a message..."}
-            disabled={chatLocked}
-          />
-          <input type="file" accept="image/*,video/*,audio/*" onChange={handleFileChange} />
-          <button
-            onClick={handleSendMessage}
-            disabled={chatLocked || (!newMessage && !file)}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg flex items-center justify-center"
-          >
-            <SendIcon className="rotate-0" />
-          </button>
-        </div>
-      </div>
+  
+      {/* PREVIEW */}
+      <CommunityMediaPreview
+        file={file}
+        previewUrl={preview}
+        onClear={() => {
+          setFile(null);
+          setPreview(null);
+        }}
+      />
+  
+      {/* INPUT */}
+      <CommunityChatInput
+        value={text}
+        onChange={(value) => {
+          setText(value);
+        
+          sendTyping();
+        }}
+        onSend={handleSend}
+        onFileSelect={handleFile}
+        disabled={chatLocked}
+        replyingTo={replyingTo}
+        onCancelReply={() =>
+          setReplyingTo(null)
+        }
+      />
     </div>
   );
 }

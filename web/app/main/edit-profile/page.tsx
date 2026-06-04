@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useNavigation } from "@/utils/useNavigation"
 import { apiRequest } from '@/utils/api'
 import Skeleton from '@/components/Skeleton'
 import { useContext } from "react";
@@ -13,7 +13,7 @@ const interestsList = [
 ]
 
 export default function EditProfile() {
-  const router = useRouter()
+  const { push } = useNavigation()
   const { user } = useContext(UserContext) || {};
 
   // Profile states
@@ -136,7 +136,7 @@ export default function EditProfile() {
       }
   
       await apiRequest('api/users/me/', { method: 'PATCH', data: formData })
-      router.push(`/main/profile/${user.username}`)
+      push(`/main/profile/${user.username}`)
     } catch (err: any) {
       setError(err.message || 'Something went wrong')
     } finally {

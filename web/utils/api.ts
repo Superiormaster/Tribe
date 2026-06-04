@@ -1,18 +1,50 @@
 import axios, { AxiosRequestConfig } from "axios";
-import { getRefreshToken, storeRefreshToken } from "@/lib/keyStore";
+import {
+  getRefreshToken,
+  storeRefreshToken,
+} from "@/lib/keyStore";
+
 import { getFingerprint } from "@/lib/fingerprint";
 
-
 export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8080/";
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://127.0.0.1:8080/";
 
-/**
- * We keep access token in memory (NOT localStorage)
- */
 let accessToken: string | null = null;
 
-export const setAccessToken = (token: string | null) => {
+let isRefreshing = false;
+
+let refreshSubscribers: ((token: string) => void)[] = [];
+
+const subscribeTokenRefresh = (
+  cb: (token: string) => void
+) => {
+  refreshSubscribers.push(cb);
+};
+
+const onRefreshed = (token: string) => {
+  refreshSubscribers.forEach((cb) => cb(token));
+  refreshSubscribers = [];
+};
+
+export const setAccessToken = (
+  token: string | null
+) => {
   accessToken = token;
+};
+
+export const waitForAccessToken = async () => {
+  let tries = 0;
+
+  while (!accessToken && tries < 20) {
+    await new Promise((res) =>
+      setTimeout(res, 200)
+    );
+
+    tries++;
+  }
+
+  return accessToken;
 };
 
 const apiClient = axios.create({
@@ -24,110 +56,243 @@ const apiClient = axios.create({
 });
 
 /**
- * Attach JWT access token to every request
+ * Attach access token
  */
-apiClient.interceptors.request.use((config) => {
-  if (accessToken) {
-    config.headers.Authorization = `Bearer ${accessToken}`;
+apiClient.interceptors.request.use(
+  async (config) => {
+
+    const token =
+      accessToken ||
+      await waitForAccessToken();
+
+    if (token) {
+
+      config.headers = {
+        ...config.headers,
+        Authorization: `Bearer ${token}`,
+      };
+    }
+
+    return config;
   }
-  return config;
-});
+);
 
 /**
- * Auto refresh like Instagram
+ * Auto refresh
  */
 apiClient.interceptors.response.use(
   (res) => res,
+
   async (error) => {
     const originalRequest = error.config;
 
-    if (originalRequest.url?.includes("/refresh/")) {
+    // ignore refresh endpoint itself
+    if (
+      originalRequest?.url?.includes(
+        "/api/users/refresh/"
+      )
+    ) {
       return Promise.reject(error);
     }
 
-    // If no response or not 401 → just fail
-    if (!error.response || error.response.status !== 401) {
+    // only handle 401
+    if (
+      !error.response ||
+      error.response.status !== 401
+    ) {
       return Promise.reject(error);
     }
 
-    // Prevent infinite loop
+    // prevent infinite loop
     if (originalRequest._retry) {
       return Promise.reject(error);
     }
 
     originalRequest._retry = true;
 
-    try {
-      const refresh = await getRefreshToken();
-      if (!refresh) {
-        return Promise.reject(error);
-      }
+    /**
+     * WAIT if already refreshing
+     */
+    if (isRefreshing) {
+      return new Promise((resolve) => {
+        subscribeTokenRefresh((token) => {
+          originalRequest.headers.Authorization =
+            `Bearer ${token}`;
 
-      const res = await apiClient.post("api/users/refresh/", {
-        refresh,
+          resolve(apiClient(originalRequest));
+        });
       });
-      
-      const newAccessToken = res.data.access;
-      const newRefreshToken = res.data.refresh;
-      
-      // ✅ IMPORTANT: update stored refresh
-      const email = localStorage.getItem("active_account");
-      if (email && newRefreshToken) {
-        await storeRefreshToken(email, newRefreshToken);
+    }
+
+    isRefreshing = true;
+
+    try {
+      const selected =
+        localStorage.getItem(
+          "active_account"
+        );
+
+      if (!selected) {
+        throw new Error(
+          "No active account"
+        );
       }
-      
-      // ✅ update access
-      setAccessToken(newAccessToken);
 
-      // Retry original request with new token
-      originalRequest.headers = {
-        ...originalRequest.headers,
-        Authorization: `Bearer ${newAccessToken}`,
-      };
+      const refresh =
+        await getRefreshToken(selected);
 
-      return apiClient.request(originalRequest);
+      if (!refresh) {
+        throw new Error(
+          "No refresh token"
+        );
+      }
+
+      /**
+       * REFRESH TOKEN
+       */
+      const res = await axios.post(
+        `${API_URL}api/users/refresh/`,
+        {
+          refresh,
+        },
+        {
+          headers: {
+            "X-Device-Fingerprint":
+              getFingerprint(),
+          },
+        }
+      );
+
+      const newAccessToken =
+        res.data.access;
+
+      const newRefreshToken =
+        res.data.refresh;
+
+      /**
+       * SAVE TOKENS
+       */
+      setAccessToken(
+        newAccessToken
+      );
+
+      if (newRefreshToken) {
+        await storeRefreshToken(
+          selected,
+          newRefreshToken
+        );
+      }
+
+      /**
+       * RELEASE QUEUE
+       */
+      onRefreshed(
+        newAccessToken
+      );
+
+      /**
+       * RETRY ORIGINAL REQUEST
+       */
+      originalRequest.headers.Authorization =
+        `Bearer ${newAccessToken}`;
+
+      return apiClient(
+        originalRequest
+      );
+
     } catch (refreshError) {
-      // 🔥 Hard logout case
+
+      console.error(
+        "Refresh failed",
+        refreshError
+      );
+
+      /**
+       * HARD LOGOUT
+       */
       setAccessToken(null);
-      return Promise.reject(refreshError);
+
+      localStorage.removeItem(
+        "active_account"
+      );
+
+      window.dispatchEvent(
+        new Event("force-home")
+      );
+
+      if (
+        window.location.pathname !==
+        "/auth/login"
+      ) {
+        window.location.href(
+          "/auth/login"
+        );
+      }
+
+      return Promise.reject(
+        refreshError
+      );
+
+    } finally {
+      isRefreshing = false;
     }
   }
 );
 
 /**
- * Generic API helper
+ * Generic request helper
  */
 export async function apiRequest(
   endpoint: string,
   options: AxiosRequestConfig = {}
 ): Promise<any> {
+
   try {
-    if (options.data && !(options.data instanceof FormData)) {
+
+    if (
+      options.data &&
+      !(options.data instanceof FormData)
+    ) {
       options.headers = {
-        "Content-Type": "application/json",
+        "Content-Type":
+          "application/json",
         ...(options.headers || {}),
       };
     }
 
-    const response = await apiClient.request({
-      url: endpoint,
-      ...options,
-    });
+    const response =
+      await apiClient.request({
+        url: endpoint,
+        ...options,
+      });
 
     return response.data;
+
   } catch (err: any) {
+
     if (err.response) {
-      const status = err.response.status;
-      const data = err.response.data;
 
-      console.error("API ERROR:", status, data);
+      console.error(
+        "API ERROR:",
+        err.response.status,
+        err.response.data
+      );
 
-      const error = new Error("API error");
-      (error as any).data = data;
+      const error = new Error(
+        "API error"
+      );
+
+      (error as any).data =
+        err.response.data;
 
       throw error;
     }
 
-    console.error("FULL ERROR:", err);
+    console.error(
+      "FULL ERROR:",
+      err
+    );
+
+    throw err;
   }
 }

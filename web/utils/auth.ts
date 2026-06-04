@@ -1,9 +1,36 @@
-import { apiRequest } from "@/utils/api";
+import { apiRequest, setAccessToken } from "@/utils/api";
+import { deleteRefreshToken } from "@/lib/keyStore";
 
 export async function logout() {
-  const data = await apiRequest("api/users/logout/", {
-    method: "POST",
-  });
+  // capture account early (avoid race conditions)
+  const selectedAccount = localStorage.getItem("active_account");
 
-  window.location.href = "/auth/login";
+  // always try backend logout (don’t block UI cleanup)
+  try {
+    await apiRequest("api/users/logout/", {
+      method: "POST",
+    });
+  } catch (err) {
+    console.warn("Logout API failed, continuing local cleanup...");
+  }
+
+  // run cleanup in parallel (faster + safer)
+  await Promise.allSettled([
+    selectedAccount ? deleteRefreshToken(selectedAccount) : Promise.resolve(),
+  ]);
+
+  // clear runtime auth state
+  setAccessToken(null);
+
+  // clear storage last (after DB cleanup)
+  localStorage.removeItem("active_account");
+
+  // notify app (multi-tab support)
+  window.dispatchEvent(new Event("auth-changed"));
+
+  // optional: notify other tabs
+  localStorage.setItem("logout_event", Date.now().toString());
+
+  // hard redirect (always last)
+  window.location.replace("/auth/login");
 }

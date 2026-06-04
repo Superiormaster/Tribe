@@ -22,12 +22,14 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@capacitor-community/media": "^9.1.0",
     "@fortawesome/free-brands-svg-icons": "^7.2.0",
     "@fortawesome/free-solid-svg-icons": "^7.2.0",
     "@fortawesome/react-fontawesome": "^3.2.0",
     "axios": "^1.14.0",
     "cors": "^2.8.6",
     "countries-list": "^3.3.0",
+    "emoji-picker-react": "^4.19.1",
     "express": "^5.2.1",
     "framer-motion": "^12.38.0",
     "idb": "^8.0.3",

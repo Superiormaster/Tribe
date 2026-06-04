@@ -57,23 +57,43 @@ def create_comment_notification(sender, instance, created, **kwargs):
 
 # --- STAR / FOLLOW SIGNAL ---
 @receiver(post_save, sender=Star)
-def create_star_notification(sender, instance, created, **kwargs):
+def create_star_notification(
+    sender,
+    instance,
+    created,
+    **kwargs
+):
+
     if not created:
         return
 
-    follower = instance.star
-    following = instance.starred_user
-
-    if follower == following:
+    if instance.star == instance.starred_user:
         return
 
-    notif, created_notif = Notification.objects.get_or_create(
-        recipient=following,
-        type="star",
-        defaults={"message": f"{follower.username} starred you"}
+    # remove existing duplicate notifications
+    old_notifications = Notification.objects.filter(
+        recipient=instance.starred_user,
+        type="star"
     )
 
-    notif.actors.add(follower)
-    actor_usernames = [actor.username for actor in notif.actors.all()[:3]]
-    notif.message = f"{', '.join(actor_usernames)} starred you"
-    notif.save()
+    for notif in old_notifications:
+
+        actor_ids = list(
+            notif.actors.values_list(
+                "id",
+                flat=True
+            )
+        )
+
+        if actor_ids == [instance.star.id]:
+            notif.delete()
+
+    # create fresh notification
+    notification = Notification.objects.create(
+        recipient=instance.starred_user,
+        type="star"
+    )
+
+    notification.actors.add(
+        instance.star
+    )

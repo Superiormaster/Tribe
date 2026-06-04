@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     'channels',
     'cloudinary',
     'cloudinary_storage',
+    'django_extensions',
 
     # Local apps
     'chats',
@@ -76,6 +77,9 @@ INSTALLED_APPS = [
     'notifications.apps.NotificationsConfig',
     'rest_framework.authtoken',
     'users',
+    'search',
+    'admin_panel',
+    'feedback',
 ]
 
 # -----------------------------
@@ -191,12 +195,22 @@ CELERY_BEAT_SCHEDULE = {
 # Channels (Redis)
 # -----------------------------
 CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            'hosts': [('127.0.0.1', 6379)],
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379, 1)],  # DB 1
         },
     },
+}
+
+CACHES = {
+    "default": {
+        "BACKEND": "django_redis.cache.RedisCache",
+        "LOCATION": "redis://127.0.0.1:6379/0",  # DB 0
+        "OPTIONS": {
+            "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        },
+    }
 }
 
 # -----------------------------

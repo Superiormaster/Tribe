@@ -2,14 +2,13 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { apiRequest } from '@/utils/api';
-import CommentList from '@/components/CommentList'
-import CommentInput from '@/components/CommentInput'
+import CommentsModal from '@/components/CommentsModal'
 import ShareButton from '@/components/ShareButton'
-import { Heart, MessageCircle, Eye, Volume2, VolumeX, Play, Share2, MoreVertical } from 'lucide-react';
+import { useSmartPostView } from '@/lib/useSmartPostView'
+import { Heart, MessageCircle, Eye, Volume2, VolumeX, Play, Pause, Share2, MoreVertical } from 'lucide-react';
 
 export default function ReelsPage() {
   const [reels, setReels] = useState<any[]>([]);
-  const currentUserId = 1;
   const [showHeart, setShowHeart] = useState<{ [key: number]: boolean }>({});
   const [openCommentsPostId, setOpenCommentsPostId] = useState<number | null>(null);
   const lastTapRef = useRef<{ [key: number]: number }>({});
@@ -24,10 +23,14 @@ export default function ReelsPage() {
   // FETCH REELS
   useEffect(() => {
     (async () => {
-      const res = await apiRequest('api/post/?content_type=short_video');
-      const normalized = (res.results || res || []).map((r: any) => ({
+      const res = await apiRequest(
+        'api/post/?content_type=short_video&is_video=true'
+      );
+      const normalized = (res.results || res || [])
+      .filter((r: any) => r.content_type === "short_video")
+      .map((r: any) => ({
         ...r,
-        id: r.id ?? r.pk ?? r.post_id, // safety fallback
+        id: r.id ?? r.pk ?? r.post_id,
       }));
     
       setReels(normalized);
@@ -58,6 +61,26 @@ export default function ReelsPage() {
   
     lastTapRef.current[reel.id] = now;
   };
+  
+  const [currentUser, setCurrentUser] = useState<any>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiRequest("api/users/me/");
+        setCurrentUser(res);
+      } catch (err) {
+        console.error("Failed to fetch current user", err);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      const res = await apiRequest("api/users/starred/");
+      setStarredUsers(new Set(res.starred_users)); 
+    })();
+  }, []);
 
   const toggleStar = async (userId: number) => {
     if (!userId) return;
@@ -69,12 +92,12 @@ export default function ReelsPage() {
       );
   
       setStarredUsers(prev => {
-        const newSet = new Set(prev);
-  
-        if (res.starred) newSet.add(userId);
-        else newSet.delete(userId);
-  
-        return newSet;
+        const copy = new Set(prev);
+    
+        if (res.starred) copy.add(userId);
+        else copy.delete(userId);
+    
+        return copy;
       });
     } catch (err) {
       console.error(err);
@@ -110,7 +133,7 @@ export default function ReelsPage() {
     );
   
     try {
-      const res = await apiRequest(`api/post/likes/${reel.id}/toggle/`, {
+      const res = await apiRequest(`api/likes/${reel.id}/toggle/`, {
         method: "POST",
       });
   
@@ -130,6 +153,18 @@ export default function ReelsPage() {
       console.error(err);
     }
   };
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      setMuted(e.detail);
+    };
+  
+    window.addEventListener("toggle-reel-mute", handler);
+  
+    return () => {
+      window.removeEventListener("toggle-reel-mute", handler);
+    };
+  }, []);
 
   // INTERSECTION OBSERVER (AUTO PLAY ONLY VISIBLE)
   useEffect(() => {
@@ -172,6 +207,14 @@ export default function ReelsPage() {
 
     return () => clearInterval(interval);
   }, []);
+  
+  useEffect(() => {
+    if (openCommentsPostId) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "auto";
+    }
+  }, [openCommentsPostId]);
 
   // TOGGLE MUTE
   const toggleMute = () => {
@@ -202,20 +245,21 @@ export default function ReelsPage() {
       scrollToReel(currentIndex - 1);
     }
   };
-  
-  const seekVideo = (id: number, seconds: number) => {
-    const video = videoRefs.current.get(id);
-    if (!video) return;
-  
-    video.currentTime = Math.min(
-      Math.max(0, video.currentTime + seconds),
-      video.duration || Infinity
-    );
-  };
 
   const scrollToReel = (index: number) => {
     const video = videoRefs.current.get(reels[index]?.id);
     video?.scrollIntoView({ behavior: 'smooth' });
+  };
+  
+  const handleCopyLink = async (postId: number) => {
+    try {
+      const url = `${window.location.origin}/main/home/${postId}`;
+      await navigator.clipboard.writeText(url);
+      
+      alert("Link copied!");
+    } catch (err) {
+      console.error("Failed to copy link", err);
+    }
   };
 
   return (
@@ -227,186 +271,30 @@ export default function ReelsPage() {
     >
 
       {reels.map((reel) => (
-  <ReelItem
-    key={reel.id}
-    reel={reel}
-    muted={muted}
-    setReels={setReels}
-    handleLike={handleLike}
-    toggleStar={toggleStar}
-    starredUsers={starredUsers}
-    currentUserId={currentUserId}
-    videoRefs={videoRefs}
-    setOpenCommentsPostId={setOpenCommentsPostId}
-    handleDoubleTap={handleDoubleTap}
-    showHeart={showHeart}
-    activeId={activeId}
-  />
-))}
-      {reels.map((reel) => {
-        const progress = progressRefs.current.get(reel.id) || 0;
-
-        return (
-          <div
-            key={reel.id}
-            id={`reel-${reel.id}`}
-            onClick={() => handleDoubleTap(reel)}
-            className="h-full w-full snap-start relative"
-          >
-
-            {/* VIDEO */}
-            <video
-              data-id={reel.id}
-              ref={(el) => {
-                if (el) {
-                  el.muted = muted;
-                  videoRefs.current.set(reel.id, el);
-                }
-              }}
-              src={reel.media_files?.[0]?.file_url}
-              className="h-full w-full object-cover"
-              loop
-              playsInline
-            />
-
-            <div className="absolute bottom-32 left-4 flex gap-4 text-white">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  seekVideo(reel.id, -10);
-                }}
-                className="bg-black/50 px-3 py-1 rounded"
-              >
-                -10s
-              </button>
-            
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  seekVideo(reel.id, 10);
-                }}
-                className="bg-black/50 px-3 py-1 rounded"
-              >
-                +10s
-              </button>
-            </div>
-
-            {showHeart[reel.id] && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                <Heart className="w-20 h-20 text-red-500 fill-red-500 animate-[heartPop_0.7s_ease-out]" />
-              </div>
-            )}
-
-            {/* DARK OVERLAY */}
-            <div className="absolute inset-0 bg-black/20" />
-
-            {/* PLAY ICON WHEN PAUSED */}
-            {activeId !== reel.id && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <Play className="text-white w-12 h-12 opacity-60" />
-              </div>
-            )}
-
-            {/* PROGRESS BAR */}
-            <div className="absolute top-0 left-0 w-full h-1 bg-gray-700">
-              <div
-                className="h-1 bg-white transition-all"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-
-            {/* RIGHT ACTIONS */}
-            <div className="absolute right-3 bottom-24 flex flex-col gap-6 text-white">
-              <button onClick={() => handleLike(reel)}  
-              className={`flex flex-col items-center gap-1 font-medium ${  
-                reel.liked_by_user ? "text-red-600" : ""  
-              }`}>
-                <Heart className="w-7 h-7" />
-                <span className="text-xs">{reel.likes_count}</span>
-              </button>
-
-              <button onClick={(e) => {
-                e.stopPropagation();
-                setOpenCommentsPostId(reel.id);
-              }} className="flex flex-col items-center">
-                <MessageCircle className="w-7 h-7" />
-                <span className="text-xs">{reel.comments_count}</span>
-              </button>
-
-              <button className="flex flex-col items-center">
-                <Eye className="w-7 h-7" />
-                <span className="text-xs">{reel.views_count || 0}</span>
-              </button>
-              <ShareButton post={reel} />
-
-              <button className="flex-1" onClick={toggleMute}>
-                {muted ? <VolumeX /> : <Volume2 />}
-              </button>
-              <button className="text-xs text-white">
-                <MoreVertical />
-              </button>
-            </div>
-
-            {/* CAPTION */}
-            <div className="absolute bottom-10 left-4 text-white max-w-[70%]">
-  
-              {/* USER ROW (username + star) */}
-              <div className="flex items-center gap-3">
-                <p className="font-bold">@{reel.user.username}</p>
-            
-                {reel.user?.id && reel.user.id !== currentUserId && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!reel.user?.id) return;
-                      toggleStar(reel.user.id);
-                    }}
-                    className={`px-3 py-1 rounded-full text-xs font-medium transition ${
-                      starredUsers.has(reel.user.id)
-                        ? "bg-yellow-500 text-black"
-                        : "bg-white text-black"
-                    }`}
-                  >
-                    {starredUsers.has(reel.user.id) ? "⭐ Starred" : "⭐ Star"}
-                  </button>
-                )}
-              </div>
-            
-              {/* CAPTION BELOW */}
-              <p className="text-sm mt-2">{reel.caption}</p>
-            </div>
-
-          </div>
-        );
-      })}
+        <ReelItem
+          key={reel.id}
+          reel={reel}
+          muted={muted}
+          setReels={setReels}
+          handleLike={handleLike}
+          toggleStar={toggleStar}
+          starredUsers={starredUsers}
+          currentUser={currentUser}
+          videoRefs={videoRefs}
+          progressRefs={progressRefs} 
+          setOpenCommentsPostId={setOpenCommentsPostId}
+          handleDoubleTap={handleDoubleTap}
+          handleCopyLink={handleCopyLink}
+          showHeart={showHeart}
+          activeId={activeId}
+        />
+      ))}
 
       {openCommentsPostId && (
-        <div className="fixed inset-0 z-50 bg-black/70 flex flex-col justify-end">
-      
-          {/* CLICK OUTSIDE TO CLOSE */}
-          <div
-            className="flex-1"
-            onClick={() => setOpenCommentsPostId(null)}
-          />
-      
-          {/* COMMENT PANEL */}
-          <div className="bg-white dark:bg-gray-900 rounded-t-2xl max-h-[80%] flex flex-col">
-      
-            {/* HEADER */}
-            <div className="p-3 border-b text-center font-semibold">
-              Comments
-            </div>
-      
-            {/* COMMENT LIST */}
-            <div className="flex-1 overflow-y-auto p-3">
-              <CommentList postId={openCommentsPostId} />
-            </div>
-      
-            {/* INPUT */}
-            <CommentInput postId={openCommentsPostId} />
-      
-          </div>
-        </div>
+        <CommentsModal
+          postId={openCommentsPostId}
+          onClose={() => setOpenCommentsPostId(null)}
+        />
       )}
     </div>
   );
@@ -419,29 +307,88 @@ function ReelItem({
   handleLike,
   toggleStar,
   starredUsers,
-  currentUserId,
+  currentUser,
   videoRefs,
+  progressRefs,
   setOpenCommentsPostId,
   handleDoubleTap,
+  handleCopyLink,
   showHeart,
   activeId,
 }: any) {
+  const progress = progressRefs.current.get(reel.id) || 0;
+  const [showControls, setShowControls] = useState(false);
+  const [playing, setPlaying] = useState(true);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportText, setReportText] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const isOwner = reel.user?.id === currentUser?.id;
+  const reelVideoRef = useRef<HTMLVideoElement | null>(null);
 
-  // ✅ VIEW TRACKING
-  useReelView(reel.id, () => {
-    setReels((prev: any[]) =>
-      prev.map(r =>
-        r.id === reel.id
-          ? { ...r, views_count: (r.views_count || 0) + 1 }
-          : r
-      )
-    );
+  // VIEW TRACKING
+  useSmartPostView({
+    post: reel,
+    ref: reelVideoRef,
+    onViewed: () => {
+      setReels((prev: any[]) =>
+        prev.map(r =>
+          r.id === reel.id
+            ? { ...r, views_count: (r.views_count || 0) + 1 }
+            : r
+        )
+      );
+    }
   });
+  
+  const handleReport = async () => {
+    if (!reportText.trim()) return;
+  
+    try {
+      await apiRequest(
+        `api/posts/${reel.id}/report/`,
+        {
+          method: "POST",
+          data: {
+            reason: reportText,
+          },
+        }
+      );
+  
+      setReportOpen(false);
+      setReportText("");
+      setMenuOpen(false);
+  
+      alert("Report submitted successfully");
+  
+    } catch (err) {
+      console.error(err);
+      alert("Failed to submit report");
+    }
+  };
+
+  const seekVideo = (seconds: number) => {
+    const video = videoRefs.current.get(reel.id);
+    if (!video) return;
+
+    video.currentTime = Math.min(
+      Math.max(0, video.currentTime + seconds),
+      video.duration || Infinity
+    );
+  };
 
   return (
     <div
-      id={`reel-${reel.id}`} // ✅ IMPORTANT
-      onClick={() => handleDoubleTap(reel)}
+      id={`reel-${reel.id}`}
+      onClick={() => {
+        handleDoubleTap(reel);
+        setShowControls(true);
+      
+        clearTimeout((window as any).__reelControlsTimeout);
+
+        (window as any).__reelControlsTimeout = setTimeout(() => {
+          setShowControls(false);
+        }, 2500);
+      }}
       className="h-full w-full snap-start relative"
     >
 
@@ -451,44 +398,314 @@ function ReelItem({
         ref={(el) => {
           if (el) {
             el.muted = muted;
+        
+            reelVideoRef.current = el;
+        
             videoRefs.current.set(reel.id, el);
           }
         }}
         src={reel.media_files?.[0]?.file_url}
         className="h-full w-full object-cover"
         loop
+        onPlay={() => setPlaying(true)}
+        onPause={() => setPlaying(false)}
         playsInline
       />
 
-      {/* ❤️ HEART */}
+      {/* DARK OVERLAY */}
+      <div className="absolute inset-0 bg-black/20" />
+
+      {/* PROGRESS BAR */}
+      <div className="absolute top-0 left-0 w-full h-1 bg-gray-700">
+        <div
+          className="h-1 bg-white transition-all"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+
+      {/* CENTER CONTROLS */}
+      {showControls && (
+        <div className="absolute inset-0 flex items-center justify-center z-30">
+      
+          <div className="flex items-center gap-10">
+      
+            {/* BACKWARD */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                seekVideo(-10);
+              }}
+              className="bg-black/50 text-white px-2 py-1 rounded-full backdrop-blur-sm"
+            >
+              -10s
+            </button>
+      
+            {/* PLAY / PAUSE */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+      
+                const video = videoRefs.current.get(reel.id);
+                if (!video) return;
+      
+                if (video.paused) {
+                  video.play();
+                  setPlaying(true);
+                } else {
+                  video.pause();
+                  setPlaying(false);
+                }
+              }}
+              className="bg-black/60 p-4 rounded-full backdrop-blur-sm"
+            >
+              {playing ? (
+                <Pause className="text-white w-8 h-8" />
+              ) : (
+                <Play className="text-white w-8 h-8" />
+              )}
+            </button>
+      
+            {/* FORWARD */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                seekVideo(10);
+              }}
+              className="bg-black/50 text-white px-2 py-1 rounded-full backdrop-blur-sm"
+            >
+              +10s
+            </button>
+      
+          </div>
+        </div>
+      )}
+
+      {/* ❤️ HEART ANIMATION */}
       {showHeart[reel.id] && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <Heart className="w-20 h-20 text-red-500 fill-red-500 animate-[heartPop_0.7s_ease-out]" />
         </div>
       )}
 
-      {/* ACTIONS */}
-      <div className="absolute right-3 bottom-24 flex flex-col gap-6 text-white">
+      {/* RIGHT ACTIONS */}
+      <div className="absolute right-3 bottom-24 flex items-center flex-col gap-6 text-white">
 
-        <button onClick={() => handleLike(reel)}>
-          <Heart className="w-7 h-7" />
-          <span className="text-xs">{reel.likes_count}</span>
+        {/* LIKE */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            handleLike(reel);
+          }}
+          className={`flex flex-col items-center gap-1 font-medium ${
+            reel.liked_by_user ? "text-red-600" : ""
+          }`}
+        >
+          <Heart
+            className={`w-7 h-7 ${
+              reel.liked_by_user
+                ? "fill-red-600"
+                : ""
+            }`}
+          />
+          {reel.likes_count > 0 && (
+            <span className="text-xs">
+              {reel.likes_count}
+            </span>
+          )}
         </button>
 
-        <button onClick={(e) => {
-          e.stopPropagation();
-          setOpenCommentsPostId(reel.id);
-        }}>
+        {/* COMMENTS */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpenCommentsPostId(reel.id);
+          }}
+          className="flex flex-col items-center"
+        >
           <MessageCircle className="w-7 h-7" />
-          <span className="text-xs">{reel.comments_count}</span>
+          {reel.comments_count > 0 && (
+            <span className="text-xs">
+              {reel.comments_count}
+            </span>
+          )}
         </button>
 
-        <button>
+        {/* VIEWS */}
+        <button className="flex flex-col items-center">
           <Eye className="w-7 h-7" />
-          <span className="text-xs">{reel.views_count || 0}</span>
+          {reel.views_count > 0 && (
+            <span className="text-xs">
+              {reel.views_count}
+            </span>
+          )}
+        </button>
+
+        {/* SHARE */}
+        <ShareButton
+          post={reel}
+          vertical
+          dark
+        />
+
+        {/* MUTE */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+        
+            const newMuted = !muted;
+        
+            videoRefs.current.forEach((v) => {
+              if (v) v.muted = newMuted;
+            });
+        
+            window.dispatchEvent(
+              new CustomEvent("toggle-reel-mute", {
+                detail: newMuted,
+              })
+            );
+          }}
+        >
+          {muted ? <VolumeX /> : <Volume2 />}
         </button>
 
       </div>
+
+      {/* CAPTION + USER */}
+      <div className="absolute bottom-10 left-4 right-4 text-white">
+      
+        <div className="flex items-center justify-between w-full">
+      
+          <div className="flex items-center min-w-0">
+      
+            <p className="font-bold truncate">
+              @{reel.user.username}
+            </p>
+      
+            {reel.user?.id && reel.user.id !== currentUser?.id && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleStar(reel.user.id);
+                }}
+                className={`shrink-0 px-3 py-1 rounded-full text-xs font-medium transition ${
+                  starredUsers.has(reel.user.id)
+                    ? " text-black"
+                    : "bg-white text-black"
+                }`}
+              >
+                {starredUsers.has(reel.user.id)
+                  ? "⭐ "
+                  : "⭐ Star"}
+              </button>
+            )}
+      
+          </div>
+      
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setMenuOpen(prev => !prev);
+            }}
+            className="shrink-0 text-white ml-3"
+          >
+            <MoreVertical className="w-5 h-5" />
+          </button>
+      
+        </div>
+      
+        <p className="text-sm mt-2 max-w-[70%]">
+          {reel.caption}
+        </p>
+      
+      </div>
+
+      {menuOpen && (
+        <div className="absolute right-3 bottom-14 bg-white dark:bg-gray-800 border rounded-xl shadow-lg z-50 overflow-hidden">
+          
+          <div className="flex flex-col">
+      
+            {!isOwner && (
+              <button className="px-3 py-2 text-left text-gray-700 text-sm dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setReportOpen(true);
+                  setMenuOpen(false);
+                }}
+              >
+                Report
+              </button>
+            )}
+      
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleCopyLink(reel.id);
+                setMenuOpen(false);
+              }}
+              className="text-left px-3 py-2 text-gray-700 text-sm dark:text-gray-200 hover:bg-gray-100 hover:rounded-lg dark:hover:bg-gray-700"
+            >
+              Copy link
+            </button>
+      
+            {isOwner && (
+              <button className="px-3 py-2 text-left text-gray-700 text-sm dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">
+                Delete
+              </button>
+            )}
+
+            {isOwner && (
+              <button className="px-3 py-2 text-left text-gray-700 text-sm dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700">
+                Edit
+              </button>
+            )}
+      
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setMenuOpen(false);
+              }}
+              className="px-3 py-2 text-left text-sm bg-gray-100 dark:bg-gray-700"
+            >
+              Close
+            </button>
+      
+          </div>
+        </div>
+      )}
+
+      {reportOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-gray-200 dark:bg-gray-900 p-4 rounded-xl w-[90%] max-w-md">
+            
+            <h2 className="font-bold text-gray-800 dark:text-gray-200 mb-2">Report Post</h2>
+      
+            <textarea
+              value={reportText}
+              onChange={(e) => setReportText(e.target.value)}
+              className="w-full border p-2 rounded-md text-gray-700 dark:text-gray-200 dark:bg-gray-800"
+              rows={4}
+              placeholder="Why are you reporting this?"
+            />
+      
+            <div className="flex justify-end text-gray-900 dark:text-gray-200 gap-2 mt-3">
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setReportOpen(false);
+                }}>
+                Cancel
+              </button>
+      
+              <button
+                onClick={handleReport}
+                className="bg-red-600 text-white px-3 py-1 rounded-md"
+              >
+                Submit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

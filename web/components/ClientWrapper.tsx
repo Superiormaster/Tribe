@@ -3,21 +3,58 @@
 import { ThemeProvider } from "next-themes";
 import { UserProvider, UserContext } from "@/components/UserContext";
 import RouteLoader from "@/components/RouteLoader";
+import NProgressInit from "@/components/NProgressInit";
+import { apiRequest } from "@/utils/api";
 import { useContext, useEffect } from "react";
-import { useRouter } from "next/navigation";
 
 function AppContent({ children }: { children: React.ReactNode }) {
   const context = useContext(UserContext);
-  const router = useRouter();
   const { user, loadingUser } = useContext(UserContext)
   
   useEffect(() => {
     const handler = async () => {
-      await apiRequest("api/users/me/");
+      try {
+        const profile = await apiRequest(
+          "api/users/me/"
+        )
+  
+        context?.setUser(profile)
+  
+      } catch (err) {
+        console.error(err)
+      }
+    }
+  
+    window.addEventListener(
+      "auth-changed",
+      handler
+    )
+  
+    return () => {
+      window.removeEventListener(
+        "auth-changed",
+        handler
+      )
+    }
+  }, [context])
+ 
+  useEffect(() => {
+
+    const handler = (event) => {
+  
+      if (
+        event?.message?.includes?.("media resource was aborted")
+      ) {
+        event.preventDefault();
+      }
     };
   
-    window.addEventListener("auth-changed", handler);
-    return () => window.removeEventListener("auth-changed", handler);
+    window.addEventListener("error", handler);
+  
+    return () => {
+      window.removeEventListener("error", handler);
+    };
+  
   }, []);
 
   return <main className="flex-1">{children}</main>;
@@ -26,6 +63,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
 export default function ClientWrapper({ children }: { children: React.ReactNode }) {
   return (
     <>
+      <NProgressInit />
       <RouteLoader />
 
       <ThemeProvider attribute="class">

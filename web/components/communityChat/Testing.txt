@@ -1,0 +1,679 @@
+'use client';
+
+import {
+  useState,
+  useRef,
+} from 'react';
+import Link from 'next/link';
+
+import {
+  Pin,
+  Trash2,
+  Shield,
+  Crown,
+  Heart,
+} from 'lucide-react';
+
+type MessageUser = {
+  id: number;
+  username: string;
+  avatar?: string;
+  role?: 'member' | 'moderator' | 'admin' | 'owner';
+};
+
+type Reaction = {
+  emoji: string;
+  count: number;
+  users: string[];
+};
+
+type ReplyData = {
+  id: number;
+  username: string;
+  text?: string;
+};
+
+type CommunityMessage = {
+  id: number;
+
+  text?: string;
+
+  media_url?: string;
+  media_type?: string;
+
+  thumbnail?: string;
+
+  created_at: string;
+
+  sender: number;
+
+  sender_username: string;
+  sender_avatar?: string;
+
+  sender_role?: 'member' | 'moderator' | 'admin' | 'owner';
+
+  is_pinned?: boolean;
+
+  deleted?: boolean;
+  deleted_by_admin?: boolean;
+
+  reactions?: Reaction[];
+
+  reply_to?: ReplyData | null;
+};
+
+type Props = {
+  messages: CommunityMessage[];
+
+  currentUserId: number;
+
+  onDelete?: (
+    messageId: number,
+    byAdmin?: boolean
+  ) => void;
+
+  onPin?: (messageId: number) => void;
+
+  onReaction?: (
+    messageId: number,
+    emoji: string
+  ) => void;
+
+  isModerator?: boolean;
+};
+
+export default function CommunityMessageBubbles({
+  messages,
+  currentUserId,
+  onDelete,
+  onPin,
+  onReaction,
+  isModerator = false,
+}: Props) {
+
+  const [selectedMessage, setSelectedMessage] =
+    useState<number | null>(null);
+
+  const [replyingTo, setReplyingTo] =
+    useState<CommunityMessage | null>(null);
+  
+  const touchStartX = useRef(0);
+  
+  const touchEndX = useRef(0);
+  
+  const handlers = useSwipeable({
+    onSwipedRight: () => {
+      onReply?.(message);
+    },
+  });
+
+  const emojis = [
+    '👍',
+    '❤️',
+    '😂',
+    '😮',
+    '😢',
+    '🙏',
+  ];
+
+  const formatTime = (timestamp: string) => {
+    return new Date(timestamp).toLocaleTimeString(
+      [],
+      {
+        hour: '2-digit',
+        minute: '2-digit',
+      }
+    );
+  };
+  
+  const sortedMessages = [...messages].sort(
+    (a, b) =>
+      new Date(a.created_at).getTime() -
+      new Date(b.created_at).getTime()
+  );
+  
+  const getDateLabel = (dateString: string) => {
+    const date = new Date(dateString);
+    const today = new Date();
+  
+    const isToday =
+      date.toDateString() === today.toDateString();
+  
+    const yesterday = new Date();
+    yesterday.setDate(today.getDate() - 1);
+  
+    const isYesterday =
+      date.toDateString() ===
+      yesterday.toDateString();
+  
+    if (isToday) return 'Today';
+    if (isYesterday) return 'Yesterday';
+  
+    return date.toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+  
+  const groupedMessages = sortedMessages.reduce(
+    (groups: Record<string, CommunityMessage[]>, msg) => {
+      const label = getDateLabel(msg.created_at);
+  
+      if (!groups[label]) groups[label] = [];
+      groups[label].push(msg);
+  
+      return groups;
+    },
+    {}
+  );
+
+  const getRoleBadge = (role?: string) => {
+    switch (role) {
+      case 'owner':
+        return (
+          <Crown
+            size={12}
+            className="text-yellow-500"
+          />
+        );
+
+      case 'admin':
+      case 'moderator':
+        return (
+          <Shield
+            size={12}
+            className="text-indigo-500"
+          />
+        );
+
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="relative flex flex-col gap-1 pb-24">
+      {Object.entries(groupedMessages).map(
+  ([dateLabel, msgs]) => (
+    <div key={dateLabel}>
+      
+      {/* DATE HEADER */}
+      <div className="flex justify-center my-3">
+        <span className="text-xs bg-gray-200 dark:bg-gray-700 px-3 py-1 rounded-full">
+          {dateLabel}
+        </span>
+      </div>
+
+      {msgs.map((message, index) => {
+        const previous = msgs[index - 1];
+
+        const sameUser =
+          previous?.user?.id === message.user.id;
+
+        const isOwn =
+          message.user.id === currentUserId;
+
+        const isSelected =
+          selectedMessage === message.id;
+
+        return (
+          <div
+            key={message.id}
+            <div {...handlers}>
+            className={`
+              relative flex px-2 py-[3px]
+              transition-all duration-200
+              ${
+                isOwn
+                  ? 'justify-end'
+                  : 'justify-start'
+              }
+              ${
+                isSelected
+                  ? 'bg-green-900/40'
+                  : ''
+              }
+            `}
+            onTouchStart={(e) => {
+          
+              touchStartX.current =
+                e.changedTouches[0].screenX;
+          
+              const timer = setTimeout(() => {
+                setSelectedMessage(message.id);
+              }, 500);
+          
+              const target = e.currentTarget;
+          
+              target.dataset.timer =
+                timer.toString();
+            }}
+            onTouchMove={(e) => {
+          
+              touchEndX.current =
+                e.changedTouches[0].screenX;
+            }}
+            onTouchEnd={(e) => {
+          
+              clearTimeout(
+                Number(
+                  e.currentTarget.dataset.timer
+                )
+              );
+          
+              const distance =
+                touchEndX.current -
+                touchStartX.current;
+          
+              // SWIPE RIGHT TO REPLY
+              if (distance > 80) {
+          
+                setReplyingTo(message);
+          
+                // FLASH EFFECT
+                const bubble =
+                  document.getElementById(
+                    `bubble-${message.id}`
+                  );
+          
+                bubble?.classList.add(
+                  'bg-green-700/40'
+                );
+          
+                setTimeout(() => {
+                  bubble?.classList.remove(
+                    'bg-green-700/40'
+                  );
+                }, 500);
+              }
+            }}
+          >
+
+            {/* REACTION BAR */}
+            {isSelected && (
+              <div className="absolute top-[-55px] left-1/2 -translate-x-1/2 z-50 bg-gray-900 rounded-full px-3 py-2 flex items-center gap-4 shadow-xl">
+
+                {emojis.map((emoji) => (
+                  <button
+                    key={emoji}
+                    onClick={() => {
+                      onReaction?.(
+                        message.id,
+                        emoji
+                      );
+
+                      setSelectedMessage(null);
+                    }}
+                    className="text-2xl hover:scale-125 transition"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div
+              className={`
+                flex gap-2 max-w-[85%]
+                ${
+                  isOwn
+                    ? 'flex-row-reverse'
+                    : ''
+                }
+              `}
+            >
+
+              {/* AVATAR */}
+              {!isOwn && (
+                <div className="w-8 shrink-0">
+
+                  {!sameUser && (
+                    <>
+                      {message.user.avatar ? (
+                        <img
+                          src={message.user.avatar}
+                          alt=""
+                          className="w-8 h-8 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-8 h-8 rounded-full bg-gray-600 text-white text-xs flex items-center justify-center">
+                          {message.user.username
+                            .slice(0, 2)
+                            .toUpperCase()}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* MESSAGE */}
+              <div className="flex flex-col">
+
+                {/* USERNAME */}
+                {!sameUser && !isOwn && (
+                  <div className="flex items-center gap-1 px-2 mb-1">
+
+                    <Link
+                      href={`/main/profile/${message.user.username}`}
+                      className="text-sm font-semibold text-green-500"
+                    >
+                      {message.user.username}
+                    </Link>
+
+                    {getRoleBadge(
+                      message.user.role
+                    )}
+
+                    {message.is_pinned && (
+                      <Pin
+                        size={12}
+                        className="text-yellow-500"
+                      />
+                    )}
+                  </div>
+                )}
+
+                {/* BUBBLE */}
+                <div
+                  className={`
+                    px-3 py-2 rounded-2xl shadow-sm
+                    ${
+                      isOwn
+                        ? 'bg-green-600 text-white rounded-br-md'
+                        : 'bg-gray-100 dark:bg-gray-800 dark:text-white rounded-bl-md'
+                    }
+                  `}
+                >
+                  <div
+                    id={`bubble-${message.id}`}
+                    onTouchStart={() => {
+                      setSelectedMessage(message.id);
+                    }}
+                    
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setSelectedMessage(message.id);
+                    }}
+                    className={`
+                      relative px-3 py-2 rounded-2xl
+                      shadow-sm transition-all duration-200
+                      ${
+                        isOwn
+                          ? 'bg-[#005c4b] text-white rounded-br-md'
+                          : 'bg-[#202c33] text-white rounded-bl-md'
+                      }
+                    `}
+                  >
+
+                  {/* DELETED */}
+                  {message.deleted ? (
+                    <p className="italic text-sm opacity-70">
+                      {message.deleted_by_admin
+                        ? 'Deleted by administrator'
+                        : 'Deleted message'}
+                    </p>
+                  ) : (
+                    <>
+                      {/* TEXT */}
+                      {message.text && (
+                        <p className="text-sm whitespace-pre-wrap">
+                          {message.text}
+                        </p>
+                      )}
+
+                      {/* IMAGE */}
+                      {message.media_type === 'image' &&
+                      message.media_url &&
+                        <img
+                          src={message.media_url}
+                          alt=""
+                          className="mt-2 rounded-xl max-w-[260px]"
+                        />
+                      )}
+
+                      {/* VIDEO */}
+                      {message.media_type === 'video' &&
+                      message.media_url &&
+                        <video
+                          src={message.media_url}
+                          controls
+                          className="mt-2 rounded-xl max-w-[260px]"
+                        />
+                      )}
+
+                      {/* AUDIO */}
+                      {message.media_type === 'audio' &&
+                      message.media_url &&
+                        <audio
+                          src={message.media_url}
+                          controls
+                          className="mt-2 w-full"
+                        />
+                      )}
+                    </>
+                  )}
+
+                  {/* TIME */}
+                  <div
+                    className={`
+                      text-[10px] mt-1 text-right
+                      ${
+                        isOwn
+                          ? 'text-green-100'
+                          : 'text-gray-400'
+                      }
+                    `}
+                  >
+                    {formatTime(
+                      message.created_at
+                    )}
+                  </div>
+                </div>
+
+                {/* REACTIONS */}
+                {message.reply_to && (
+                <div
+                  className={`
+                    mb-2 px-3 py-2 rounded-lg border-l-4
+                    ${
+                      isOwn
+                        ? 'bg-[#037561] border-green-300'
+                        : 'bg-[#182229] border-green-500'
+                    }
+                  `}
+                >
+                  {/* Reply Highlight */}
+                  border-l-4 border-green-500 bg-green-500/10
+              
+                  <p className="text-xs font-semibold text-green-400">
+                    {message.reply_to.username}
+                  </p>
+              
+                  <p className="text-xs text-gray-300 truncate">
+                    {message.reply_to.text}
+                  </p>
+                </div>
+              )}
+                {message.reactions &&
+                  message.reactions.length > 0 && (
+                    <div className="flex gap-2 mt-1 px-1">
+
+                      {message.reactions.map(
+                        (
+                          reaction,
+                          idx
+                        ) => (
+                          <button
+                            key={idx}
+                            onClick={() =>
+                              onReaction?.(
+                                message.id,
+                                reaction.emoji
+                              )
+                            }
+                            className="px-2 py-[2px] rounded-full bg-gray-200 dark:bg-gray-700 text-xs flex items-center gap-1"
+                          >
+                            <span>
+                              {reaction.emoji}
+                            </span>
+
+                            <span>
+                              {reaction.count}
+                            </span>
+                          </button>
+                        )
+                      )}
+                    </div>
+                  )}
+                  {isSelected && (
+                    <div className="absolute top-[-58px] left-1/2 -translate-x-1/2 z-50">
+                  
+                      <div className="bg-[#202c33] rounded-full px-4 py-2 flex items-center gap-4 shadow-2xl border border-gray-700 overflow-x-auto max-w-[95vw]">
+                  
+                        {[
+                          '👍',
+                          '❤️',
+                          '😂',
+                          '😮',
+                          '😢',
+                          '🙏',
+                          '🔥',
+                          '👏',
+                          '🎉',
+                          '😎',
+                        ].map((emoji) => (
+                          <button
+                            key={emoji}
+                            onClick={() => {
+                  
+                              onReaction?.(
+                                message.id,
+                                emoji
+                              );
+                  
+                              setSelectedMessage(null);
+                            }}
+                            className="text-[28px] active:scale-125 transition-transform"
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                  
+                        <button
+                          className="w-10 h-10 rounded-full bg-gray-700 flex items-center justify-center text-white text-2xl"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                {/* ACTION BAR */}
+                {isSelected && (
+                  <div className="flex items-center gap-5 px-2 mt-3 text-sm">
+
+                    {/* PIN */}
+                    {isModerator && (
+                      <button
+                        onClick={() => {
+                          onPin?.(
+                            message.id
+                          );
+
+                          setSelectedMessage(null);
+                        }}
+                        className="flex items-center gap-1"
+                      >
+                        <Pin size={18} />
+                        Pin
+                      </button>
+                    )}
+
+                    {/* DELETE */}
+                    {(isOwn ||
+                      isModerator) && (
+                      <button
+                        onClick={() => {
+                          onDelete?.(
+                            message.id,
+                            isModerator &&
+                              !isOwn
+                          );
+
+                          setSelectedMessage(null);
+                        }}
+                        className="flex items-center gap-1 text-red-500"
+                      >
+                        <Trash2 size={18} />
+                        Delete
+                      </button>
+                    )}
+
+                    {/* QUICK REACT */}
+                    <button
+                      onClick={() => {
+                        onReaction?.(
+                          message.id,
+                          '❤️'
+                        );
+
+                        setSelectedMessage(null);
+                      }}
+                      className="flex items-center gap-1"
+                    >
+                      <Heart size={18} />
+                      React
+                    </button>
+                  </div>
+                )}
+                {selectedMessage && (
+                  <div className="sticky top-0 z-50 h-14 bg-[#202c33] flex items-center px-4 justify-between">
+                
+                    <div className="flex items-center gap-4">
+                
+                      <button
+                        onClick={() => setSelectedMessage(null)}
+                      >
+                        ✕
+                      </button>
+                
+                      <span className="font-semibold">
+                        1
+                      </span>
+                    </div>
+                
+                    <div className="flex items-center gap-5">
+                
+                      <button>
+                        <Reply size={20} />
+                      </button>
+                
+                      <button>
+                        <Heart size={20} />
+                      </button>
+                
+                      {(isOwn || isModerator) && (
+                        <button>
+                          <Trash2 size={20} />
+                        </button>
+                      )}
+                
+                      {isModerator && (
+                        <button>
+                          <Pin size={20} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}

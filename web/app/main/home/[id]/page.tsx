@@ -37,7 +37,7 @@ type Post = {
   views_count?: number
 }
 
-export default function PostPage({ user }) {
+export default function PostPage() {
   const params = useParams()
   const searchParams = useSearchParams();
   const startTime = Number(searchParams.get("t")) || 0;
@@ -61,7 +61,7 @@ export default function PostPage({ user }) {
   
   const fetchCurrentUser = async () => {
     try {
-      const user = await apiRequest('/api/users/me/') // Adjust endpoint
+      const user = await apiRequest('api/users/me/')
       setCurrentUser(user)
     } catch {
       setCurrentUser(null)
@@ -76,15 +76,24 @@ export default function PostPage({ user }) {
         method: "POST",
       });
     };
+
+    setPost(prev => prev ? {
+      ...prev,
+      views_count: (prev.views_count || 0) + 1
+    } : prev)
   
     recordView();
   }, [post?.id]);
 
   const fetchPost = async () => {
     try {
-      const data = await apiRequest(`/api/post/${postId}/`)
+      const data = await apiRequest(`api/post/${postId}/`)
+  
       setPost(data)
+  
       setLikes(data.likes_count)
+      setLiked(data.liked_by_user)
+  
     } catch (err) {
       console.error(err)
     }
@@ -92,7 +101,7 @@ export default function PostPage({ user }) {
 
   const handleLike = async () => {
     try {
-      const result = await apiRequest(`api/post/likes/${post.id}/toggle/`, {
+      const result = await apiRequest(`api/likes/${post.id}/toggle/`, {
         method: "POST"
       });
 
@@ -134,7 +143,13 @@ export default function PostPage({ user }) {
   
       <span className="ml-auto flex items-center text-gray-600 dark:text-gray-400 text-sm">
         <AlarmClock className="mr-1" />
-        {timeAgo(post.created_at)}
+         {post.is_edited ? (
+            <>
+              Edited • {timeAgo(post.updated_at)}
+            </>
+          ) : (
+            timeAgo(post.created_at)
+          )}
       </span>
     </div>
   );
@@ -178,24 +193,30 @@ export default function PostPage({ user }) {
       
       <button
         onClick={handleLike}
-        className={`flex items-center gap-1 font-medium ${
-          liked ? "text-blue-600" : "text-gray-500"
+        className={`flex items-center gap-1 text-gray-500 font-medium ${
+          liked ? "text-blue-600" : ""
         }`}
       >
         <ThumbsUp className="inline mr-2" />
-        {likes}
+        {likes > 0 && (
+          <span>{likes}</span>
+        )}
       </button>
   
       <button className="flex items-center gap-1 text-gray-500 font-medium">
         <MessageCircle className="mr-2" />
-        {post.comments_count}
+        {post.comments_count > 0 && (
+          <span>{post.comments_count}</span>
+        )}
       </button>
       <ShareButton post={post} />
   
       {post.views_count !== undefined && (
         <span className="text-gray-400 ml-auto flex items-center">
           <ChartNoAxesColumn className="mr-2" />
-          {post.views_count} views
+          {post.views_count > 0 && (
+            <span>{post.views_count} views</span>
+          )}
         </span>
       )}
   

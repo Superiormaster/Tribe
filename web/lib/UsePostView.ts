@@ -1,36 +1,67 @@
 // usePostView.ts
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, RefObject } from "react";
 import { apiRequest } from "@/utils/api";
+import { registerView } from "@/lib/useViewTracker";
 
-export const usePostView = (postId: number, onViewed?: () => void) => {
-  const hasViewedRef = useRef(false);
+type Props = {
+  postId: number;
+  ref: RefObject<HTMLElement | null>;
+  onViewed?: () => void;
+};
+
+export const usePostView = ({
+  postId,
+  onViewed, ref
+}: Props) => {
   useEffect(() => {
-    const el = document.getElementById(`post-${postId}`);
-    if (!el || hasViewedRef.current) return;
+    if (!ref || !ref.current) return; // ✅ SAFE GUARD
+
+    const element = ref.current;
+
+    if (!element) return;
+
+    let timer: NodeJS.Timeout;
 
     const observer = new IntersectionObserver(
-      async ([entry]) => {
-        if (entry.isIntersecting && !hasViewedRef.current) {
-          hasViewedRef.current = true;
+      ([entry]) => {
+        if (
+          entry.isIntersecting &&
+          entry.intersectionRatio >= 0.6
+        ) {
+          // visible for 2 seconds
+          timer = setTimeout(async () => {
+            const canView = registerView(postId);
 
-          try {
-            const res = await apiRequest(`api/post/${postId}/view/`, {
-              method: "POST",
-            });
-            if (res?.error) return;
-            onViewed?.();
-          } catch (err) {
-            console.error(err);
-          }
+            if (!canView) return;
 
-          observer.disconnect();
+            try {
+
+              await apiRequest(
+                `api/post/${postId}/view/`,
+                {
+                  method: "POST",
+                }
+              );
+
+              onViewed?.();
+            } catch (err) {
+              console.error(err);
+            }
+          }, 2000);
+        } else {
+          clearTimeout(timer);
         }
       },
-      { threshold: 0.5 }
+      {
+        threshold: [0.6],
+      }
     );
 
-    observer.observe(el);
+    observer.observe(element);
 
-    return () => observer.disconnect();
-  }, [postId, onViewed]);
+    return () => {
+      observer.disconnect();
+      clearTimeout(timer);
+    };
+  }, [postId, ref, onViewed]);
 };

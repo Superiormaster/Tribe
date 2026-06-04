@@ -1,100 +1,180 @@
-"use client";
+'use client';
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import PostCard from "./PostCard";
-import CreateCommunity from "./CreateCommunity";
-import { Search } from "lucide-react";
-import CommunityChat from "./CommunityChat";
-import { MoreVertical } from 'lucide-react';
-import Link from 'next/link';
+import { useEffect, useState } from "react";
+import { useNavigation } from "@/utils/useNavigation"
+import AppLink from '@/components/AppLink';
+
+import CommunityHeader from "@/components/community/CommunityHeader";
+import CommunityTabs from "@/components/community/CommunityTabs";
+import CommunityPosts from "@/components/community/CommunityPosts";
+import CommunityPending from "@/components/community/CommunityPending";
+import CommunityMembers from "@/components/community/CommunityMembers";
+import CommunityMenuModal from "@/components/community/CommunityMenuModal";
+import ModerationBar from "@/components/community/ModerationBar";
+
 import { apiRequest } from "@/utils/api";
 
-export default function CommunityPage({ communityId, user }: any) {
-  const router = useRouter();
+type Post = {
+  id: number;
+  community_pinned?: boolean
+  community_pin_order?: number | null
+};
 
-  const [posts, setPosts] = useState([]);
-  const [pendingPosts, setPendingPosts] = useState([]);
-  const [members, setMembers] = useState([]);
+export default function CommunityPage({
+  communityId,
+  user,
+}: any) {
+
+  const { push, replace } = useNavigation();
+
   const [community, setCommunity] = useState<any>({});
-  const [pinnedPosts, setPinnedPosts] = useState([]);
+  const [posts, setPosts] = useState<any[]>([]);
+  const [pendingPosts, setPendingPosts] = useState<any[]>([]);
+  const [members, setMembers] = useState<any[]>([]);
+
   const [activeTab, setActiveTab] = useState("posts");
-  const isOwner = user?.id === community?.owner?.id;
-  const isAdmin = community?.my_role === "admin";
-  const canManage = isOwner || isAdmin;
 
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
+  const [showMenuModal, setShowMenuModal] = useState(false);
+
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedPosts, setSelectedPosts] = useState<number[]>([]);
+  const [actionType, setActionType] =
+    useState<"approve" | "reject" | null>(null);
+
   const [loading, setLoading] = useState(false);
+  
+  const isOwner =
+  Number(user?.id) === Number(community?.owner?.id) ||
+  community?.my_role === "owner";
+
+  const isAdmin = community?.my_role === "admin";
+  const isModerator = community?.my_role === "moderator";
+
+  // 🔥 MASTER ROLE FLAGS
+  const canModerate = isOwner || isAdmin || isModerator;
+  const canManage = isAdmin || isModerator || isOwner;
+  const canPin = isAdmin || isOwner || isModerator;
+  const canApprovePosts = isOwner || isAdmin || isModerator;
+  
+  // ❌ ONLY OWNER CAN SEE SETTINGS
+  const canSeeSettings = isOwner;
+  const canDeleteRejected = canManage;
+
+  const canDeleteApproved =
+  isOwner || isAdmin;
+  const canEditApproved =
+  isOwner || isAdmin;
+
+  const canBulkModerate = canManage;
+  
+  // ❌ ONLY NON-OWNER CAN LEAVE
+  const canLeave = !isOwner;
 
   useEffect(() => {
-    if (!communityId) return;
-
     fetchCommunity();
-    fetchMembers();
-    fetchPosts(true);
+    fetchPosts();
     fetchPendingPosts();
-    fetchPinnedPosts();
-  }, [communityId]);
+    fetchMembers();
+  }, []);
 
-  // 🔥 Infinite Scroll
-  useEffect(() => {
-    const handleScroll = () => {
-      if (
-        window.innerHeight + document.documentElement.scrollTop + 200 >=
-        document.documentElement.scrollHeight
-      ) {
-        if (!loading && hasMore && activeTab === "posts") {
-          fetchPosts();
-        }
-      }
-    };
-
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, [loading, hasMore, activeTab]);
-
-  const fetchPinnedPosts = async () => {
-    const data = await apiRequest(
-      `api/post/?community=${communityId}`
-    );
-  
-    const posts = data.results || data;
-    const pinned = posts.filter((p: any) => p.is_pinned);
-  
-    setPinnedPosts(pinned);
-  };
-  
   const fetchCommunity = async () => {
-    const data = await apiRequest(`api/communities/${communityId}/`);
+    const data = await apiRequest(
+      `api/communities/${communityId}/`
+    );
+
     setCommunity(data);
   };
 
-  const fetchMembers = async () => {
-    const data = await apiRequest(`api/communities/${communityId}/members/`);
-    setMembers(data);
-  };
-
-  const fetchPosts = async (reset = false) => {
-    if (!hasMore && !reset) return;
-
+  const fetchPosts = async () => {
     setLoading(true);
+  
     try {
-      const currentPage = reset ? 1 : page;
-
+  
+      // COMMUNITY FEED
       const data = await apiRequest(
-        `api/post/?community=${communityId}&page=${currentPage}`
+        `api/communities/${communityId}/feed/`
       );
-
-      const newPosts = data.results || data;
-
-      setPosts(prev => (reset ? newPosts : [...prev, ...newPosts]));
-      setHasMore(newPosts.length > 0);
-      setPage(prev => (reset ? 2 : prev + 1));
+  
+      const results = data.results || data;
+  
+      const mapped = results.map((item: any) => {
+  
+        // -------------------------
+        // REPOST
+        // -------------------------
+        if (item.type === "repost") {
+  
+          return {
+            ...item,
+  
+            type: "repost",
+  
+            created_at: item.created_at,
+  
+            community_pinned:
+              item.community_pinned || false,
+  
+            community_pin_order:
+              item.community_pin_order || 0,
+  
+            post: item.post
+              ? {
+                  ...item.post,
+  
+                  likes_count:
+                    item.post.likes_count || 0,
+  
+                  comments_count:
+                    item.post.comments_count || 0,
+  
+                  shares_count:
+                    item.post.shares_count || 0,
+  
+                  media_files:
+                    item.post.media_files || [],
+                }
+              : null,
+          };
+        }
+  
+        // -------------------------
+        // NORMAL POST
+        // -------------------------
+        return {
+          ...item,
+  
+          type: "post",
+  
+          community_pinned:
+            item.community_pinned || false,
+  
+          community_pin_order:
+            item.community_pin_order || 0,
+  
+          likes_count:
+            item.likes_count || 0,
+  
+          comments_count:
+            item.comments_count || 0,
+  
+          shares_count:
+            item.shares_count || 0,
+  
+          media_files:
+            item.media_files || [],
+        };
+      });
+  
+      setPosts(mapped);
+  
     } catch (err) {
-      console.error("Failed to fetch posts", err);
+  
+      console.error(err);
+  
     } finally {
+  
       setLoading(false);
+  
     }
   };
 
@@ -102,10 +182,97 @@ export default function CommunityPage({ communityId, user }: any) {
     const data = await apiRequest(
       `api/post/?community=${communityId}&is_approved=false`
     );
+
     setPendingPosts(data.results || data);
   };
   
-  const handleJoin = async () => {
+  const fetchMembers = async () => {
+    const data = await apiRequest(
+      `api/communities/${communityId}/members/`
+    );
+  
+    setMembers(data);
+  };
+  
+  const handlePostAction = async (
+    action: string,
+    postId: number
+  ) => {
+  
+    switch (action) {
+  
+      // EDIT POST
+      case 'edit':
+        push(
+          `/main/create-post?edit=true&postId=${postId}`
+        );
+        break;
+  
+      // DELETE POST
+      case 'delete':
+        console.log('Delete post', postId);
+        break;
+  
+      // NORMAL REPOST
+      case 'repost_normal':
+  
+        try {
+  
+          await apiRequest(
+            `api/posts/${postId}/repost/`,
+            {
+              method: 'POST',
+              data: {
+                type: 'normal',
+              },
+            }
+          );
+  
+          alert("Reposted!");
+  
+        } catch (err) {
+  
+          console.error(err);
+        }
+  
+        break;
+  
+      // QUOTE REPOST
+      case 'repost_quote':
+  
+        push(`/main/repost/${postId}`);
+  
+        break;
+  
+      case 'delete_repost':
+        try {
+          await apiRequest(
+            `api/post/${postId}/delete_repost/`,
+            {
+              method: 'POST',
+            }
+          );
+      
+          alert("Repost deleted");
+        } catch (err) {
+          console.error(err);
+        }
+        break;
+
+      default:
+        break;
+    }
+  };
+
+  const toggleSelect = (id: number) => {
+    setSelectedPosts((prev) =>
+      prev.includes(id)
+        ? prev.filter((p) => p !== id)
+        : [...prev, id]
+    );
+  };
+  
+  const onJoin = async () => {
     // optimistic update
     setCommunity((prev: any) => ({
       ...prev,
@@ -124,7 +291,7 @@ export default function CommunityPage({ communityId, user }: any) {
       }));
     }
   };
-
+  
   const handleLeave = async () => {
     setCommunity((prev: any) => ({
       ...prev,
@@ -132,7 +299,9 @@ export default function CommunityPage({ communityId, user }: any) {
     }));
   
     try {
-      await apiRequest(`api/communities/${communityId}/leave/`, "POST");
+      await apiRequest(`api/communities/${communityId}/leave/`, {
+        method: "POST",
+      });
     } catch (err) {
       setCommunity((prev: any) => ({
         ...prev,
@@ -140,89 +309,121 @@ export default function CommunityPage({ communityId, user }: any) {
       }));
     }
   };
+  
+  const handleToggleCommunityPin = async (postId: number) => {
+    const previousPosts = [...posts]
+  
+    const updated = (post: any) =>
+      post.id === postId
+        ? { ...post, community_pinned: !post.community_pinned }
+        : post;
+  
+    setPosts(prev => prev.map(updated));
+  
+    try {
+      await apiRequest(
+        `api/post/${postId}/toggle_community_pin/`,
+        {
+          method: "POST"
+        }
+      )
+
+       fetchPosts();
+    } catch (err) {
+      setPosts(previousPosts);
+      console.error(err)
+    }
+  }
+
+  const handleBulkAction = async () => {
+    await apiRequest(`api/post/bulk-moderate/`, {
+      method: "POST",
+      data: {
+        post_ids: selectedPosts,
+        action: actionType,
+      },
+    });
+
+    setSelectedPosts([]);
+    setSelectMode(false);
+
+    fetchPendingPosts();
+  };
+  
+  const handleBulkApprove = async () => {
+    try {
+  
+      await apiRequest(
+        `api/post/bulk-moderate/`,
+        {
+          method: "POST",
+          data: {
+            post_ids: selectedPosts,
+            action: "approve",
+          },
+        }
+      );
+  
+      setPendingPosts(prev =>
+        prev.filter(
+          p => !selectedPosts.includes(p.id)
+        )
+      );
+  
+      setSelectedPosts([]);
+      setSelectMode(false);
+  
+    } catch (err) {
+      console.error(err);
+    }
+  };
+  
+  const handleBulkReject = async () => {
+    try {
+  
+      await apiRequest(
+        `api/post/bulk-moderate/`,
+        {
+          method: "POST",
+          data: {
+            post_ids: selectedPosts,
+            action: "reject",
+          },
+        }
+      );
+  
+      setPendingPosts(prev =>
+        prev.filter(
+          p => !selectedPosts.includes(p.id)
+        )
+      );
+  
+      setSelectedPosts([]);
+      setSelectMode(false);
+  
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   return (
-    <div className="max-w-3xl mx-auto p-4 space-y-4 mt-8">
-      {/* 🔥 COMMUNITY HEADER */}
-      <div className="relative w-full rounded-xl overflow-hidden h-72">
-        {/* 🔥 INTRO VIDEO BACKGROUND */}
-        {community.intro_video && (
-          <video
-            src={community.intro_video}
-            className="absolute top-0 left-0 w-full h-full object-cover z-0"
-            autoPlay
-            loop
-            muted
-            playsInline
-          />
-        )}
-      
-        {/* 🔥 OVERLAY for darker text visibility */}
-        <div className="absolute top-0 left-0 w-full h-full bg-black/25 z-10"></div>
-      
-        {/* 🔥 COVER IMAGE / AVATAR */}
-        <div className="absolute top-4 left-4 w-24 h-24 rounded-full border-4 border-white overflow-hidden z-20">
-          {community.cover_image ? (
-            <img
-              src={community.cover_image}
-              alt={community.name}
-              className="w-full h-full object-cover"
-            />
-          ) : (
-            <div className="w-full h-full bg-gray-400 flex items-center justify-center text-white text-xl">
-              {community.name?.[0] || "C"}
-            </div>
-          )}
-        </div>
-      
-        {/* 🔥 Community info */}
-        <div className="absolute bottom-4 left-4 z-20">
-          <h1 className="text-3xl text-gray-700 dark:text-gray-100 font-bold">{community.name}</h1>
-          <p className="text-sm text-gray-700 dark:text-gray-300">{community.description}</p>
-          <div className="flex items-center justify-between gap-4 mt-2">
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-gray-700 dark:text-gray-100 opacity-80">{members.length} members</span>
-        
-              {community.joined ? (
-                <button
-                  onClick={handleLeave}
-                  className="px-3 py-1 bg-red-500 text-white rounded-full text-sm"
-                >
-                  Leave
-                </button>
-              ) : (
-                <button
-                  onClick={handleJoin}
-                  className="px-3 py-1 bg-indigo-600 text-white rounded-full text-sm"
-                >
-                  Join
-                </button>
-              )}
-        
-              <button
-                onClick={() => router.push("/main/search")}
-                className="p-2 rounded-lg bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-white"
-              >
-                <Search size={18} />
-              </button>
-              <button className="text-xs px-2 py-1 flex-1 bg-yellow-500 text-black rounded">
-                Invite
-              </button>
-            </div>
-            <button
-              onClick={() => router.push(`/main/community/${communityId}/settings`)}
-              className="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-800"
-            >
-              <MoreVertical />
-            </button>
-          </div>
-        </div>
-      </div>
+    <div className="max-w-3xl mx-auto space-y-4 mt-8">
+
+      <CommunityHeader
+        community={community}
+        membersCount={members.length}
+        user={user}
+        onJoin={onJoin}
+        onOpenMenu={() => setShowMenuModal(true)}
+        communityId={communityId}
+      />
 
       {/* 🔥 CREATE POST */}
       {user && (
         <div className="flex items-center gap-3 px-1 pt-2">
-          <Link href={`/main/profile/${user.username}`} className="flex items-center gap-2">
+          <AppLink href={`/main/profile/${user.username}`}
+          prefetch={false}
+          className="flex items-center gap-2">
             {user.avatar ? (
               <img src={user.avatar} className="w-10 h-10 rounded-full border-2 border-gray-400 dark:border-white object-cover" />
             ) : (
@@ -230,161 +431,104 @@ export default function CommunityPage({ communityId, user }: any) {
                 {user.email?.slice(0, 2).toUpperCase() || '??'}
               </div>
             )}
-          </Link>
-          <div
-            onClick={() =>
-              router.push(`/main/create-post?communityId=${communityId}`)
-            }
+          </AppLink>
+          <AppLink
+            href={`/main/create-post?communityId=${communityId}&mode=${
+                  community?.tribe?.name === "Entertainment"
+                    ? "reel"
+                    : "community"
+                }`}
             className="p-2 flex-1 rounded-xl bg-gray-100 text-gray-500 dark:text-gray-400 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 cursor-pointer"
           >
             What's happening in this community?
-          </div>
+          </AppLink>
         </div>
       )}
 
-      {/* 🔥 TABS */}
-      <div className="flex overflow-x-auto gap-3">
-        {["posts", "pending", "members"].map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-3 py-1 rounded ${
-              activeTab === tab
-                ? "bg-indigo-600 text-white"
-                : "bg-gray-200 text-gray-700 dark:text-gray-300 dark:bg-gray-800"
-            }`}
-          >
-            {tab.replace("-", " ")}
-          </button>
-        ))}
-        <button
-          onClick={() => router.push(`/main/community/${communityId}/chat`)}
-          className="px-3 py-1 bg-indigo-600 text-white rounded text-sm"
-        >
-          Chat
-        </button>
-      </div>
-
-      {activeTab === "posts" && pinnedPosts.length > 0 && (
-        <div className="mb-4">
-          <h2 className="text-sm font-bold px-2 mb-2">📌 Pinned</h2>
-          {pinnedPosts.map((post: any) => (
-            <PostCard key={post.id} post={post} />
-          ))}
-        </div>
-      )}
-
-      {/* POSTS */}
-      {activeTab === "posts" && posts.map((post: any, index) =>
-          post.content_type === "short_video" ? (
-            <ReelCard key={post.id} post={post} />
-          ) : (
-            <div key={post.id}>
-              <PostCard post={post} />
-  
-              {index % 4 === 3 && (
-                <div className="p-3 bg-gray-700 mt-5 dark:bg-zinc-800 rounded-xl">
-                  🔥 Suggested Communities
-                </div>
-              )}
-            </div>
-          )
-        )
-      }
-
-      {/* PENDING */}
-      {activeTab === "pending" &&
-        pendingPosts.map((post: any) =>
-          post.content_type === "short_video" ? (
-            <ReelCard key={post.id} post={post} />
-          ) : (
-            <PostCard
-              key={post.id}
-              post={post}
-            />
-          )
-        )
-      }
-
-      {/* MEMBERS */}
-      {activeTab === "members" &&
-        members.map((m: any) => (
-          <div key={m.id} className="flex justify-between items-center p-2 border-b">
-              {m.avatar ? (
-                <img src={m.avatar} className="w-10 h-10 rounded-full object-cover" />
-              ) : (
-                <div className="w-8 h-8 bg-gray-400 rounded-full flex items-center justify-center text-white text-xs">
-                  {m.email?.slice(0, 2).toUpperCase() || '??'}
-                </div>
-              )}
-            <span>
-              {m.username}
-              <span className="ml-2 text-xs px-2 py-0.5 bg-gray-200 dark:bg-gray-800 rounded">
-                {m.role}
-              </span>
-            </span>
-
-            {user?.id === community.owner?.id && (
-              <div className="flex gap-2">
-                {m.role !== "admin" && (
-                  <button className="text-xs px-2 py-1 bg-blue-500 text-white rounded">
-                    Make Admin
-                  </button>
-                )}
-                <button className="text-xs px-2 py-1 bg-red-500 text-white rounded">
-                  Remove
-                </button>
-              </div>
-            )}
-          </div>
-        ))}
-    </div>
-  );
-}
-
-
-function ReelCard({ post }: any) {
-  const router = useRouter();
-  
-  const goToReel = (e?: React.MouseEvent) => {
-    e?.stopPropagation(); // safety
-    router.push(`/main/reels/${post.id}`);
-  };
-  
-  const poster =
-    post.media_files?.find((m: any) => m.thumbnail_url)?.thumbnail_url ||
-    post.media_files?.[0]?.thumbnail_url ||
-    '';
-
-  return (
-    <div className="relative w-full h-[500px] overflow-hidden rounded-xl bg-black">
-
-      {/* Video Preview (no controls, no autoplay) */}
-      <video
-        src={post.media_files?.[0]?.file_url}
-        poster={poster}
-        preload="metadata"
-        className="w-full h-full object-cover"
-        muted
-        playsInline
+      <CommunityTabs
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        canModerate={canModerate}
+        onChat={() =>
+          push(`/main/community/${communityId}/chat`)
+        }
       />
 
-      {/* ▶️ Play Button → REDIRECT */}
-      <button
-        onClick={goToReel}
-        className="absolute inset-0 flex items-center justify-center"
-      >
-        <div className="bg-black/60 p-4 rounded-full text-white text-xl">
-          ▶
-        </div>
-      </button>
-
-      {/* Caption */}
-      {post.caption && (
-        <div className="absolute bottom-3 left-3 right-3 text-white text-sm font-medium line-clamp-2">
-          {post.caption}
-        </div>
+      {activeTab === "posts" && (
+        <>
+          <CommunityPosts
+            posts={posts}
+            loading={loading}
+            onToggleCommunityPin={handleToggleCommunityPin}
+            canDelete={canModerate}
+            canEdit={true}
+            canRepost={true}
+            onToggleProfilePin={undefined}
+            canManage={canManage} 
+            handlePostAction={handlePostAction}
+          />
+        </>
       )}
+
+      {activeTab === "pending" && canModerate && (
+        <CommunityPending
+          pendingPosts={pendingPosts}
+          selectMode={selectMode}
+          selectedPosts={selectedPosts}
+          toggleSelect={toggleSelect}
+          setActionType={setActionType}
+          setSelectMode={setSelectMode}
+        />
+      )}
+
+      {activeTab === "members" && (
+        <CommunityMembers
+          members={members}
+          isOwner={isOwner}
+          communityId={communityId}
+        />
+      )}
+
+      <CommunityMenuModal
+        isOpen={showMenuModal}
+        onClose={() => setShowMenuModal(false)}
+        isOwner={isOwner}
+        canManage={canManage}
+        onLeave={handleLeave}
+        onSettings={() =>
+          push(
+            `/main/community/${communityId}/settings`
+          )
+        }
+        onRejected={() =>
+          push(
+            `/main/community/${communityId}/rejected`
+          )
+        }
+        onApproved={() =>
+          push(
+            `/main/community/${communityId}/approve`
+          )
+        }
+        onJoinRequests={() =>
+          push(
+            `/main/community/${communityId}/join-requests`
+          )
+        }
+      />
+
+      {selectMode && selectedPosts.length > 0 && (
+        <ModerationBar
+          selectedCount={selectedPosts.length}
+          onCancel={() => {
+            setSelectMode(false);
+            setSelectedPosts([]);
+          }}
+          onApprove={handleBulkApprove}
+          onReject={handleBulkReject}
+        />
+      )}
+
     </div>
   );
 }

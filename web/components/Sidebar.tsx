@@ -1,8 +1,9 @@
 "use client";
 
 import { useContext, useState, useEffect } from "react";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useNavigation } from "@/utils/useNavigation"
+import AppLink from '@/components/AppLink';
+import { usePathname } from "next/navigation";
 import { apiRequest } from '@/utils/api';
 import { useTheme } from "next-themes";
 import Image from "next/image";
@@ -20,7 +21,8 @@ import {
   Search,
   Repeat,
   Handshake,
-  ChevronDown
+  ChevronDown,
+  Mail
 } from "lucide-react";
 
 import { tribe2 } from "@/assets";
@@ -33,11 +35,13 @@ interface SidebarProps {
 
 export default function Sidebar({ closeMenu }: SidebarProps) {
 
-  const router = useRouter()
+  const { push, replace } = useNavigation();
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
   const [open, setOpen] = useState(false);
   const context = useContext(UserContext);
+  const [inviteCount, setInviteCount] = useState(0);
+  const [invites, setInvites] = useState<Invite[]>([]);
 
   const [tribes, setTribes] = useState<any[]>([]);
   const [tribeOpen, setTribeOpen] = useState(false);
@@ -57,15 +61,29 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
   
     loadTribes();
   }, []);
+  
+  useEffect(() => {
+    const loadInvites = async () => {
+      const data = await apiRequest("api/communities/invites/");
+    
+      const list = Array.isArray(data) ? data : (data.results ?? []);
+    
+      setInvites(list);
+      setInviteCount(list.length);
+    };
+  
+    loadInvites();
+  }, []);
+  
 
   const navItem =
     "flex items-center gap-3 px-4 py-3 rounded-lg transition cursor-pointer hover:bg-gray-200 dark:hover:bg-zinc-800";
 
   return (
-    <aside className="flex flex-col h-full text-gray-900 dark:text-gray-100">
+    <aside className="flex flex-col h-screen text-gray-900 dark:text-gray-100">
 
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800">
+      <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
 
         <div className="flex items-center gap-3">
           <div className="w-14 h-14 rounded-full overflow-hidden">
@@ -81,26 +99,27 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
       </div>
 
       {/* Navigation */}
-      <nav className="flex flex-col justify-between flex-1 p-4">
+      <nav className="overflow-y-auto space-y-6 flex-1 p-4">
 
         <ul className="space-y-2">
           {/* Search Button */}
-          <li className={navItem} onClick={() => router.push("/main/search")}>
+          <AppLink prefetch={false} className={navItem} href={"/main/search"}>
             <Search size={20} />
             <span>Search</span>
-          </li>
+          </AppLink>
 
           {/* Switch Account */}
           <li className="flex items-center justify-between px-4 py-3 rounded-lg hover:bg-gray-200 dark:hover:bg-zinc-800">
   
             {/* LEFT: Navigate to full page */}
-            <div
+            <AppLink
               className="flex items-center gap-3 flex-1 cursor-pointer"
-              onClick={() => router.push("/main/switch-account")}
+              prefetch={false}
+              href={"/main/switch-account"}
             >
               <Repeat size={20} />
               <span>Switch Account</span>
-            </div>
+            </AppLink>
           
             {/* RIGHT: Open modal */}
             <button
@@ -128,38 +147,52 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
             );
           })}*/}
 
-            <Link href="/settings" onClick={closeMenu}>
+            <AppLink href="/settings" prefetch={false} onClick={closeMenu}>
             <li className={`${navItem} ${pathname === "/settings" ? "bg-indigo-600 text-white" : ""}`}>
               <Settings size={20} />
               Settings
             </li>
-          </Link>
+          </AppLink>
 
           {/* Tribe Dropdown */}
           <li className={navItem} onClick={() => setTribeOpen(!tribeOpen)}>
             <Users size={20} />
             Tribe
           </li>
-          
-          <li
-            className={navItem}
-            onClick={() => router.push("/main/requests")}
-          >
-            <Handshake size={20} />
-            Connections
-          </li>
 
           {tribeOpen && (
             <ul className="ml-6 space-y-1 max-h-64 overflow-y-auto">
               {tribes?.map((tribe: any) => (
                 <li key={tribe.id} className="flex justify-between items-center px-4 py-2 rounded-lg hover:bg-gray-200 dark:hover:bg-zinc-800">
-                  <Link href={`/main/tribe/${tribe.id}`} onClick={closeMenu} className="flex-1">
+                  <AppLink prefetch={false} href={`/main/tribe/${tribe.id}`} onClick={closeMenu} className="flex-1">
                     {tribe.name}
-                  </Link>
+                  </AppLink>
                 </li>
               ))}
             </ul>
           )}
+
+          <AppLink
+            prefetch={false}
+            className={navItem}
+            href={"/main/requests"}
+          >
+            <Handshake size={20} />
+            Connections
+          </AppLink>
+          <AppLink
+            className={`${navItem} relative`}
+            prefetch={false}
+            href={`/main/invitation`}
+          >
+            <Mail size={20} />
+            Invitations
+            {inviteCount > 0 && (
+              <span className="absolute top-2 left-2 min-w-4 h-4 px-1 flex items-center justify-center bg-red-500 text-white text-[10px] rounded-full">
+                {inviteCount > 9 ? "9+" : inviteCount}
+              </span>
+            )}
+          </AppLink>
 
         </ul>
 
@@ -202,6 +235,7 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
           </button>
 
         </div>
+
         <AccountSwitcherModal
           open={open}
           onClose={() => setOpen(false)}

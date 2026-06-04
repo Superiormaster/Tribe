@@ -1,10 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useNavigation } from "@/utils/useNavigation"
+import AppLink from '@/components/AppLink';
 import { apiRequest } from '@/utils/api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { connectUser, removeConnection } from '@/lib/api';
+import { useContext } from "react";
+import { UserContext } from "@/components/UserContext";
 
 type User = {
   id: number;
@@ -22,6 +25,8 @@ type Chat = {
   created_at: string;
   fromUserId: number;
   toUserId: number;
+  last_sender_id?: number;
+  last_message_type?: "text" | "image" | "video" | "audio" | "sticker" | "file";
 };
 
 export default function MessagesClient() {
@@ -29,8 +34,10 @@ export default function MessagesClient() {
   const [connectedUsers, setConnectedUsers] = useState<User[]>([]);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showConnections, setShowConnections] = useState(false);
+  const [drafts, setDrafts] = useState<Record<number, string>>({});
+  const { user } = useContext(UserContext)!;
 
-  const router = useRouter();
+  const { push, replace } = useNavigation();
 
   useEffect(() => {
     fetchRecent();
@@ -54,17 +61,29 @@ export default function MessagesClient() {
     }
   };
   
-  const openChatFromRecent = async (chat: Chat) => {
-    const otherUserId =
-      chat.fromUserId === currentUser.id
-        ? chat.toUserId
-        : chat.fromUserId;
+  const openChatFromRecent = async (chat: any) => {
+    try {
+      // 1. open chat first
+      push(`/main/messages/chat/${chat.chat_id}`);
   
-    const res = await apiRequest(`api/chats/${chat.id}/`);
+      // 2. mark as seen immediately
+      await apiRequest("api/chats/mark-seen/", {
+        method: "POST",
+        data: { chatId: chat.chat_id },
+      });
   
-    setChatUser(res.other_user);
+      // 3. update UI instantly (no waiting reload)
+      setRecentChats(prev =>
+        prev.map(c =>
+          c.chat_id === chat.chat_id
+            ? { ...c, unseen: 0 }
+            : c
+        )
+      );
   
-    openChat(otherUserId);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const openChat = async (userId: number) => {
@@ -74,7 +93,7 @@ export default function MessagesClient() {
         data: { user_id: userId },
       });
   
-      router.replace(
+      push(
         `/main/messages/chat/${res.chat_id}`
       );
     } catch (err) {
@@ -128,12 +147,41 @@ export default function MessagesClient() {
       console.error(err);
     }
   };
+  
+  const getPreviewText = (chat: Chat) => {
+    const isMine = chat.last_sender_id === user?.id;
+  
+    const prefix = isMine ? "You: " : `${chat.username}: `;
+  
+    // MEDIA TYPE DETECTION (backend should send this)
+    if ((chat as any).last_media_type === "image") {
+      return prefix + "📸 Photo";
+    }
+  
+    if ((chat as any).last_media_type === "video") {
+      return prefix + "🎥 Video";
+    }
+  
+    if ((chat as any).last_media_type === "audio") {
+      return prefix + "🎤 Voice message";
+    }
+  
+    if ((chat as any).last_media_type === "file") {
+      return prefix + "📎 Attachment";
+    }
+
+    if ((chat as any).last_message_type === "sticker") {
+      return prefix + "😀 Sticker";
+    }
+  
+    return prefix + (chat.text || "");
+  };
 
   return (
     <div className="flex flex-col mt-5 h-full p-4">
 
       {/* HEADER */}
-      <h2 className="text-xl font-bold mb-4">Messages</h2>
+      <h2 className="text-xl text-gray-700 dark:text-white font-bold mb-4">Messages</h2>
 
       {/* RECENT CHATS (MAIN INBOX) */}
       <div className="flex-1 overflow-y-auto space-y-2">
@@ -143,8 +191,10 @@ export default function MessagesClient() {
             <div
               key={chat.id}
               onClick={() => openChatFromRecent(chat)}
-              className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
+              className="flex items-start gap-3 p-3 gap-3 p-3 overflow-hidden rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer"
             >
+
+              {/* Avatar */}
               {chat.avatar ? (
                 <img
                   src={chat.avatar}
@@ -155,20 +205,45 @@ export default function MessagesClient() {
                   {chat.username.slice(0, 2).toUpperCase()}
                 </div>
               )}
-
-              <div className="flex-1">
-                <p className="font-semibold">{chat.username}</p>
-                <p className="text-sm text-gray-500 truncate">
-                  {chat.text}
-                </p>
+            
+              {/* Content */}
+              <div className="flex-1 min-w-0 flex flex-col justify-between">
+              
+                {/* TOP ROW: username + time */}
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-gray-700 dark:text-white font-semibold truncate">
+                    {chat.username}
+                  </p>
+              
+                  <span className="text-xs text-gray-400 whitespace-nowrap">
+                    {formatChatTime(chat.created_at)}
+                  </span>
+                </div>
+              
+                {/* BOTTOM ROW: preview + unseen */}
+                <div className="flex items-center justify-between gap-2 mt-1">
+              
+                  {/* Preview / Draft */}
+                  {drafts[chat.chat_id] ? (
+                    <p className="text-sm text-gray-500 truncate">
+                      <span className="text-yellow-500 mr-1">Draft:</span>
+                      {drafts[chat.chat_id]}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-gray-500 truncate">
+                      {getPreviewText(chat)}
+                    </p>
+                  )}
+              
+                  {/* Unseen badge */}
+                  {chat.unseen > 0 && (
+                    <span className="text-xs bg-red-500 text-white px-2 rounded-full shrink-0">
+                      {chat.unseen}
+                    </span>
+                  )}
+                </div>
+              
               </div>
-
-              <span className="text-xs text-gray-400">
-                {new Date(chat.created_at).toLocaleTimeString([], {
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })}
-              </span>
             </div>
           );
         })}
@@ -226,16 +301,44 @@ export default function MessagesClient() {
               </div>
 
               {/* Add more connections button */}
-              <button
-                onClick={() => router.push('/main/discover')}
+              <AppLink
+                href={'/main/discover'}
+                prefetch={false}
                 className="mt-4 w-full py-2 bg-indigo-600 text-white rounded-lg"
               >
                 Find More People
-              </button>
+              </AppLink>
             </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
     </div>
   );
+}
+
+function formatChatTime(dateString?: string) {
+  if (!dateString) return "";
+
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return "";
+
+  const now = new Date();
+
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 1) {
+    return date.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }
+
+  if (diffDays === 1) return "Yesterday";
+
+  return date.toLocaleDateString([], {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
 }

@@ -1,4 +1,19 @@
-export default function Skeleton() {
+// Skeleton.tsx
+import { useEffect } from "react";
+
+type SkeletonProps = {
+  onComplete?: () => void;
+};
+
+export default function Skeleton({ onComplete }: SkeletonProps) {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (onComplete) onComplete();
+    }, 1000); // or however long your skeleton animation lasts
+
+    return () => clearTimeout(timer);
+  }, [onComplete]);
+
   return (
     <div className="p-6 space-y-6 animate-pulse">
       <div className="h-8 w-48 bg-gray-700 rounded" />

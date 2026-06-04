@@ -1,17 +1,18 @@
 'use client';
+
 import { useEffect, useRef } from 'react';
 
 export default function AudioWaveform({
-  waveform,
+  waveform = [],
   progress = 0,
 }: {
-  waveform: number[];
+  waveform?: number[];
   progress?: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
-    if (!canvasRef.current || !waveform.length) return;
+    if (!canvasRef.current || waveform.length === 0) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");

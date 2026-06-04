@@ -13,25 +13,6 @@ export const getCreators = async () => {
   }
 };
 
-export const getFriends = async (filters?: { interest?: string; country?: string }) => {
-  try {
-    let endpoint = "api/users/discover-friends/";
-    if (filters) {
-      const params = new URLSearchParams();
-      if (filters.interest) params.append("interest", filters.interest);
-      if (filters.country) params.append("country", filters.country);
-      endpoint += `?${params.toString()}`;
-    }
-
-    const data = await apiRequest(endpoint, { method: "GET" });
-    console.log("Friends data:", data);
-    return data;
-  } catch (err) {
-    console.error("Error fetching friends:", err);
-    return [];
-  }
-};
-
 export const starCreator = async (creatorId: number) => {
   try {
     const data = await apiRequest(`api/users/star/${creatorId}/toggle/`, {

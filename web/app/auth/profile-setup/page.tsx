@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useNavigation } from "@/utils/useNavigation"
 import { countries } from "countries-list"
 import { uploadToCloudinary } from '@/utils/cloudinary';
+import { useOnboardingGuard } from '@/utils/useOnboardingGuard';
 import { apiRequest } from '@/utils/api'
 
 interface OnboardingStatus {
@@ -14,7 +15,7 @@ interface OnboardingStatus {
 }
 
 export default function ProfileSetup() {
-  const router = useRouter()
+  const { back, push } = useNavigation()
 
   // Profile states
   const [fullName,setFullName] = useState('')
@@ -38,11 +39,24 @@ export default function ProfileSetup() {
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [profile, setProfile] = useState<any | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (preview?.startsWith('blob:')) {
+        URL.revokeObjectURL(preview)
+      }
+  
+      if (coverPreview?.startsWith('blob:')) {
+        URL.revokeObjectURL(coverPreview)
+      }
+    }
+  }, [preview, coverPreview])
 
   // Prefill username and email after login/registration
   useEffect(() => {
     const fetchProfile = async () => {
+      setLoading(true)
+
       try {
         const profile = await apiRequest('api/users/me/')
 
@@ -71,28 +85,11 @@ export default function ProfileSetup() {
     }
 
     fetchProfile()
-  }, [router])
+  }, [])
   
-  useEffect(() => {
-    const checkOnboarding = async () => {
-      try {
-        const status: OnboardingStatus = await apiRequest('api/users/onboarding-status/')
-        
-        if (status.completed) {
-          router.replace('/main/home')
-          return
-        }
-        if (status.profileCompleted) {
-          router.replace('/auth/interests')
-          return
-        }
-      } catch (err) {
-        console.error(err)
-      }
-    }
-  
-    checkOnboarding()
-  }, [router])
+  // Replace your onboarding check useEffect with this
+
+  useOnboardingGuard('profile')
 
   // Fetch countries list
   const countryList = Object.entries(countries).map(([code, country]) => ({
@@ -126,16 +123,53 @@ export default function ProfileSetup() {
     setError('')
     setLoading(true)
   
-    if (!fullName) return setError('Full Name is required')
-    if (!email) return setError('Email is required')
-    if (!username) return setError('Username is required')
+    if (!fullName.trim()) {
+      setLoading(false)
+      return setError('Full Name is required')
+    }
+    
+    if (!email.trim()) {
+      setLoading(false)
+      return setError('Email is required')
+    }
+    
+    if (!username.trim()) {
+      setLoading(false)
+      return setError('Username is required')
+    }
+    
+    if (!bio.trim()) {
+      setLoading(false)
+      return setError('Bio is required')
+    }
+    
+    if (!country.trim()) {
+      setLoading(false)
+      return setError('Country is required')
+    }
+    
+    if (!gender.trim()) {
+      setLoading(false)
+      return setError('Gender is required')
+    }
 
     try {
       let avatarUrl = preview
       let coverUrl = coverPreview
 
-      if (avatar) avatarUrl = await uploadToCloudinary(avatar, "Tribe/Avatars")
-      if (cover) coverUrl = await uploadToCloudinary(cover, "Tribe/Covers")
+      if (avatar) {
+        avatarUrl = await uploadToCloudinary({
+          file: avatar,
+          folder: "Tribe/Avatars",
+        });
+      }
+      
+      if (cover) {
+        coverUrl = await uploadToCloudinary({
+          file: cover,
+          folder: "Tribe/Covers",
+        });
+      }
   
       const formData = new FormData()
       const dob = year && month && day ? `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}` : null;
@@ -168,7 +202,7 @@ export default function ProfileSetup() {
         data: formData
       })
   
-      router.push('/auth/interests')
+      push('/auth/interests')
   
     } catch (err: any) {
   
@@ -188,7 +222,7 @@ export default function ProfileSetup() {
         className="bg-white dark:bg-gray-900 py-3 px-5 rounded-2xl shadow-xl w-full max-w-md space-y-6"
       >
         <button
-            onClick={() => router.back()}
+            onClick={back}
             className="p-1 border-indigo-500 rounded-lg hover:bg-gray-200 border dark:hover:bg-gray-800"
           >
             ←
@@ -274,7 +308,7 @@ export default function ProfileSetup() {
         {/* Username */}
         <div className="flex flex-col">
           <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-            Username
+            Username <span className="text-red-500">*</span>
           </label>
           <input
             type="text"
@@ -288,7 +322,7 @@ export default function ProfileSetup() {
 
         <div className="flex flex-col">
           <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-            Full name
+            Full name<span className="text-red-500">*</span>
           </label>
           <input
             placeholder="Full name"
@@ -302,7 +336,7 @@ export default function ProfileSetup() {
         {/* Email */}
         <div className="flex flex-col">
           <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-            Email
+            Email <span className="text-red-500">*</span>
           </label>
           <input
             type="email"
@@ -400,7 +434,7 @@ export default function ProfileSetup() {
         {/* Bio */}
         <div className="flex flex-col">
           <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-            Bio
+            Bio<span className="text-red-500">*</span>
           </label>
           <textarea
             placeholder="Tell us something about yourself..."
@@ -462,8 +496,26 @@ export default function ProfileSetup() {
 
         <button
           type="submit"
-          disabled={loading}
-          className="w-full py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition"
+          disabled={
+            loading ||
+            !fullName.trim() ||
+            !email.trim() ||
+            !username.trim() ||
+            !bio.trim() ||
+            !country.trim() ||
+            !gender.trim()
+          }
+          className={`w-full py-3 rounded-lg font-semibold transition ${
+            loading ||
+            !fullName.trim() ||
+            !email.trim() ||
+            !username.trim() ||
+            !bio.trim() ||
+            !country.trim() ||
+            !gender.trim()
+              ? 'bg-gray-400 cursor-not-allowed text-white'
+              : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+          }`}
         >
           {loading ? 'Saving...' : 'Complete Profile'}
         </button>

@@ -3,54 +3,14 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
 import { getAccounts } from "@/utils/accounts";
-import { useAuth } from "@/lib/authStore";
-import { useRouter } from "next/navigation";
-import { apiRequest } from "@/utils/api";
-import { storeRefreshToken, getRefreshToken } from "@/lib/keyStore"
-import { setAccessToken } from "@/utils/api"
+import { switchAccount } from "@/lib/switchAccount";
 
 export default function AccountSwitcherModal({ open, onClose, onSwitch }) {
   const [accounts, setAccounts] = useState([]);
-  const router = useRouter();
-  const setUser = useAuth((s) => s.setUser);
 
   useEffect(() => {
     setAccounts(getAccounts());
   }, []);
-
-  const switchAccount = async (acc: Account) => {
-    try {
-      // 1. load refresh token from IndexedDB (per account)
-      const refresh = await getRefreshToken(acc.email);
-  
-      if (!refresh) {
-        router.push("/auth/login");
-        return;
-      }
-  
-      // 2. refresh access token
-      const res = await apiRequest("api/users/refresh/", {
-        method: "POST",
-        data: { refresh },
-      });
-  
-      setAccessToken(res.access);
-  
-      // 3. set active account locally
-      localStorage.setItem("selected_account", acc.email);
-  
-      // 4. fetch user
-      const me = await apiRequest("api/users/me/");
-      setUser(me);
-  
-      window.dispatchEvent(new Event("auth-changed"));
-  
-      router.push("/main/home");
-  
-    } catch (err) {
-      console.error("Switch failed", err);
-    }
-  };
 
   return (
     <AnimatePresence>
@@ -67,7 +27,7 @@ export default function AccountSwitcherModal({ open, onClose, onSwitch }) {
 
           {/* slide up panel */}
           <motion.div
-            className="fixed bottom-16 left-0 right-0 bg-white dark:bg-gray-900 rounded-t-3xl p-4 z-50"
+            className="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 rounded-t-3xl p-4 z-50"
             initial={{ y: "100%" }}
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
@@ -83,7 +43,7 @@ export default function AccountSwitcherModal({ open, onClose, onSwitch }) {
                   key={acc.email}
                   whileTap={{ scale: 0.96 }}
                   className="flex items-center gap-3 p-3 rounded-xl bg-gray-100 dark:bg-gray-800"
-                  onClick={() => switchAccount(acc)}
+                  onClick={() => switchAccount(acc.email)}
                 >
                   <AvatarMorph src={acc.avatar} />
 

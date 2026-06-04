@@ -15,7 +15,7 @@ export default function CommentInput({
   const handleSend = async () => {
     if (!text.trim()) return;
 
-    const res = await apiRequest("/api/comments/", {
+    const res = await apiRequest("api/comments/", {
       method: "POST",
       data: {
         post: Number(postId),
@@ -52,7 +52,7 @@ export default function CommentInput({
               ? "Write a reply..."
               : "Write a comment..."
           }
-          className="flex-1 px-3 py-2 rounded bg-gray-100 dark:bg-gray-800"
+          className="flex-1 px-3 py-2 rounded text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800"
         />
 
         <button

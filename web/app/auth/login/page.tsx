@@ -2,19 +2,21 @@
 
 import { useState, useEffect, useContext } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
-import { useRouter } from 'next/navigation'
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faGoogle } from "@fortawesome/free-brands-svg-icons"
 import { apiRequest } from '@/utils/api'
 import { UserContext } from '@/components/UserContext'
 import { saveAccount, getAccounts, setActiveAccount } from '@/utils/accounts'
+import { handleOnboardingRedirect } from '@/utils/handleOnboardingRedirect';
 import { useSearchParams } from "next/navigation"
-import { setupKeys } from "@/lib/setupKeys"
 import { storeRefreshToken, getRefreshToken } from "@/lib/keyStore"
 import { setAccessToken } from "@/utils/api"
+import { useNavigation } from "@/utils/useNavigation";
 
-function isProfileComplete(profile:any){
-  return profile.username && profile.full_name && profile.bio && profile.email
+declare global {
+  interface Window {
+    google: any;
+  }
 }
 
 export default function LoginPage() {
@@ -22,9 +24,9 @@ export default function LoginPage() {
   const searchParams = useSearchParams();
   const initialEmail = searchParams.get("email");
   const [email, setEmail] = useState(initialEmail || '');
+  const { push } = useNavigation();
 
   const { user, setUser, loadingUser } = useContext(UserContext)!
-  const router = useRouter()
 
   const isVerified = user?.is_verified
   const isGoogleLogin = user?.auth_provider === 'google'
@@ -37,40 +39,6 @@ export default function LoginPage() {
   const [message,setMessage] = useState('')
   const [showResend,setShowResend] = useState(false)
   
-  useEffect(() => {
-    const initAuth = async () => {
-      const refresh = await getRefreshToken();
-  
-      if (!refresh) return;
-  
-      const res = await apiRequest("api/users/refresh/", {
-        method: "POST",
-        data: { refresh },
-      });
-  
-      setAccessToken(res.access);
-    };
-  
-    initAuth();
-  }, []);
-  
-  useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        const profile = await apiRequest('api/users/me/')
-        setUser(profile)
-        if (isProfileComplete(profile)) {
-          router.push('/main/home')
-        } else {
-          router.push('/auth/profile-setup')
-        }
-      } catch {
-        setUser(null)
-      }
-    }
-    fetchProfile()
-  }, [])
-
   // Load Google script
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -84,7 +52,7 @@ export default function LoginPage() {
     document.body.appendChild(script);
 
     script.onload = () => {
-      if (!window.google) return;
+      if (!window?.google?.accounts?.id) return;
 
       // Initialize Google Sign-In
       window.google.accounts.id.initialize({
@@ -109,8 +77,8 @@ export default function LoginPage() {
   useEffect(() => {
     if (typeof window === "undefined") return; 
     // Check if a selected account exists
-    const selectedEmail = localStorage.getItem("selected_account");
-    const accounts: Account[] = getAccounts();
+    const selectedEmail = localStorage.getItem("active_account");
+    const accounts = getAccounts();
     const account = accounts.find(acc => acc.email === selectedEmail);
   
     if (!account) return;
@@ -124,19 +92,18 @@ export default function LoginPage() {
     }
   }, []);
 
-  const handleGoogleResponse = async (res: any) => {
+  const handleGoogleResponse = async (googleRes: any) => {
     try {
       const res = await apiRequest("api/users/google-login/", {
         method: "POST",
-        data: { token: res.credential },
-        withCredentials: true, 
+        data: { token: googleRes.credential },
       });
       const { access, refresh, user } = res;
 
       await storeRefreshToken(user.email, refresh);
       setAccessToken(access);
 
-      saveAccount(user, "password");
+      saveAccount(user, "google");
       setActiveAccount(user.email);
 
       const profile = await apiRequest("api/users/me/", {
@@ -144,15 +111,13 @@ export default function LoginPage() {
       });
       setUser(profile);
 
-      await setupKeys(profile.id);
-
       if (remember) saveAccount(profile, "google");
 
       // Also set selected account
-      localStorage.setItem("selected_account", profile.email);
+      setActiveAccount(profile.email)
       saveAccount(profile, profile.auth_provider === "google" ? "google" : "password");
+      await handleOnboardingRedirect(push);
 
-      router.push(isProfileComplete(profile) ? '/main/home' : '/auth/profile-setup');
     } catch (err: any) {
       console.error(err);
       alert("Google login failed");
@@ -184,14 +149,12 @@ export default function LoginPage() {
       })
       setUser(profile)
 
-      await setupKeys(profile.id);
-
       if (remember) saveAccount(profile, "password")
-      localStorage.setItem("selected_account", profile.email)
+      setActiveAccount(profile.email)
       saveAccount(profile, profile.auth_provider === "google" ? "google" : "password");
 
       // Redirect based on profile completeness
-      router.push(isProfileComplete(profile) ? '/main/home' : '/auth/profile-setup');
+      await handleOnboardingRedirect(push);
     } catch(err:any) {
       const detail = err?.detail || err?.message || 'Login failed'
       if (detail.includes("Email not verified")) {

@@ -20,7 +20,7 @@ export default function ProfilePage(){
 
       try{
 
-        const profileData = await apiRequest(`/api/users/${username}/`)
+        const profileData = await apiRequest(`api/users/${username}/`)
         const postsData = await apiRequest(`/api/posts/?author=${username}`)
 
         setProfile(profileData)

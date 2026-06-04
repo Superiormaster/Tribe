@@ -1,13 +1,27 @@
 'use client';
-import { useState, useEffect, useContext } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useState, useEffect, useMemo, useContext } from 'react';
+import { useParams } from 'next/navigation';
+import { useNavigation } from "@/utils/useNavigation"
+import AppLink from '@/components/AppLink';
 import { UserContext } from '@/components/UserContext';
 import { 
-  Home, Edit, Trash2, Share2, Star, MessageCircle, Camera, Image, Video, ThumbsUp, Repeat, Send as SendIcon, ChartNoAxesColumn
+  Home, Star, Camera, Image, Video,
 } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+} from "@dnd-kit/core"
+import {
+  arrayMove,
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable"
 import Skeleton from '@/components/Skeleton';
 import { uploadToCloudinary } from '@/utils/cloudinary';
-import { usePostView } from '@/lib/UsePostView'
+import PostCard from '@/components/PostCard';
+import ReelCard from '@/components/ReelCard';
+import RepostCard from '@/components/repost/RepostCard';
+import SortablePinnedPost from '@/components/SortablePinnedPost';
 import ShareButton from '@/components/ShareButton'
 import {
   connectUser,
@@ -35,6 +49,10 @@ type Post = {
   community_name?: string;
   views_count?: number
   is_deleted?: boolean;
+  profile_pinned?: boolean
+  profile_pin_order?: number | null
+  community_pinned?: boolean
+  community_pin_order?: number | null
 };
 
 type Profile = {
@@ -53,14 +71,15 @@ type Profile = {
 
 export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVideoElement) => void }) {
   const params = useParams();
-  const router = useRouter();
+  const { push } = useNavigation()
   const { user: currentUser } = useContext(UserContext) || {};
   const username = Array.isArray(params.username) ? params.username[0] : params.username || '';
   const [profileUserId, setProfileUserId] = useState<number | null>(null);
+  const [nextPage, setNextPage] = useState<string | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
-  const [filteredPosts, setFilteredPosts] = useState<Post[]>([]);
   const [showUnstarModal, setShowUnstarModal] = useState(false);
   const [relationship, setRelationship] = useState({
     is_me: false,
@@ -73,84 +92,536 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
   const [filter, setFilter] = useState<'all' | 'images' | 'videos'>('all');
 
   const isMyProfile = currentUser?.username === username;
+  
+  const orderedPosts = useMemo(() => {
 
-  // Fetch profile and posts
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const data = await apiRequest(`api/users/profile/${username}/`);
-        const profileData = data.profile;
-
-        setProfile({
-          avatar: profileData.avatar || '',
-          cover_photo: profileData.cover_photo || '',
-          full_name: profileData.full_name || '',
-          bio: profileData.bio || '',
-          city: profileData.city || '',
-          country: profileData.country || '',
-          website: profileData.website || '',
-          creatorType: profileData.creator_type || '',
-          stars: profileData.starred_count || 0,
-          posts: data.stats?.posts || 0,
-          starredBy: profileData.stars_count || 0
-        });
-
-        const postsData: Post[] = (data.posts || []).filter((p: any) => !p.is_deleted).map((p: any) => ({
-          id: p.id,
-          caption: p.caption,
-          created_at: p.created_at,
-          likes_count: p.likes_count || 0,
-          comments_count: p.comments || 0,
-          liked_by_user: p.is_liked || false,
-          content_type: p.content_type || (p.video ? "video" : "post"),
-          user: p.user || {
-            id: 0,
-            username: "Unknown",
-            avatar: "",
-          },
-          media_files: Array.isArray(p.media_files)
-          ? p.media_files.map((m: any) => ({
-              file_url: m.file_url || m.url || '',
-              thumbnail_url: m.thumbnail_url || '',
-              media_type: m.media_type || (m.file_url?.endsWith('.mp4') ? 'video' : 'image'),
-            }))
-          : p.video
-          ? [{ file_url: p.video, media_type: 'video', thumbnail_url: p.thumbnail || '' }]
-          : p.image
-          ? [{ file_url: p.image, media_type: 'image' }]
-          : [],
-          community_name: p.community_name || '',
-        }));
-
-        setPosts(postsData);
-        setFilteredPosts(postsData);
-        setProfileUserId(profileData.id);
-        setRelationship({
-          is_me: data.relationship?.is_me || false,
-          is_star: data.relationship?.is_star || false,
-          is_connected: data.relationship?.is_connected || false,
-          request_sent: data.relationship?.request_sent || false,
-          request_received: data.relationship?.request_received || false,
-        });
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
+    return [...posts].sort((a, b) => {
+  
+      // pinned first
+      if (
+        a.profile_pinned &&
+        !b.profile_pinned
+      ) return -1
+  
+      if (
+        !a.profile_pinned &&
+        b.profile_pinned
+      ) return 1
+  
+      // pin order
+      if (
+        a.profile_pinned &&
+        b.profile_pinned
+      ) {
+  
+        return (
+          (a.profile_pin_order || 0) -
+          (b.profile_pin_order || 0)
+        )
       }
+  
+      // newest first
+      return (
+        new Date(
+          b.created_at
+        ).getTime() -
+        new Date(
+          a.created_at
+        ).getTime()
+      )
+    })
+  
+  }, [posts])
+  
+  const filteredPosts = useMemo(() => {
+  
+    return orderedPosts.filter(post => {
+  
+      if (filter === "images") {
+  
+        return post.media_files.some(
+          m => m.media_type === "image"
+        )
+      }
+  
+      if (filter === "videos") {
+  
+        return post.media_files.some(
+          m => m.media_type === "video"
+        )
+      }
+  
+      return true
+    })
+  
+  }, [orderedPosts, filter])
+  
+  const pinnedPosts = filteredPosts
+    .filter(p => 
+      p.type === "post" &&
+      p.profile_pinned
+    )
+    .sort(
+      (a, b) =>
+        (a.profile_pin_order || 0) -
+        (b.profile_pin_order || 0)
+    )
+  
+  const normalPosts = filteredPosts.filter(
+    p => !p.profile_pinned
+  )
+  
+  const handleTogglePin = async (postId: number) => {
+  
+    const previousPosts = [...posts]
+    const target = posts.find(p => p.id === postId)
+  
+    if (!target) return
+  
+    const isPinned = target.profile_pinned
+  
+    // -------------------------
+    // OPTIMISTIC UPDATE
+    // -------------------------
+  
+    let updatedPosts = [...posts]
+  
+    if (isPinned) {
+
+      updatedPosts = updatedPosts
+        .map(p =>
+          p.id === postId
+            ? {
+                ...p,
+                profile_pinned: false,
+                profile_pin_order: null
+              }
+            : p
+        )
+    
+      // reorder remaining pins
+      const remainingPinned = updatedPosts
+        .filter(p => p.profile_pinned)
+        .sort(
+          (a, b) =>
+            (a.profile_pin_order || 0) -
+            (b.profile_pin_order || 0)
+        )
+    
+      remainingPinned.forEach((p, index) => {
+        p.profile_pin_order = index + 1
+      })
+    } else {
+  
+      const currentPinned = updatedPosts.filter(
+        p => p.profile_pinned
+      )
+  
+      if (currentPinned.length >= 3) {
+        alert("Maximum 3 pinned posts")
+        return
+      }
+  
+      updatedPosts = updatedPosts.map(p =>
+        p.id === postId
+          ? {
+              ...p,
+              profile_pinned: true,
+              profile_pin_order:
+                currentPinned.length + 1
+            }
+          : p
+      )
+    }
+  
+    setPosts(updatedPosts)
+  
+    // -------------------------
+    // API CALL
+    // -------------------------
+  
+    try {
+  
+      await apiRequest(
+        `api/post/${postId}/toggle_profile_pin/`,
+        {
+          method: "POST"
+        }
+      )
+  
+    } catch (err) {
+  
+      // ROLLBACK
+      setPosts(previousPosts)
+  
+      console.error(err)
+    }
+  }
+  
+  const handleDragEnd = async (event: any) => {
+
+    const { active, over } = event
+  
+    if (!over || active.id === over.id) return
+  
+    const pinned = posts
+      .filter(p => p.profile_pinned)
+      .sort(
+        (a, b) =>
+          (a.profile_pin_order || 0) -
+          (b.profile_pin_order || 0)
+      )
+  
+    const oldIndex = pinned.findIndex(
+      p => p.id === active.id
+    )
+  
+    const newIndex = pinned.findIndex(
+      p => p.id === over.id
+    )
+  
+    const reorderedPinned = arrayMove(
+      pinned,
+      oldIndex,
+      newIndex
+    ).map((p, index) => ({
+      ...p,
+      profile_pin_order: index + 1,
+    }))
+  
+    const regularPosts = posts.filter(
+      p => !p.profile_pinned
+    )
+  
+    const updatedPosts = [
+      ...reorderedPinned,
+      ...regularPosts,
+    ]
+  
+    setPosts(updatedPosts)
+  
+    try {
+  
+      await apiRequest(
+        "api/post/reorder_pins/",
+        {
+          method: "POST",
+          data: {
+            post_ids: reorderedPinned.map(
+              p => p.id
+            ),
+          },
+        }
+      )
+  
+    } catch (err) {
+  
+      console.error(err)
+    }
+  }
+  
+  const starredUserIds = useMemo(() => {
+    return new Set(
+      posts
+        .filter(p => p.user.is_starred_by_user)
+        .map(p => p.user.id)
+    );
+  }, [posts]);
+
+  const mapPost = (p: any): any => {
+
+    if (!p) return null;
+  
+    // REPOST
+    if (p.type === "repost") {
+    
+      return {
+        type: "repost",
+    
+        id: p.data.id,
+    
+        created_at: p.data.created_at,
+    
+        repost_type: p.data.repost_type,
+    
+        quote_text: p.data.quote_text,
+    
+        user: p.data.user,
+    
+        post: {
+          ...p.data.post,
+    
+          profile_pinned:
+            p.data.post?.profile_pinned || false,
+    
+          profile_pin_order:
+            p.data.post?.profile_pin_order || null,
+    
+          community_pinned:
+            p.data.post?.community_pinned || false,
+    
+          community_pin_order:
+            p.data.post?.community_pin_order || null,
+    
+          likes_count:
+            p.data.post?.likes_count || 0,
+    
+          comments_count:
+            p.data.post?.comments_count || 0,
+    
+          shares_count:
+            p.data.post?.shares_count || 0,
+    
+          liked_by_user:
+            p.data.post?.is_liked || false,
+    
+          updated_at:
+            p.data.post?.updated_at || null,
+    
+          media_files: Array.isArray(
+            p.data.post?.media_files
+          )
+            ? p.data.post.media_files.map((m: any) => ({
+                file_url:
+                  m.file_url || m.url || "",
+    
+                thumbnail_url:
+                  m.thumbnail_url || "",
+    
+                media_type:
+                  m.media_type ||
+                  (
+                    m.file_url?.endsWith(".mp4")
+                      ? "video"
+                      : "image"
+                  ),
+              }))
+            : [],
+        },
+      };
+    }
+  
+    // NORMAL POST
+    return {
+      ...p.data,
+  
+      type: "post",
+  
+      profile_pinned:
+        p.data?.profile_pinned || false,
+  
+      profile_pin_order:
+        p.data?.profile_pin_order || null,
+  
+      community_pinned:
+        p.data?.community_pinned || false,
+  
+      community_pin_order:
+        p.data?.community_pin_order || null,
+  
+      caption:
+        p.data?.caption || "",
+  
+      created_at:
+        p.data?.created_at || "",
+  
+      likes_count:
+        p.data?.likes_count || 0,
+  
+      comments_count:
+        p.data?.comments_count || 0,
+  
+      shares_count:
+        p.data?.shares_count || 0,
+  
+      liked_by_user:
+        p.data?.is_liked || false,
+  
+      content_type:
+        p.data?.content_type ||
+        (p.data?.video ? "video" : "post"),
+  
+      user:
+        p.data?.user || {
+          id: 0,
+          username: "Unknown",
+          avatar: "",
+        },
+  
+      updated_at:
+        p.data?.updated_at || null,
+  
+      media_files: Array.isArray(
+        p.data?.media_files
+      )
+        ? p.data.media_files.map((m: any) => ({
+            file_url:
+              m.file_url || m.url || "",
+  
+            thumbnail_url:
+              m.thumbnail_url || "",
+  
+            media_type:
+              m.media_type ||
+              (
+                m.file_url?.endsWith(".mp4")
+                  ? "video"
+                  : "image"
+              ),
+          }))
+        : [],
+  
+      community_name:
+        p.data?.community_name || "",
     };
+  };
+  
+  const fetchProfile = async () => {
+  
+    try {
+  
+      const data = await apiRequest(
+        `api/users/profile/${username}/`
+      )
+      console.log("PROFILE API RESPONSE:", data);
 
-    if (username) fetchData();
-  }, [username]);
-
-  // Filter posts by type
+      const profileData = data?.profile || data;
+  
+      if (!profileData) {
+        console.error("Profile data missing:", data);
+        return;
+      }
+  
+      setProfile({
+        avatar: profileData.avatar || "",
+        cover_photo:
+          profileData.cover_photo || "",
+        full_name:
+          profileData.full_name || "",
+        bio: profileData.bio || "",
+        city: profileData.city || "",
+        country:
+          profileData.country || "",
+        website:
+          profileData.website || "",
+        creatorType:
+          profileData.creator_type || "",
+        stars:
+          profileData.starred_count || 0,
+        posts:
+          data.stats?.posts || 0,
+        starredBy:
+          profileData.stars_count || 0,
+      })
+  
+      setProfileUserId(profileData.id)
+  
+      setRelationship({
+        is_me:
+          data.relationship?.is_me || false,
+  
+        is_star:
+          data.relationship?.is_star || false,
+  
+        is_connected:
+          data.relationship?.is_connected ||
+          false,
+  
+        request_sent:
+          data.relationship?.request_sent ||
+          false,
+  
+        request_received:
+          data.relationship
+            ?.request_received || false,
+      })
+  
+    } catch (err) {
+  
+      console.error(err)
+  
+    }
+  }
+  
+  const fetchPosts = async (
+    url?: string
+  ) => {
+  
+    if (loadingMore) return
+  
+    try {
+  
+      setLoadingMore(true)
+  
+      const endpoint =
+        url ||
+        `api/users/profile/${username}/posts/`
+  
+      const data = await apiRequest(
+        endpoint
+      )
+  
+      const newPosts = (
+        data.results || []
+      ).map(mapPost)
+  
+      setPosts(prev => {
+  
+        if (!url) return newPosts
+  
+        const merged = [
+          ...prev,
+          ...newPosts
+        ]
+  
+        // remove duplicates
+        const unique = merged.filter(
+          (post, index, self) =>
+            index ===
+            self.findIndex(
+              x => x.id === post.id
+            )
+        )
+  
+        return unique
+      })
+  
+      setNextPage(data.next || null)
+  
+    } catch (err) {
+  
+      console.error(err)
+  
+    } finally {
+  
+      setLoadingMore(false)
+    }
+  }
+  
   useEffect(() => {
-    const filtered = posts.filter((p) => {
-      if (filter === 'images') return p.media_files.some(m => m.media_type === 'image');
-      if (filter === 'videos') return p.media_files.some(m => m.media_type === 'video');
-      return true;
-    });
-    setFilteredPosts(filtered);
-  }, [filter, posts]);
+
+    if (!username) return
+  
+    const load = async () => {
+  
+      try {
+  
+        setLoading(true)
+  
+        await Promise.all([
+          fetchProfile(),
+          fetchPosts()
+        ])
+  
+      } finally {
+  
+        setLoading(false)
+      }
+    }
+  
+    load()
+  
+  }, [username])
 
   // handle avatar change with preview + automatic upload
   const handleChangeAvatar = () => {
@@ -248,31 +719,73 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
     input.click();
   };
 
-  const handleEditProfile = () => router.push('/main/edit-profile');
+  const handleEditProfile = () => push('/main/edit-profile');
 
-  const handlePostAction = async (action: string, postId: number) => {
+  const handlePostAction = async (
+    action: string,
+    postId: number
+  ) => {
+  
     switch (action) {
+  
+      // EDIT POST
       case 'edit':
-        router.push(`/main/create-post?edit=true&postId=${postId}`);
+        push(
+          `/main/create-post?edit=true&postId=${postId}`
+        );
         break;
   
+      // DELETE POST
       case 'delete':
         console.log('Delete post', postId);
         break;
   
-      case 'repost': {
-        try {
-          const res = await apiRequest(`api/post/${postId}/repost/`, {
-            method: "POST"
-          });
+      // NORMAL REPOST
+      case 'repost_normal':
   
-          alert(res.reposted ? "Reposted!" : "Already reposted");
+        try {
+  
+          await apiRequest(
+            `api/post/${postId}/repost/`,
+            {
+              method: 'POST',
+              data: {
+                type: 'normal',
+              },
+            }
+          );
+  
+          alert("Reposted!");
+  
+        } catch (err) {
+  
+          console.error(err);
+        }
+  
+        break;
+  
+      // QUOTE REPOST
+      case 'repost_quote':
+  
+        push(`/main/repost/${postId}`);
+  
+        break;
+  
+      case 'delete_repost':
+        try {
+          await apiRequest(
+            `api/post/${postId}/delete_repost/`,
+            {
+              method: 'POST',
+            }
+          );
+      
+          alert("Repost deleted");
         } catch (err) {
           console.error(err);
         }
         break;
-      }
-  
+
       default:
         break;
     }
@@ -322,8 +835,8 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
             {profile.bio && <p className="text-gray-500 dark:text-gray-400 text-sm">{profile.bio}</p>}
             <div className="grid grid-cols-3 gap-2 mt-2 text-sm text-gray-500 dark:text-gray-400">
               <div><span className="font-semibold">{profile.posts}</span> Posts</div>
-              <button onClick={() => router.push(`/main/stars/received`)} className="flex items-center gap-1"><Star className="w-4 h-4 text-yellow-400"/><span className="font-semibold">{profile.starredBy}</span> Stars</button>
-              <button onClick={() => router.push(`/main/stars/sent`)}><span className="font-semibold">{profile.stars}</span> Starred</button>
+              <AppLink prefetch={false} href={`/main/stars/received`} className="flex items-center gap-1"><Star className="w-4 h-4 text-yellow-400"/><span className="font-semibold">{profile.stars}</span> Stars</AppLink>
+              <AppLink prefetch={false} href={`/main/stars/sent`}><span className="font-semibold">{profile.starredBy}</span> Starred</AppLink>
             </div>
           </div>
         </div>
@@ -348,7 +861,7 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
               {/* CONNECTED */}
               {relationship.is_connected && (
                 <button className="px-4 py-2 bg-green-600 text-white rounded-lg">
-                  Connected • Chat Available
+                  Connected
                 </button>
               )}
           
@@ -383,7 +896,7 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
                   relationship.is_star ? 'bg-yellow-500' : 'bg-indigo-600'
                 }`}
               >
-                {relationship.is_star ? 'Starred ⭐' : 'Star'}
+                {relationship.is_star ? '⭐' : 'Star'}
               </button>
             </>
           )}
@@ -398,35 +911,168 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
       </div>
 
       {/* Posts */}
-      {filteredPosts.length === 0 ? (
-        <p className="text-center text-gray-500 dark:text-gray-400 mt-4">No posts yet.</p>
-      ) : filteredPosts.map((post) =>
-          post.content_type === "short_video" ? (
-            <ReelCard key={post.id} post={post} />
-          ) : (
-            <PostCard
+      <DndContext
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+      >
+        {/* ---------------- PINNED POSTS ---------------- */}
+        <SortableContext
+          items={pinnedPosts.map((p) => p.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          {pinnedPosts.map((post) => (
+            <SortablePinnedPost
               key={post.id}
               post={post}
-              videoRef={videoRef}
-              currentUser={currentUser}
-              isMyProfile={isMyProfile}
-              handlePostAction={handlePostAction}
-              onDelete={(id: number) => {
-                setPosts(prev => prev.filter(p => p.id !== id));
-              }}
-              onViewed={() => {
-                setPosts(prev =>
-                  prev.filter(p => !p.is_deleted).map(p =>
-                    p.id === post.id
-                      ? { ...p, views_count: (p.views_count || 0) + 1 }
-                      : p
+            >
+              {post.content_type === "short_video" ? (
+                <ReelCard
+                  post={post}
+                />
+              ) : (
+                <PostCard
+                  post={post}
+                  videoRef={videoRef}
+                  currentUser={currentUser}
+                  isMyProfile={isMyProfile}
+                  handlePostAction={handlePostAction}
+                  showManageButtons={isMyProfile}
+                  hideStarButton={true}
+                  showJoinButton={false}
+                  onToggleProfilePin={handleTogglePin}
+                  isPinnedDraggable={true}
+                  canEdit={true}
+                  canRepost={true}
+                  canDelete={true}
+                  onDelete={(id: number) => {
+                    setPosts(prev =>
+                      prev.filter(p => p.id !== id)
+                    )
+                  }}
+                  onViewed={() => {
+                    setPosts(prev =>
+                      prev.map(p =>
+                        p.id === post.id
+                          ? {
+                              ...p,
+                              views_count:
+                                (p.views_count || 0) + 1
+                            }
+                          : p
+                      )
+                    )
+                  }}
+                />
+              )}
+            </SortablePinnedPost>
+          ))}
+        </SortableContext>
+      
+        {/* ---------------- NORMAL POSTS ---------------- */}
+        {normalPosts.length === 0 ? (
+          <p className="text-center text-gray-500 dark:text-gray-400 mt-4">
+            No posts yet.
+          </p>
+        ) : (
+          normalPosts.map((item) => {
+
+            if (!item) return null;
+
+            // REPOST
+            if (item.type === "repost") {
+              return (
+                <RepostCard
+                  key={`repost-${item.id}`}
+                  repost={item}
+                  handlePostAction={handlePostAction}
+                  starredUserIds={starredUserIds}
+                  hideStarButton={true}
+                />
+              );
+            }
+          
+            // SHORT VIDEO
+            if (item.content_type === "short_video") {
+              return (
+                <ReelCard
+                  key={item.id}
+                  post={item}
+                />
+              );
+            }
+          
+            // NORMAL POST
+            return (
+              <PostCard
+                key={item.id}
+          
+                post={item}
+          
+                videoRef={videoRef}
+          
+                currentUser={currentUser}
+          
+                isMyProfile={isMyProfile}
+          
+                handlePostAction={
+                  handlePostAction
+                }
+          
+                showManageButtons={
+                  isMyProfile
+                }
+          
+                canEdit={true}
+          
+                canRepost={true}
+          
+                canDelete={true}
+          
+                hideStarButton={true}
+          
+                showJoinButton={false}
+          
+                showPinnedLabel={false}
+          
+                isPinnedDraggable={false}
+          
+                onToggleProfilePin={
+                  handleTogglePin
+                }
+          
+                onDelete={(id: number) => {
+          
+                  setPosts(prev =>
+                    prev.filter(
+                      p => p.id !== id
+                    )
                   )
-                );
-              }}
-            />
-          )
-        )
-      }
+          
+                }}
+          
+                onViewed={() => {
+          
+                  setPosts(prev =>
+                    prev.map(p =>
+                      p.id === item.id
+                        ? {
+                            ...p,
+          
+                            views_count:
+                              (
+                                p.views_count || 0
+                              ) + 1
+                          }
+                        : p
+                    )
+                  )
+          
+                }}
+              />
+            );
+          })
+        )}
+      </DndContext>
 
     {showUnstarModal && (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -456,180 +1102,18 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
         </div>
       </div>
     )}
-    </div>
-  );
-}
 
-// PostCard Component
-function PostCard({ post, onViewed, videoRef, onDelete, currentUser, isMyProfile, handlePostAction }: any) {
-  const router = useRouter();
-  const [liked, setLiked] = useState(post.is_liked);
-  const [likes, setLikes] = useState(post.likes_count);
-  const isOwner = currentUser?.id === post.user?.id;
-
-  if (post.content_type === "short_video") return null;
-
-  const handleLike = async () => {
-    try {
-      const result = await apiRequest(`api/post/likes/${post.id}/toggle/`, { method: "POST" });
-      setLiked(result.liked);
-      setLikes(result.likes_count);
-    } catch (err) { console.error(err); }
-  };
-
-  const handleDelete = async () => {
-    if (!confirm("Delete this post?")) return;
-
-    try {
-      await apiRequest(`api/post/${post.id}/`, { method: "DELETE" });
-
-      onDelete(post.id);
-
-      alert("Post deleted");
-      setMenuOpen(false);
-    } catch (err) {
-      console.error(err);
-    }
-  };
-  
-  usePostView(post.id, onViewed);
-
-  return (
-    <div id={`post-${post.id}`} className="bg-white dark:bg-gray-900 p-4 rounded-2xl shadow-sm space-y-2 mt-2">
-      {/* Post Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          {post.user.avatar ? (
-            <img
-              src={post.user.avatar}
-              alt={post.user.username}
-              className="w-10 h-10 rounded-full object-cover cursor-pointer"
-            />
-          ) : (
-            <div className="w-10 h-10 rounded-full bg-gray-400 flex items-center justify-center text-white font-bold cursor-pointer">
-              {post.user.username.slice(0,2).toUpperCase()}
-            </div>
-          )}
-          <div>
-          {post.community_name && (
-            <span className="text-gray-500 dark:text-gray-400 text-sm">
-              {post.community_name}
-            </span>
-          )}
-            <p className="text-gray-700 dark:text-gray-300 font-semibold">{post.user.username}</p>
-            <p className="text-xs text-gray-400">{new Date(post.created_at).toLocaleString()}</p>
-          </div>
-        </div>
-        {isMyProfile && (
-          <div className="flex gap-2">
-            <button onClick={()=>handlePostAction('edit', post.id)}><Edit className="w-5 h-5 text-gray-500 hover:text-indigo-600"/></button>
-            <button onClick={handleDelete}><Trash2 className="w-5 h-5 text-gray-500 hover:text-red-600"/></button>
-            <button onClick={()=>handlePostAction('repost', post.id)}>
-              <Repeat className="w-5 h-5 text-gray-500 hover:text-indigo-600"/>
-            </button>
-          </div>
-        )}
+    {nextPage && (
+      <div className="flex justify-center py-4">
+        <button
+          onClick={() => fetchData(nextPage)}
+          disabled={loadingMore}
+          className="px-4 py-2 bg-indigo-600 text-white rounded-lg"
+        >
+          {loadingMore ? "Loading..." : "Load More"}
+        </button>
       </div>
-
-      <div onClick={() => router.push(`/main/home/${post.id}`)} className="cursor-pointer">
-        {post.caption && (
-          <p className="text-gray-800 dark:text-gray-200 line-clamp-3 mb-2 whitespace-pre-line">
-            {post.caption}
-          </p>
-        )}
-      
-        {post.media_files?.length > 0 && (
-          <div className={`grid gap-2 ${
-            post.media_files.length === 1
-              ? "grid-cols-1"
-              : post.media_files.length === 2
-              ? "grid-cols-2"
-              : "grid-cols-2 md:grid-cols-3"
-          }`}>
-            {post.media_files.map((media, index) => {
-              const isVideo = media.media_type === "video";
-      
-              return (
-                <div key={index} className="rounded-xl overflow-hidden bg-gray-200 dark:bg-gray-700">
-                  
-                  {!isVideo && (
-                    <img
-                      src={media.file_url}
-                      className="w-full max-h-[500px] object-cover"
-                      loading="lazy"
-                    />
-                  )}
-      
-                  {isVideo && (
-                    <video
-                      src={media.file_url}
-                      poster={media.thumbnail_url}
-                      controls
-                      preload="metadata"
-                      className="w-full max-h-[500px] aspect-video object-cover"
-                    />
-                  )}
-      
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Post Actions */}
-      <div className="flex items-center gap-6 mt-2">
-        <button onClick={handleLike} className={`flex items-center gap-1 font-medium ${liked ? 'text-blue-600' : 'text-gray-500'}`}><ThumbsUp className="mr-2"/>{likes}</button>
-        <button onClick={() => router.push(`/main/home/${post.id}`)} className="flex items-center gap-1 text-gray-500 font-medium"><MessageCircle className="mr-2"/>{post.comments_count}</button>
-        <ShareButton post={post} />
-          {post.views_count !== undefined && <span className="flex items-center text-gray-500"> <ChartNoAxesColumn className="mr-2" /> {post.views_count} views</span>}
-      </div>
-    </div>
-  );
-}
-
-function ReelCard({ post }: any) {
-  const router = useRouter();
-  
-  const goToReel = (e?: React.MouseEvent) => {
-    e?.stopPropagation(); // safety
-    router.push(`/main/reels/${post.id}`);
-  };
-  
-  const poster =
-    post.media_files?.find((m: any) => m.thumbnail_url)?.thumbnail_url ||
-    post.media_files?.[0]?.thumbnail_url ||
-    '';
-
-  return (
-    <div className="relative w-full h-[500px] overflow-hidden rounded-xl bg-black">
-
-      {/* Video Preview (no controls, no autoplay) */}
-      <video
-        src={post.media_files?.[0]?.file_url}
-        poster={poster}
-        preload="metadata"
-        className="w-full h-full object-cover"
-        muted
-        playsInline
-      />
-
-      {/* ▶️ Play Button → REDIRECT */}
-      <button
-        onClick={goToReel}
-        className="absolute inset-0 flex items-center justify-center"
-      >
-        <div className="bg-black/60 p-4 rounded-full text-white text-xl">
-          ▶
-        </div>
-      </button>
-
-      {/* Caption */}
-      {post.caption && (
-        <div className="absolute bottom-3 left-3 right-3 text-white text-sm font-medium line-clamp-2">
-          {post.caption}
-        </div>
-      )}
+    )}
     </div>
   );
 }

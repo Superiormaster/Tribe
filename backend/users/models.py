@@ -177,7 +177,15 @@ class SavedLoginDevice(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     is_trusted = models.BooleanField(default=True)
 
-class UserKeyPair(models.Model):
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+class UserDevice(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+
+    device_id = models.CharField(max_length=255, unique=True)
+    device_name = models.CharField(max_length=255)
+
     public_key = models.TextField()
-    created_at = models.DateTimeField(default=timezone.now)
+
+    is_active = models.BooleanField(default=True)
+    last_seen = models.DateTimeField(auto_now=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)

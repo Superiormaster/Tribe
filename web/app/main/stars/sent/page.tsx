@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import AppLink from '@/components/AppLink';
 import { apiRequest } from '@/utils/api'
 
 type User = {
@@ -12,14 +12,13 @@ type User = {
 
 export default function MyStarsPage() {
   const [users, setUsers] = useState<User[]>([])
-  const router = useRouter()
 
   useEffect(() => {
     loadStars()
   }, [])
 
   const loadStars = async () => {
-    const data = await apiRequest(`api/users/star/starred_me/`)
+    const data = await apiRequest(`api/users/star/my_stars/`)
     setUsers(data)
   }
 
@@ -28,10 +27,10 @@ export default function MyStarsPage() {
       <h1 className="text-xl font-bold mb-4">⭐ People I Starred</h1>
 
       {users.map(user => (
-        <div
+        <AppLink
           key={user.id}
-          onClick={() => router.push(`/main/profile/${user.username}`)}
-          className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-100"
+          href={`/main/profile/${user.username}`}
+          className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer"
         >
           {user.avatar ? (
             <img src={user.avatar} className="w-10 h-10 rounded-full" />
@@ -42,7 +41,7 @@ export default function MyStarsPage() {
           )}
 
           <p className="font-medium">{user.username}</p>
-        </div>
+        </AppLink>
       ))}
     </div>
   )

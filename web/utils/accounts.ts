@@ -6,12 +6,21 @@ type SavedAccount = {
 };
 
 /**
- * Save account (used after login)
+ * Save account after login
  */
-export function saveAccount(user: any, type: "google" | "password") {
-  const existing: SavedAccount[] = JSON.parse(localStorage.getItem("accounts") || "[]");
+export function saveAccount(
+  user: any,
+  type: "google" | "password"
+) {
+  const existing: SavedAccount[] =
+    JSON.parse(
+      localStorage.getItem("accounts") || "[]"
+    );
 
-  const updated = existing.filter(acc => acc.email !== user.email);
+  // remove duplicate
+  const updated = existing.filter(
+    (acc) => acc.email !== user.email
+  );
 
   updated.push({
     email: user.email,
@@ -20,28 +29,74 @@ export function saveAccount(user: any, type: "google" | "password") {
     username: user.username,
   });
 
-  localStorage.setItem("accounts", JSON.stringify(updated));
+  localStorage.setItem(
+    "accounts",
+    JSON.stringify(updated)
+  );
 }
 
 /**
- * Get all accounts (used in switch UI)
+ * Get all saved accounts
  */
 export function getAccounts(): SavedAccount[] {
   try {
-    return JSON.parse(localStorage.getItem("accounts") || "[]");
+    return JSON.parse(
+      localStorage.getItem("accounts") || "[]"
+    );
   } catch {
     return [];
   }
 }
 
-export function setActiveAccount(email: string) {
-  localStorage.setItem("active_account", email);
+/**
+ * Set currently active account
+ */
+export function setActiveAccount(
+  email: string
+) {
+  localStorage.setItem(
+    "active_account",
+    email
+  );
+
+  updateLastActive();
 }
 
-export function getActiveAccount(): string | null {
-  return localStorage.getItem("active_account");
+/**
+ * Get active account
+ */
+export function getActiveAccount():
+  | string
+  | null {
+  return localStorage.getItem(
+    "active_account"
+  );
 }
 
-function updateLastActive() {
-  localStorage.setItem("last_active", Date.now().toString());
+/**
+ * Remove one saved account
+ */
+export function removeAccount(
+  email: string
+) {
+  const accounts = getAccounts();
+
+  const updated = accounts.filter(
+    (acc) => acc.email !== email
+  );
+
+  localStorage.setItem(
+    "accounts",
+    JSON.stringify(updated)
+  );
+}
+
+/**
+ * Update activity timestamp
+ */
+export function updateLastActive() {
+  localStorage.setItem(
+    "last_active",
+    Date.now().toString()
+  );
 }

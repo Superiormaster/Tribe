@@ -1,44 +1,103 @@
+// useReelView.ts
 import { useEffect, useRef } from "react";
 import { apiRequest } from "@/utils/api";
 
-export const useReelView = (postId: number, onViewed?: () => void) => {
+type ReelViewProps = {
+  postId: number;
+  videoRef?: React.RefObject<HTMLVideoElement>;
+  onViewed?: () => void;
+};
+
+export const useReelView = ({
+  postId,
+  videoRef,
+  onViewed,
+}: ReelViewProps) => {
   const hasViewedRef = useRef(false);
 
   useEffect(() => {
-    let timer: any = null;
+    const video = videoRef?.current;
+    if (!video) return;
 
-    const el = document.getElementById(`post-${postId}`);
-    if (!el || hasViewedRef.current) return;
+    let watchStart = 0;
+    let accumulatedWatch = 0;
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && !hasViewedRef.current) {
-          // start timer (e.g. 3 seconds)
-          timer = setTimeout(async () => {
-            try {
-              const res = await apiRequest(`api/post/${postId}/view/`, {
-                method: "POST",
-              });
-              hasViewedRef.current = true;
-              if (res?.error) return;
-              onViewed?.();
-            } catch (err) {
-              console.error(err);
-            }
-          }, 3000); // ⏱️ 3 seconds
-        } else {
-          // user scrolled away → cancel
-          if (timer) clearTimeout(timer);
-        }
-      },
-      { threshold: 0.7 } // more strict for reels
+    const handlePlay = () => {
+      watchStart = Date.now();
+    };
+
+    const handlePause = () => {
+      if (watchStart) {
+        accumulatedWatch +=
+          (Date.now() - watchStart) / 1000;
+    
+        watchStart = 0;
+      }
+    };
+
+    const handleEnded = async () => {
+      accumulatedWatch +=
+        (Date.now() - watchStart) / 1000;
+
+      await sendView(true);
+    };
+
+    const sendView = async (completed = false) => {
+      if (hasViewedRef.current) return;
+
+      // minimum 3 seconds watched
+      if (accumulatedWatch < 3) return;
+
+      hasViewedRef.current = true;
+
+      try {
+        await apiRequest(
+          `api/post/${postId}/view/`,
+          {
+            method: "POST",
+            data: {
+              watch_time: accumulatedWatch,
+              completed,
+              skipped: !completed,
+            },
+          }
+        );
+
+        onViewed?.();
+      } catch (err) {
+        console.error(err);
+      }
+    };
+
+    const handleVisibility = async () => {
+      if (document.hidden) {
+        handlePause();
+        await sendView(false);
+      }
+    };
+
+    video.addEventListener("play", handlePlay);
+    video.addEventListener("pause", handlePause);
+    video.addEventListener("ended", handleEnded);
+
+    document.addEventListener(
+      "visibilitychange",
+      handleVisibility
     );
 
-    observer.observe(el);
-
     return () => {
-      observer.disconnect();
-      if (timer) clearTimeout(timer);
+      handlePause();
+
+      sendView(false);
+
+      video.removeEventListener("play", handlePlay);
+      video.removeEventListener("pause", handlePause);
+      video.removeEventListener("ended", handleEnded);
+
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibility
+      );
     };
-  }, [postId, onViewed]);
+  }, [postId, videoRef, onViewed]);
 };

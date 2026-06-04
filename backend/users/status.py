@@ -3,20 +3,31 @@ from django.utils import timezone
 from datetime import datetime
 
 def set_user_online(user_id):
-    redis_client.set(f"user:{user_id}:status", "online", ex=30)
+    redis_client.set(
+        f"user:{user_id}:status",
+        "online",
+        ex=30
+    )
 
 def set_user_offline(user_id):
-    redis_client.set(f"user:{user_id}:status", "offline")
-    redis_client.set(f"user:{user_id}:last_seen", timezone.now().isoformat())
+    redis_client.delete(f"user:{user_id}:status")
 
-def format_last_seen(timestamp_str):
-    if not timestamp_str:
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+
+    User.objects.filter(id=user_id).update(
+        last_seen=timezone.now()
+    )
+
+def format_last_seen(last_seen):
+    if not last_seen:
         return "recently"
 
-    try:
-        last_seen = datetime.fromisoformat(timestamp_str)
-    except:
-        return "recently"
+    if isinstance(last_seen, str):
+        try:
+            last_seen = datetime.fromisoformat(last_seen)
+        except:
+            return "recently"
 
     now = timezone.now()
     diff = now - last_seen
@@ -26,29 +37,28 @@ def format_last_seen(timestamp_str):
     if seconds < 60:
         return "just now"
 
-    minutes = seconds / 60
-    if minutes < 60:
-        return f"{int(minutes)} minutes ago"
+    if seconds < 3600:
+        return f"{int(seconds/60)} minutes ago"
 
-    hours = minutes / 60
-    if hours < 24:
-        return f"{int(hours)} hr ago"
+    if seconds < 86400:
+        return f"{int(seconds/3600)} hours ago"
 
-    days = hours / 24
-    if days < 2:
+    if seconds < 172800:
         return "yesterday"
 
-    return f"{int(days)} days ago"
+    return last_seen.strftime("%d/%m/%Y")
 
 def get_user_status(user_id):
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
     status = redis_client.get(f"user:{user_id}:status")
 
-    if status == "online":
-        return {"status": "online"}
+    user = User.objects.filter(id=user_id).first()
 
-    last_seen = redis_client.get(f"user:{user_id}:last_seen")
+    if status == b"online":
+        return {"status": "online"}
 
     return {
         "status": "offline",
-        "last_seen": format_last_seen(last_seen)
+        "last_seen": user.last_seen if user else None
     }

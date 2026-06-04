@@ -2,6 +2,7 @@ from django.db import models
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from communities.models import Community
 
 User = get_user_model()
 
@@ -27,11 +28,32 @@ class Post(models.Model):
         null=True,
         related_name='posts'
     )
+    replay_count = models.IntegerField(default=0)
+    skipped_views = models.IntegerField(default=0)
     views_count = models.PositiveIntegerField(default=0)
     is_deleted = models.BooleanField(default=False)
     is_approved = models.BooleanField(default=True)
-    is_pinned = models.BooleanField(default=False)
+    is_rejected = models.BooleanField(default=False)
+    is_edited = models.BooleanField(default=False)
+
+    profile_pinned = models.BooleanField(default=False)
+    profile_pin_order = models.PositiveIntegerField(
+        null=True,
+        blank=True
+    )
+
+    # COMMUNITY PIN
+    community_pinned = models.BooleanField(default=False)
+    community_pin_order = models.PositiveIntegerField(
+        null=True,
+        blank=True
+    )
+
+    # future drag/drop support
+    pin_updated_at = models.DateTimeField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def clean(self):
         if (
@@ -46,14 +68,35 @@ class Post(models.Model):
             return f"{self.user.username} - {self.content_type} in {self.community.name}"
         return f"{self.user.username} - {self.content_type}"
 
+    class Meta:
+      indexes = [
+          # PROFILE PIN QUERY OPTIMIZATION
+          models.Index(fields=["user", "profile_pinned", "profile_pin_order"]),
+  
+          # COMMUNITY PIN QUERY OPTIMIZATION
+          models.Index(fields=["community", "community_pinned", "community_pin_order"]),
+  
+          # GENERAL FEED PERFORMANCE
+          models.Index(fields=["user", "created_at"]),
+          models.Index(fields=["community", "created_at"]),
+  
+          # OPTIONAL: pinned filter fast lookup
+          models.Index(fields=["profile_pinned"]),
+          models.Index(fields=["community_pinned"]),
+      ]
+
 
 class PostView(models.Model):
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="views")
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    created_at = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
-      unique_together = ("post", "user")
+    watch_time = models.FloatField(default=0)
+    completed = models.BooleanField(default=False)
+    skipped = models.BooleanField(default=False)
+    replay_count = models.IntegerField(default=0)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_viewed_at = models.DateTimeField(auto_now=True)
 
 
 class PostMedia(models.Model):
@@ -97,6 +140,7 @@ class Comment(models.Model):
         related_name='replies',
         on_delete=models.CASCADE
     )
+    is_deleted = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -129,7 +173,8 @@ class CommentLike(models.Model):
 
 class Share(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    post = models.ForeignKey(Post, on_delete=models.CASCADE)
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="shares")
+    platform = models.CharField(max_length=50, default="unknown")
     created_at = models.DateTimeField(auto_now_add=True)
 
 
@@ -141,8 +186,32 @@ class Feed(models.Model):
     class Meta:
         ordering = ['-created_at']
 
-
 class Repost(models.Model):
+    REPOST_TYPES = (
+        ("normal", "Normal Repost"),
+        ("quote", "Quote Repost"),
+    )
+
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="reposts")
+    community = models.ForeignKey(
+        Community,
+        on_delete=models.CASCADE,
+        related_name="reposts",
+        null=True,
+        blank=True
+    )
+
+    repost_type = models.CharField(
+        max_length=10,
+        choices=REPOST_TYPES,
+        default="normal"
+    )
+
+    quote_text = models.TextField(blank=True, null=True)
+    is_deleted = models.BooleanField(default=False)
+
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user", "post", "repost_type")

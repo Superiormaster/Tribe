@@ -6,6 +6,14 @@ from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
 from django.http import JsonResponse
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
+from django.core.cache import cache
+import logging
+from post.models import Post, Repost
+from itertools import chain
+from operator import attrgetter
+from notifications.services import create_notification
+from notifications.serializers import NotificationSerializer
+from django.core.cache import cache
 from django.contrib.auth import get_user_model
 from .status import set_user_online, set_user_offline
 from rest_framework.exceptions import AuthenticationFailed
@@ -16,6 +24,7 @@ from django.utils.http import (
     urlsafe_base64_encode,
     urlsafe_base64_decode
 )
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.authtoken.models import Token
 from django.db import models
 from django.contrib.auth.models import User
@@ -28,7 +37,7 @@ from django.contrib.auth import login
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 import requests, uuid
-from post.models import Post
+from post.models import Post, Like
 from post.serializers import PostSerializer
 from django.utils.encoding import force_bytes
 from django_ratelimit.decorators import ratelimit
@@ -37,14 +46,16 @@ from sib_api_v3_sdk import ApiClient, Configuration
 from sib_api_v3_sdk.api import transactional_emails_api
 from sib_api_v3_sdk.models import SendSmtpEmail
 from users.email import send_brevo_email
-from .models import Star, ConnectionRequest, UserKeyPair, SavedLoginDevice
-from django.db.models import Count, Exists, OuterRef
+from .models import Star, ConnectionRequest, UserDevice, SavedLoginDevice
+from .utils import redis_client
+from django.db.models import Count, Exists, OuterRef, F
 from django.conf import settings
 from math import radians, sin, cos, sqrt, atan2
 
-from .serializers import RegisterSerializer, ProfileSerializer, GoogleAuthSerializer, CustomTokenObtainPairSerializer, PublicProfileSerializer
+from .serializers import RegisterSerializer, ProfileSerializer, GoogleAuthSerializer, CustomTokenObtainPairSerializer, PublicProfileSerializer, MiniUserSerializer
 
 User = get_user_model()
+logger = logging.getLogger(__name__)
 
 def distance(lat1, lon1, lat2, lon2):
     R = 6371  # km
@@ -191,6 +202,10 @@ def create_session(user, request, refresh_token):
     )
 
     return session
+
+class ProfilePostPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = "page_size"
 
 class GoogleLoginView(generics.GenericAPIView):
     permission_classes = [AllowAny]
@@ -492,6 +507,66 @@ def get_relationship(request_user, target_user):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def profile_view(request, username):
+
+    try:
+        user = User.objects.get(username=username)
+    except User.DoesNotExist:
+        return Response({"error": "User not found"}, status=404)
+
+    cache_key = f"profile:{username}:stats"
+    cached = redis_client.get(cache_key)
+
+    relationship = get_relationship(request.user, user)
+
+    if cached:
+        data = json.loads(cached)
+        data["relationship"] = relationship
+        return Response(data)
+
+    posts_count = Post.objects.filter(
+        user=user,
+        is_deleted=False,
+        is_approved=True
+    ).count()
+
+    reposts_count = Repost.objects.filter(
+        user=user,
+        is_deleted=False
+    ).count()
+
+    total_posts = posts_count + reposts_count
+
+    cache_payload = {
+        "profile": ProfileSerializer(user).data,
+        "stats": {
+            "posts": total_posts,
+            "reposts": reposts_count,
+            "stars": user.starred_count if hasattr(user, "starred_count") else 0,
+        }
+    }
+
+    redis_client.setex(
+        cache_key,
+        300,
+        json.dumps(cache_payload, default=str)
+    )
+
+    return Response({
+        **cache_payload,
+        "relationship": relationship
+    })
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def profile_posts(request, username):
+
+    page = int(request.query_params.get("page", 1))
+    cache_key = f"profile:{username}:feed:{page}"
+
+    cached = redis_client.get(cache_key)
+    if cached:
+        return Response(json.loads(cached))
+
     try:
         user = User.objects.get(username=username)
     except User.DoesNotExist:
@@ -501,25 +576,101 @@ def profile_view(request, username):
         user=user,
         is_deleted=False,
         is_approved=True
-    ).order_by("-created_at")
+    ).annotate(
+        likes_count=Count("likes", distinct=True),
+        comments_count=Count("comments", distinct=True),
+        is_liked=Exists(
+            Like.objects.filter(
+                post=OuterRef("pk"),
+                user=request.user
+            )
+        ),
+        is_pinned=F("profile_pinned"),
+        pin_order=F("profile_pin_order")
+    ).select_related("user", "community").prefetch_related("likes", "comments", "shares", "media_files").order_by("-profile_pinned", "profile_pin_order", "-created_at")
 
-    posts = posts_qs[:20]
+    reposts = Repost.objects.filter(
+        user=user,
+        is_deleted=False
+    ).select_related("user", "post", "post__user", "post__community").prefetch_related("post__media_files")
 
-    profile_data = ProfileSerializer(user).data
-    posts_data = PostSerializer(posts, many=True, context={"request": request}).data
+    post_items = [
+        {"type": "post", "created_at": p.created_at, "data": p}
+        for p in posts_qs
+    ]
 
-    data = {
-        "profile": profile_data,
-        "posts": posts_data,
-        "stats": {
-            "posts": posts_qs.count(),
-            "starred_user": profile_data["starred_count"],  # stars received
-            "stars": profile_data["stars_count"],          # stars given
-        },
-        "relationship": get_relationship(request.user, user)
+    repost_items = [
+        {"type": "repost", "created_at": r.created_at, "data": r}
+        for r in reposts
+    ]
+
+    combined = sorted(
+        post_items + repost_items,
+        key=lambda x: x["created_at"],
+        reverse=True
+    )
+
+    PAGE_SIZE = 20
+    start = (page - 1) * PAGE_SIZE
+    end = start + PAGE_SIZE
+
+    paged = combined[start:end]
+
+    results = []
+
+    for item in paged:
+
+        if item["type"] == "post":
+            results.append({
+                "type": "post",
+                "data": PostSerializer(
+                    item["data"],
+                    context={"request": request}
+                ).data
+            })
+
+        else:
+            r = item["data"]
+
+            post_obj = Post.objects.filter(id=r.post.id)\
+            .select_related("user", "community")\
+            .annotate(
+                likes_count=Count("likes", distinct=True),
+                comments_count=Count("comments", distinct=True),
+                shares_count=Count("shares", distinct=True),
+                is_liked=Exists(
+                    Like.objects.filter(
+                        post=OuterRef("pk"),
+                        user=request.user
+                    )
+                )
+            ).first()
+
+            results.append({
+                "type": "repost",
+                "data": {
+                    "id": r.id,
+                    "created_at": r.created_at,
+                    "repost_type": r.repost_type,
+                    "quote_text": r.quote_text,
+                    "user": MiniUserSerializer(r.user, context={"request": request}).data,
+                    "post": PostSerializer(post_obj, context={"request": request}).data
+                }
+            })
+
+    response = {
+        "results": results,
+        "next": page + 1 if len(combined) > end else None,
+        "previous": page - 1 if page > 1 else None
     }
 
-    return Response(data)
+    redis_client.setex(
+        cache_key,
+        60,
+        json.dumps(response, default=str)
+    )
+
+    return Response(response)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -535,15 +686,13 @@ def connect_user(request, user_id):
     )
 
     if created:
-        channel_layer = get_channel_layer()
-        async_to_sync(channel_layer.group_send)(
-            f"user_{target.id}",
-            {
-                "type": "send_notification",
-                "message": f"{user.username} sent you a connection request",
-                "notif_type": "connection_request",
-                "from_user_id": user.id
-            }
+
+        notif = create_notification(
+            type="connection_request",
+            recipient=target,
+            actors=[user],
+            post=None,
+            community=None
         )
 
     return Response({
@@ -615,48 +764,154 @@ def connected_users(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
-def discover_friends(request):
+def discover_people(request):
     user = request.user
 
-    users = User.objects.exclude(id=user.id)
+    # =========================
+    # EXCLUSIONS
+    # =========================
+    excluded_ids = [user.id]
 
-    # Step 2: If more than 20 users, apply optional filters
-    if users.count() > 20:
-        interest = request.query_params.get('interest')
-        country = request.query_params.get('country')
+    # =========================
+    # BASE QUERYSET
+    # =========================
+    users = User.objects.exclude(
+        id__in=excluded_ids
+    ).annotate(
 
-        if interest:
-            users = users.filter(interests__icontains=interest)
-        if country:
-            users = users.filter(country__iexact=country)
-
-    # Step 3: Sort by popularity (stars received)
-    users = users.annotate(
+        # popularity
         stars_received_count=Count('starred_by'),
+
+        # already starred
         is_starred=Exists(
             Star.objects.filter(
                 star=user,
                 starred_user=OuterRef('pk')
             )
         )
-    ).order_by('-stars_received_count')[:20]
+    )
 
-    # Step 4: Serialize
-    data = [
-        {
+    # =========================
+    # OPTIONAL FILTERS
+    # =========================
+    interest = request.query_params.get("interest")
+    country = request.query_params.get("country")
+
+    if interest:
+        users = users.filter(
+            interests__icontains=interest
+        )
+
+    if country:
+        users = users.filter(
+            country__iexact=country
+        )
+
+    # =========================
+    # SERIALIZE
+    # =========================
+    results = []
+
+    for u in users:
+
+        # -------------------------
+        # RELATIONSHIP
+        # -------------------------
+        rel = get_relationship(user, u)
+
+        # -------------------------
+        # DISTANCE
+        # -------------------------
+        distance_km = None
+        user_type = "suggested"
+
+        if (
+            user.latitude and
+            user.longitude and
+            u.latitude and
+            u.longitude
+        ):
+
+            distance_km = round(
+                distance(
+                    user.latitude,
+                    user.longitude,
+                    u.latitude,
+                    u.longitude
+                ),
+                2
+            )
+
+            if distance_km <= 5:
+                user_type = "nearby"
+
+        # -------------------------
+        # MUTUAL INTERESTS
+        # -------------------------
+        mutual_interests = []
+
+        if user.interests and u.interests:
+
+            mutual_interests = list(
+                set(user.interests).intersection(
+                    set(u.interests)
+                )
+            )
+
+        # -------------------------
+        # SERIALIZE
+        # -------------------------
+        results.append({
             "id": u.id,
             "username": u.username,
-            "avatar": u.avatar if u.avatar else None,
-            "bio": u.bio,
-            "interests": u.interests,
-            "country": u.country,
-            "stars_count": u.starred_by.count(),
-            "starred": u.is_starred, 
-        }
-        for u in users
-    ]
 
-    return Response(data)
+            "avatar": (
+                u.avatar.url
+                if hasattr(u.avatar, "url")
+                else u.avatar
+            ) if u.avatar else None,
+
+            "bio": u.bio,
+
+            "country": u.country,
+
+            "interests": u.interests,
+
+            "mutual_interests": mutual_interests,
+
+            "distance": distance_km,
+
+            "type": user_type,
+
+            "stars_count": u.stars_received_count,
+
+            # star system
+            "starred": u.is_starred,
+
+            # connect system
+            "connected": rel["is_connected"],
+            "requestPending": rel["request_sent"],
+            "requestReceived": rel["request_received"],
+        })
+
+    # =========================
+    # SORTING PRIORITY
+    # =========================
+    results.sort(
+        key=lambda x: (
+            x["type"] != "nearby",
+            -(len(x["mutual_interests"])),
+            -(x["stars_count"])
+        )
+    )
+
+    # =========================
+    # LIMIT TO 15
+    # =========================
+    return Response(results[:15])
+
+class NearbyPagination(PageNumberPagination):
+    page_size = 20
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -743,7 +998,7 @@ def discover_connect(request):
     if not nearby:
         fallback = []
 
-        for u in users[:10]:  # ✅ already filtered users
+        for u in users:  # ✅ already filtered users
             rel = get_relationship(user, u)
 
             fallback.append({
@@ -759,7 +1014,13 @@ def discover_connect(request):
 
         return Response(fallback)
 
-    return Response(nearby[:10])
+    paginator = NearbyPagination()
+    page = paginator.paginate_queryset(
+        nearby,
+        request
+    )
+    
+    return paginator.get_paginated_response(page)
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -828,6 +1089,12 @@ def accept_connection(request, user_id):
         conn.status = "accepted"
         conn.save()
 
+        notif = create_notification(
+            type="connection_accept",
+            recipient=target,
+            actors=[user]
+        )
+
         return Response({"status": "accepted"})
 
     except ConnectionRequest.DoesNotExist:
@@ -839,11 +1106,20 @@ def decline_connection(request, user_id):
     user = request.user
     target = User.objects.get(id=user_id)
 
-    ConnectionRequest.objects.filter(
+    deleted_count, _ = ConnectionRequest.objects.filter(
         from_user=target,
         to_user=user,
         status="pending"
     ).delete()
+
+    # ONLY notify if something was actually declined
+    if deleted_count > 0:
+
+        create_notification(
+            type="connection_declined",
+            recipient=target,
+            actors=[user]
+        )
 
     return Response({"status": "declined"})
 
@@ -858,12 +1134,13 @@ def complete_onboarding(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def onboarding_status(request):
-    """
-    Return the onboarding status for the current user.
-    """
     user = request.user
+
     return Response({
-        "completed": user.onboarding_step
+        "profileCompleted": user.onboarding_step >= 1,
+        "interestsCompleted": user.onboarding_step >= 2,
+        "starCompleted": user.onboarding_step >= 3,
+        "completed": user.onboarding_step >= 3, 
     })
 
 @api_view(['GET'])
@@ -952,32 +1229,49 @@ class StarViewSet(viewsets.ViewSet):
 
         if not created:
             star.delete()
-            starred = False
-        else:
-            starred = True
+        
+            cache.delete(f"starred:{user.id}")
+        
+            return Response({"starred": False})
+        
+        cache.delete(f"starred:{user.id}")
 
-            # 🔔 Notification (SAFE FIXED VERSION)
-            channel_layer = get_channel_layer()
-            async_to_sync(channel_layer.group_send)(
-                f"user_{target_user.id}",
-                {
-                    "type": "send_notification",
-                    "message": f"{user.username} starred you ⭐",
-                    "notif_type": "star",
-                    "from_user_id": user.id
-                }
-            )
+        user.onboarding_step = max(user.onboarding_step, 3)
+        user.save(update_fields=["onboarding_step"])
+    
+        return Response({"starred": True})
 
-        return Response({
-            "starred": starred
-        })
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_starred_users(request):
+    user = request.user
+    cache_key = f"starred:{user.id}"
+
+    # ✅ 1. Try cache first
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return Response({"starred_users": cached})
+
+    try:
+        # ✅ 2. Query DB
+        starred_ids = list(
+            Star.objects.filter(star=user)
+            .values_list("starred_user_id", flat=True)
+        )
+
+        # ✅ 3. Store in cache (5m)
+        cache.set(cache_key, starred_ids, 300)
+
+        return Response({"starred_users": starred_ids})
+
+    except Exception as e:
+        logger.error(f"get_starred_users failed: {e}")
+        return Response({"starred_users": []})
 
 # -----------------------------
 # PROFILE
 # -----------------------------
 class ProfileView(generics.RetrieveUpdateAPIView):
-
-    #parser_classes = [MultiPartParser, FormParser]
     serializer_class = ProfileSerializer
     queryset = User.objects.all()
     permission_classes = [IsAuthenticated]
@@ -985,19 +1279,39 @@ class ProfileView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         return self.request.user
 
-    def patch(self, request):
+    def patch(self, request, *args, **kwargs):
         user = self.get_object()
-        serializer = self.get_serializer(user, data=request.data, partial=True)
+
+        serializer = self.get_serializer(
+            user,
+            data=request.data,
+            partial=True
+        )
+
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
-        if user.onboarding_step == 1:
-            user.onboarding_step = 2
-            user.save(update_fields=["onboarding_step"])
-            # Re-serialize to include updated onboarding step
-            serializer = self.get_serializer(user)
+        # STEP 1 COMPLETED
+        user.onboarding_step = max(user.onboarding_step, 1)
+        user.save(update_fields=["onboarding_step"])
 
         return Response(serializer.data)
+
+@api_view(['PATCH'])
+@permission_classes([IsAuthenticated])
+def save_interests(request):
+    user = request.user
+
+    interests = request.data.get("interests", [])
+
+    user.interests = interests
+    user.onboarding_step = max(user.onboarding_step, 2)
+
+    user.save(update_fields=["interests", "onboarding_step"])
+
+    return Response({
+        "message": "Interests saved"
+    })
 
 class PublicProfileView(generics.RetrieveAPIView):
 
@@ -1032,7 +1346,7 @@ def socket_auth(request):
         "user_id": user.id,
         "username": user.username,
         "avatar": getattr(user, "avatar", None),
-        "access": str(refresh.access_token),
+        "token": str(refresh.access_token),
     })
 
 @api_view(["GET"])
@@ -1054,46 +1368,57 @@ def set_offline(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def heartbeat(request):
-    user_id = request.user.id
+    user = request.user
 
+    # live presence
     redis_client.set(
-        f"user:{user_id}:status",
+        f"user:{user.id}:status",
         "online",
         ex=30
     )
 
+    user.last_seen = timezone.now()
+    user.save(update_fields=["last_seen"])
+
     return Response({"status": "alive"})
 
-@api_view(["GET"])
-def get_public_key(request, user_id):
-    try:
-      keypair = UserKeyPair.objects.filter(user_id=user_id).first()
-
-      return Response({
-          "public_key": keypair.public_key if keypair else ""
-      })
-    except UserKeyPair.DoesNotExist:
-        return Response({
-            "public_key": None
-        })
-
 @api_view(["POST"])
-def save_public_key(request):
+@permission_classes([IsAuthenticated])
+def register_device(request):
     user = request.user
 
+    device_id = request.data.get("device_id")
+    device_name = request.data.get("device_name")
     public_key = request.data.get("public_key")
 
-    if not public_key:
-        return Response(
-            {"error": "public_key required"},
-            status=400
-        )
+    if not all([device_id, public_key]):
+        return Response({"error": "missing fields"}, status=400)
 
-    keypair, _ = UserKeyPair.objects.get_or_create(user=user)
-    keypair.public_key = public_key
-    keypair.save()
+    device, _ = UserDevice.objects.update_or_create(
+        user=user,
+        device_id=device_id,
+        defaults={
+            "device_name": device_name,
+            "public_key": public_key,
+            "is_active": True
+        }
+    )
 
-    return Response({"status": "ok"})
+    return Response({"status": "device registered"})
+
+class RotateDeviceKey(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        device_id = request.data["device_id"]
+        new_key = request.data["public_key"]
+
+        UserDevice.objects.filter(
+            user=request.user,
+            device_id=device_id
+        ).update(public_key=new_key)
+
+        return Response({"status": "rotated"})
 
 class DeviceListView(APIView):
     permission_classes = [IsAuthenticated]

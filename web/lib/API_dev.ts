@@ -37,11 +37,13 @@ export type Tribe = {
 };
 
 export async function joinCommunity(communityId: string) {
-  return apiRequest(`/api/communities/${communityId}/join/`, 'POST');
+  return apiRequest(`api/communities/${communityId}/join/`, {
+    method: 'POST',
+  });
 }
 
 export async function leaveCommunity(communityId: string) {
-  return apiRequest(`/api/communities/${communityId}/leave/`, 'POST');
+  return apiRequest(`api/communities/${communityId}/leave/`, 'POST');
 }
 
 // ------------------- TRIBES -------------------
@@ -50,7 +52,7 @@ export const fetchTribeData = async (
   page = 1,
   currentUserId?: number
 ): Promise<Tribe> => {
-  const tribe = await apiRequest(`/api/tribes/${tribeId}/`);
+  const tribe = await apiRequest(`api/tribes/${tribeId}/`);
 
   const communities: Community[] = (tribe.communities || []).map((c: any) => ({
     id: c.id,

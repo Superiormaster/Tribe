@@ -38,7 +38,7 @@ export default function VoiceRecorderUI({
   };
   
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-gray-300 dark:bg-gray-800 text-white z-50 px-4 py-3">
+    <div className="fixed bottom-0 left-0 right-0 bg-gray-300 dark:bg-gray-800 text-white z-[999] px-4 py-3">
 
       {/* Waveform */}
       {!isPaused && (
@@ -56,7 +56,7 @@ export default function VoiceRecorderUI({
       )}
       
       {/* Controls */}
-      <div className="flex items-center justify-between mt-2">
+      <div className="flex text-gray-700 dark:text-white items-center justify-between mt-2">
         <button onClick={onCancel}>
           <Trash2 size={20} />
         </button>

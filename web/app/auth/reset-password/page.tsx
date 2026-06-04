@@ -1,11 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { useSearchParams, useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
+import { useNavigation } from "@/utils/useNavigation"
 import { Eye, EyeOff } from 'lucide-react'
 import { apiRequest } from '@/utils/api'
 
 export default function ResetPasswordPage() {
+  const { push } = useNavigation()
+  
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -15,7 +18,8 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false)
 
   const searchParams = useSearchParams()
-  const router = useRouter()
+  const token = searchParams.get('token')
+  const uid = searchParams.get('uid')
 
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -35,13 +39,13 @@ export default function ResetPasswordPage() {
     setLoading(true)
 
     try {
-      await apiRequest('api/users/reset-password/', {
+      const data = await apiRequest('api/users/reset-password/', {
         method: 'POST',
-        data: { password, uid },
+        data: { password, uid, token },
       })
 
       setMessage(data.message);
-      setTimeout(() => router.push('/auth/login'), 2000)
+      setTimeout(() => push('/auth/login'), 2000)
     } catch (err: any) {
       setError(err.message || 'Failed to reset password')
     } finally {

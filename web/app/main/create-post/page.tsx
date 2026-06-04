@@ -1,8 +1,14 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import { useSearchParams, usePathname } from 'next/navigation';
+import { useNavigation } from "@/utils/useNavigation"
 import toast from 'react-hot-toast';
 import { Toaster } from 'react-hot-toast';
+import {
+  savePostDraft,
+  getPostDraft,
+  deletePostDraft
+} from "@/lib/messageDB";
 import ButtonLoader from "@/components/ButtonLoader";
 import Skeleton from '@/components/Skeleton';
 import { apiRequest } from '@/utils/api';
@@ -12,13 +18,23 @@ export default function CreatePostPage() {
   const [content, setContent] = useState('');
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [images, setImages] = useState<(File | string)[]>([]);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [video, setVideo] = useState<File | string | null>(null);
   const [loading, setLoading] = useState(false);
   const [fileProgress, setFileProgress] = useState<Record<string, number>>({});
-  const router = useRouter();
+  const { push } = useNavigation()
   const isEdit = searchParams.get('edit') === 'true';
   const postId = searchParams.get('postId');
+  const modeParam = searchParams.get('mode');
+
+  const [mode, setMode] = useState<'global' | 'community' | 'reel'>(
+    modeParam === 'reel'
+      ? 'reel'
+      : modeParam === 'community'
+      ? 'community'
+      : 'global'
+  );
 
   // Selected community (could be from any tribe)
   const [selectedCommunity, setSelectedCommunity] = useState<number | null>(
@@ -28,9 +44,11 @@ export default function CreatePostPage() {
   
   const [communityData, setCommunityData] = useState<any>(null);
   const [isEntertainmentTribe, setIsEntertainmentTribe] = useState<boolean | null>(null);
-  const isGlobal = !selectedCommunity;
+  const isGlobal = mode === 'global';
+  const isCommunity = mode === 'community';
+  const isReel = mode === 'reel';
+  
   const isEntertainment = isEntertainmentTribe === true;
-  const isNormalCommunity = selectedCommunity && !isEntertainment;
   
   const allowReel = isEntertainmentTribe === true;
   const allowImages = true;
@@ -39,28 +57,42 @@ export default function CreatePostPage() {
   const MAX_IMAGES = 5;
 
   useEffect(() => {
-    const draft = {
-      content,
-      images,
-      video,
-      selectedCommunity,
+    const save = async () => {
+      await savePostDraft({
+        draftId: selectedCommunity ? `community-${selectedCommunity}` : "global",
+        content,
+        imageFiles: imageUrls,
+        imageUrls,
+        video: typeof video === "string" ? video : null,
+        selectedCommunity,
+      });
     };
-    localStorage.setItem("post_draft", JSON.stringify(draft));
-  }, [content, images, video, selectedCommunity]);
+  
+    save();
+  }, [content, imageUrls, video, selectedCommunity]);
 
   useEffect(() => {
-    const saved = localStorage.getItem("post_draft");
-    if (saved && !isEdit) {
-      const draft = JSON.parse(saved);
+    const load = async () => {
+      const draftId = selectedCommunity
+        ? `community-${selectedCommunity}`
+        : "global";
+  
+      const draft = await getPostDraft(draftId);
+  
+      if (!draft) return;
+  
       setContent(draft.content || "");
-      setImages(draft.images || []);
+      setImageUrls(draft.imageUrls || []);
       setVideo(draft.video || null);
       setSelectedCommunity(draft.selectedCommunity || null);
-    }
-  }, []);
+    };
   
+    if (!isEdit) load();
+  }, [selectedCommunity]);
+
   useEffect(() => {
-    setImages([]);
+    setImageUrls([]);
+    setImageFiles([]);
     setVideo(null);
   }, [selectedCommunity]);
   
@@ -80,12 +112,12 @@ export default function CreatePostPage() {
 
     if (!e.target.files) return;
     const files = Array.from(e.target.files);
-    if (files.length + images.length > MAX_IMAGES) {
+    if (files.length + imageFiles.length > MAX_IMAGES) {
       alert(`You can only upload up to ${MAX_IMAGES} images`);
       return;
     }
-    setImages(prev => [...prev, ...files]);
-    setVideo(null); // prevent video selection
+    setImageFiles(prev => [...prev, ...files]);
+    setVideo(null); 
   };
 
   // Handle video selection (max 1)
@@ -97,7 +129,8 @@ export default function CreatePostPage() {
     if (isEntertainmentTribe) {
       // ✅ ONLY REELS
       setVideo(file);
-      setImages([]);
+      setImageFiles([]);
+      setImageUrls([]);
       return;
     }
   
@@ -107,11 +140,12 @@ export default function CreatePostPage() {
     }
   
     setVideo(file);
-    setImages([]);
+    setImageUrls([]);
+    setImageFiles([]);
   };
 
   const removeImage = (index: number) => {
-    setImages(prev => prev.filter((_, i) => i !== index));
+    setImageFiles(prev => prev.filter((_, i) => i !== index));
   };
 
   const removeVideo = () => setVideo(null);
@@ -140,7 +174,7 @@ export default function CreatePostPage() {
             }
           });
   
-          setImages(imageUrls);
+          setImageUrls(imageUrls);
           if (videoUrl) setVideo(videoUrl);
         }
   
@@ -155,7 +189,7 @@ export default function CreatePostPage() {
   }, [isEdit, postId]);
 
   const handlePost = async () => {
-    if (!content.trim() && images.length === 0 && !video) return;
+    if (!content.trim() && imageFiles.length === 0 && !video) return;
     if (!!selectedCommunity && !isEntertainmentTribe && !selectedCommunity) {
       alert("Please select a community");
       return;
@@ -173,7 +207,7 @@ export default function CreatePostPage() {
       let mediaUrls: any[] = [];
 
       const filesToUpload = [
-        ...(images.filter(i => i instanceof File) as File[]),
+        ...(imageFiles.filter(i => i instanceof File) as File[]),
         ...(video instanceof File ? [video] : [])
       ];
 
@@ -194,7 +228,7 @@ export default function CreatePostPage() {
       }
       
       const existingMedia = [
-        ...images.filter(i => typeof i === "string").map(url => ({ url, type: "image" })),
+        ...imageFiles.filter(i => typeof i === "string").map(url => ({ url, type: "image" })),
         ...(typeof video === "string" ? [{ url: video, type: "video" }] : [])
       ];
 
@@ -204,7 +238,7 @@ export default function CreatePostPage() {
         contentType = "short_video";
       } else if (video) {
         contentType = "long_video";
-      } else if (images.length > 0) {
+      } else if (imageFiles.length > 0) {
         contentType = "image";
       }
       
@@ -235,11 +269,14 @@ export default function CreatePostPage() {
   
       alert('Post created successfully!');
       setContent('');
-      setImages([]);
+      setImageUrls([]);
+      setImageFiles([]);
       setVideo(null);
       setFileProgress({});
-      localStorage.removeItem("post_draft");
-      router.push('/main/home');
+      await deletePostDraft(
+        selectedCommunity ? `community-${selectedCommunity}` : "global"
+      );
+      push('/main/home');
     } catch (err:any) {
       console.log("FULL ERROR:", err.data || err);
       toast.error('Failed to create post');
@@ -292,7 +329,7 @@ export default function CreatePostPage() {
 
   return (
     <div className="max-w-3xl mx-auto p-4 space-y-4">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{allowReel ? "Create Reel" : selectedCommunity ? "Create Community Post" : isEdit ? "Edit Post" : "Create Post"}
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{allowReel ? "Create Entertainment Post" : selectedCommunity ? "Create Community Post" : isEdit ? "Edit Post" : "Create Post"}
       </h1>
 
       <div className="bg-white dark:bg-gray-900 p-4 rounded-2xl shadow-sm transition-colors space-y-3">
@@ -300,46 +337,47 @@ export default function CreatePostPage() {
         <div className="flex gap-2 mb-2">
 
           {/* GLOBAL */}
-          <button
-            onClick={() => {
-              !selectedCommunity;
-              setSelectedCommunity(null);
-            }}
-            disabled={!isGlobal}
-            className={`px-3 py-1 rounded-full font-medium ${
-              isGlobal
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-            }`}
-          >
-            Global
-          </button>
+          {isGlobal && (
+            <button
+              onClick={() => {
+                setMode('global');
+                setSelectedCommunity(null);
+              }}
+              className={`px-3 py-1 rounded-full font-medium ${
+                isGlobal ? 'bg-indigo-600 text-white' : 'bg-gray-300 text-gray-500'
+              }`}
+            >
+              Global
+            </button>
+          )}
         
           {/* COMMUNITY */}
-          <button
-            onClick={() => !!selectedCommunity && !isEntertainmentTribe}
-            disabled={!isNormalCommunity}
-            className={`px-3 py-1 rounded-full font-medium ${
-              isNormalCommunity
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-            }`}
-          >
-            Community
-          </button>
+          {isCommunity && (
+            <button
+              onClick={() => {
+                setMode('community');
+              }}
+              className={`px-3 py-1 rounded-full font-medium ${
+                isCommunity ? 'bg-indigo-600 text-white' : 'bg-gray-300 text-gray-500'
+              }`}
+            >
+              Community
+            </button>
+          )}
         
           {/* REEL */}
-          <button
-            onClick={() => isEntertainmentTribe}
-            disabled={!isEntertainment}
-            className={`px-3 py-1 rounded-full font-medium ${
-              isEntertainment
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-            }`}
-          >
-            Reel
-          </button>
+          {isReel && isEntertainment && (
+            <button
+              onClick={() => {
+                setMode('reel');
+              }}
+              className={`px-3 py-1 rounded-full font-medium ${
+                isReel ? 'bg-indigo-600 text-white' : 'bg-gray-300 text-gray-500'
+              }`}
+            >
+              Entertainment Post
+            </button>
+          )}
         
         </div>
 
@@ -353,12 +391,12 @@ export default function CreatePostPage() {
         />
 
         {/* Images Preview */}
-        {images.length > 0 && (
+        {imageFiles.length > 0 && (
           <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-            {images.map((img, idx) => (
+            {imageFiles.map((file, idx) => (
               <div key={idx} className="relative group">
                 <img
-                  src={typeof img === "string" ? img : URL.createObjectURL(img)}
+                  src={URL.createObjectURL(file)}
                   alt={`preview-${idx}`}
                   className="w-full h-24 object-cover rounded-lg"
                 />
@@ -369,7 +407,7 @@ export default function CreatePostPage() {
                 >
                   ×
                 </button>
-                {loading && renderProgressBar(img)}
+                {file instanceof File && loading && renderProgressBar(file)}
               </div>
             ))}
           </div>
@@ -394,7 +432,7 @@ export default function CreatePostPage() {
             >
               ×
             </button>
-            {loading && renderProgressBar(video)}
+            {loading && video instanceof File && renderProgressBar(video)}
           </div>
         )}
 

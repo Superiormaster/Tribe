@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import AppLink from '@/components/AppLink';
 import { Home, MessageSquare, PlusCircle, Bell } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useContext } from "react";
@@ -22,12 +22,12 @@ export default function BottomNav() {
   const profileActive = pathname.startsWith("/main/profile");
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 flex justify-around items-center h-16 z-50">
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 flex justify-around items-center h-16 z-40">
       
       {navItems.map(({ name, path, icon: Icon }) => {
         const active = pathname === path;
         return (
-          <Link key={name} href={path} className="flex flex-col items-center text-xs relative">
+          <AppLink key={name} prefetch={false} href={path} className="flex flex-col items-center text-xs relative">
             <Icon className={active ? "text-indigo-600" : "text-gray-500"} />
             {name === "Notifications" && count > 0 && (
               <span className="absolute -top-1 right-4 bg-red-500 text-white text-[10px] px-1 rounded-full">
@@ -35,13 +35,13 @@ export default function BottomNav() {
               </span>
             )}
             <span className={active ? "text-indigo-600" : "text-gray-500"}>{name}</span>
-          </Link>
+          </AppLink>
         );
       })}
 
       {/* Profile */}
       {user ? (
-        <Link href={`/main/profile/${user.username}`} className="flex flex-col items-center text-xs">
+        <AppLink href={`/main/profile/${user.username}`} prefetch={false} className="flex flex-col items-center text-xs">
           {user.avatar ? (
             <img
               src={user.avatar}
@@ -57,7 +57,7 @@ export default function BottomNav() {
             </div>
           )}
           <span className={profileActive ? "text-indigo-600" : "text-gray-500"}>Profile</span>
-        </Link>
+        </AppLink>
       ) : (
         <div className="w-6 h-6 bg-gray-200 rounded-full animate-pulse"></div>
       )}

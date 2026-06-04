@@ -22,59 +22,117 @@ function getDB() {
   return dbPromise;
 }
 
-export async function storeRefreshToken(email: string, token: string) {
+// =========================
+// STORE REFRESH TOKEN
+// =========================
+export async function storeRefreshToken(
+  email: string,
+  token: string
+) {
   const db = await getDB();
   if (!db) return;
 
-  await db.put("tokens", token, `refresh_${email}`);
+  await db.put(
+    "tokens",
+    token,
+    `refresh_${email}`
+  );
 }
 
-export async function getRefreshToken() {
+// =========================
+// GET REFRESH TOKEN
+// =========================
+export async function getRefreshToken(
+  email?: string
+) {
   const db = await getDB();
   if (!db) return null;
-  
-  const email = localStorage.getItem("active_account");
-  if (!email) return null;
 
-  return db.get("tokens", `refresh_${email}`);
+  const selected =
+    email ||
+    localStorage.getItem(
+      "active_account"
+    );
+
+  if (!selected) return null;
+
+  return db.get(
+    "tokens",
+    `refresh_${selected}`
+  );
 }
 
-export async function clearTokens() {
+// =========================
+// DELETE SINGLE TOKEN
+// =========================
+export async function deleteRefreshToken(
+  email?: string
+) {
   const db = await getDB();
   if (!db) return;
-  
-  const email = localStorage.getItem("active_account");
-  if (!email) return null;
 
-  await db.delete("tokens", `refresh_${email}`);
+  const selected =
+    email ||
+    localStorage.getItem(
+      "active_account"
+    );
+
+  if (!selected) return;
+
+  await db.delete(
+    "tokens",
+    `refresh_${selected}`
+  );
+}
+
+// =========================
+// CLEAR ALL TOKENS
+// =========================
+export async function clearAllTokens() {
+  const db = await getDB();
+  if (!db) return;
+
+  await db.clear("tokens");
 }
 
 // =========================
 // STORE PRIVATE KEY
 // =========================
-export async function storePrivateKey(base64: string) {
+export async function storePrivateKey(base64: string, email: string) {
   const db = await getDB();
   if (!db) return;
 
-  await db.put("keys", base64, "private");
+  const selected = email || localStorage.getItem("active_account");
+  if (!selected) return;
+
+  await db.put("keys", base64, `private_${selected}`);
 }
 
 // =========================
 // GET PRIVATE KEY
 // =========================
-export async function getPrivateKey() {
+export async function getPrivateKey(email: string) {
   const db = await getDB();
   if (!db) return null;
 
-  return db.get("keys", "private");
+  const selected = email || localStorage.getItem("active_account");
+
+  if (!selected) return null;
+
+  return db.get("keys", `private_${selected}`);
 }
 
 // =========================
-// CLEAR KEYS (LOGOUT)
+// CLEAR KEYS
 // =========================
-export async function clearKeys() {
+export async function clearKeys(email: string) {
   const db = await getDB();
   if (!db) return;
 
-  await db.delete("keys", "private");
+  const selected =
+    email || localStorage.getItem("active_account");
+
+  if (!selected) return;
+
+  await db.delete("keys", `private_${selected}`);
 }

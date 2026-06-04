@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { apiRequest } from '@/utils/api';
 import { connectUser, removeConnection, cancelConnection } from '@/lib/api';
 import { motion } from 'framer-motion';
@@ -18,8 +17,6 @@ type User = {
 export default function DiscoverPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
-
-  const router = useRouter();
 
   useEffect(() => {
     fetchUsers();

@@ -2,19 +2,24 @@ export function startActivityTracking(onInactive?: () => void) {
   let timer: any;
 
   const update = () => {
-    localStorage.setItem("last_active", Date.now().toString());
-    if (timer) clearTimeout(timer);
+    const now = Date.now();
 
+    localStorage.setItem("last_active", now.toString());
+    localStorage.setItem("last_seen", now.toString());
+
+    clearTimeout(timer);
+
+    // UI inactivity only (5 min)
     timer = setTimeout(() => {
       onInactive?.();
-    }, 5 * 60 * 1000); // 5 minutes
+    }, 5 * 60 * 1000);
   };
 
-  const events = ["click", "scroll", "keydown"];
+  const events = ["click", "scroll", "keydown", "touchstart"];
 
   events.forEach(e => window.addEventListener(e, update));
-  
-  update(); // start immediately
+
+  update();
 
   return () => {
     events.forEach(e => window.removeEventListener(e, update));
@@ -23,12 +28,12 @@ export function startActivityTracking(onInactive?: () => void) {
 }
 
 export function isSessionExpired() {
-  const last = localStorage.getItem("last_active");
-  if (!last) return false;
+  const last = localStorage.getItem("last_seen");
+  if (!last) return true;
 
   const diff = Date.now() - Number(last);
 
-  const FIVE_MINUTES = 5 * 60 * 1000;
+  const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
 
-  return diff > FIVE_MINUTES;
+  return diff > THIRTY_DAYS;
 }

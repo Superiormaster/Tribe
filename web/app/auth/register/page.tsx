@@ -2,12 +2,12 @@
 
 import { useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
-import { useRouter } from 'next/navigation'
+import { useNavigation } from "@/utils/useNavigation"
 import { apiRequest } from '@/utils/api'
 
 export default function RegisterPage() {
 
-  const router = useRouter()
+  const { push } = useNavigation()
 
   const [username,setUsername] = useState('')
   const [message, setMessage] = useState('')
@@ -68,12 +68,12 @@ export default function RegisterPage() {
           username,
           email,
           password
-        })
+        },
       })
 
       alert(data.message)
 
-      router.push('/auth/login')
+      push('/auth/login')
 
     }catch(err:any){
 

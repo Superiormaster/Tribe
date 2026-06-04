@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import { tribe } from "@/assets";
+import { forceHome } from "@/lib/authEvents";
 import { motion } from "framer-motion";
 
 interface LoadingScreenProps {
@@ -19,7 +20,9 @@ export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
       index++;
       if (index > fullText.length) {
         clearInterval(interval);
-        setTimeout(() => { if (onComplete) onComplete(); }, 1000);
+        setTimeout(() => {
+          forceHome();
+        }, 1000);
       }
     }, 150);
     return () => clearInterval(interval);

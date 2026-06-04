@@ -1,17 +1,19 @@
-import { generateKeyPair } from "./crypto";
+import { generateRSAKeyPair } from "./crypto/rsaKeyPair";
 import { apiRequest } from "@/utils/api";
 import { getPrivateKey, storePrivateKey } from "./keyStore";
 
 // =========================
 // RUN ON LOGIN
 // =========================
-export async function setupKeys(userId: number) {
-  const existing = await getPrivateKey();
+export async function setupKeys(userId: number, email: string) {
+  console.log("CHECK EXISTING KEY...");
+  const existing = await getPrivateKey(email);
+  console.log("EXISTING KEY:", existing);
 
   // already exists → skip
   if (existing) return;
 
-  const keyPair = await generateKeyPair();
+  const keyPair = await generateRSAKeyPair();
 
   // export keys
   const publicKey = await crypto.subtle.exportKey("spki", keyPair.publicKey);
@@ -33,5 +35,6 @@ export async function setupKeys(userId: number) {
   });
 
   // store private key locally (IndexedDB)
-  await storePrivateKey(privateKeyBase64);
+  await storePrivateKey(privateKeyBase64, email);
+  console.log("PRIVATE KEY STORED IN INDEXEDDB", privateKeyBase64);
 }

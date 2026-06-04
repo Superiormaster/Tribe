@@ -1,20 +1,30 @@
-"use client";
+'use client';
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import Link from "next/link";
+import AppLink from '@/components/AppLink';
 import { Users } from "lucide-react";
 
-import { fetchTribeData, joinCommunity, leaveCommunity } from "@/lib/API_dev";
-import Skeleton from "@/components/Skeleton"; 
-import LoadingSpinner from "@/components/LoadingSpinner";
+import {
+  fetchTribeData,
+  joinCommunity,
+} from "@/lib/API_dev";
+
+import Skeleton from "@/components/Skeleton";
 
 interface Community {
   id: string;
   name: string;
+
   membersCount: number;
+
   cover_image: string;
+
   joined: boolean;
+
+  requested?: boolean;
+
+  join_approval_required?: boolean;
 }
 
 interface Tribe {
@@ -25,147 +35,319 @@ interface Tribe {
 }
 
 export default function TribePage() {
-  const { id } = useParams();
-  const [tribe, setTribe] = useState<Tribe | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
 
-  // Fetch tribe + communities
+  const { id } = useParams();
+
+  const [tribe, setTribe] =
+    useState<Tribe | null>(null);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [page, setPage] =
+    useState(1);
+
+  const [hasMore, setHasMore] =
+    useState(true);
+
+  // LOAD TRIBE
   const loadTribe = async () => {
+
     if (!hasMore) return;
+
     setLoading(true);
+
     try {
-      const data = await fetchTribeData(id, page);
-      console.log("Fetched tribe data:", data);
-  
+
+      const data = await fetchTribeData(
+        id,
+        page
+      );
+
       if (!tribe) {
+
         setTribe(data);
+
       } else {
-        // Deduplicate by community id
-        const existingIds = new Set(tribe.communities.map(c => c.id));
-        const newCommunities = data.communities.filter(c => !existingIds.has(c.id));
-  
+
+        const existingIds = new Set(
+          tribe.communities.map(
+            c => c.id
+          )
+        );
+
+        const newCommunities =
+          data.communities.filter(
+            (c: Community) =>
+              !existingIds.has(c.id)
+          );
+
         setTribe({
           ...tribe,
-          communities: [...tribe.communities, ...newCommunities],
+          communities: [
+            ...tribe.communities,
+            ...newCommunities,
+          ],
         });
       }
-  
-      setHasMore(data.communities.length > 0); 
+
+      setHasMore(
+        data.communities.length > 0
+      );
+
       setPage(prev => prev + 1);
+
     } catch (err) {
-      console.error("Failed to fetch tribe:", err);
+
+      console.error(
+        "Failed to fetch tribe:",
+        err
+      );
+
     } finally {
+
       setLoading(false);
     }
   };
 
+  // INITIAL LOAD
   useEffect(() => {
     loadTribe();
   }, []);
 
-  // Infinite scroll
+  // INFINITE SCROLL
   useEffect(() => {
+
     const handleScroll = () => {
+
       if (
-        window.innerHeight + document.documentElement.scrollTop + 200 >=
-        document.documentElement.scrollHeight
+        window.innerHeight +
+          document.documentElement
+            .scrollTop +
+          200 >=
+        document.documentElement
+          .scrollHeight
       ) {
-        if (!loading && hasMore) loadTribe();
+
+        if (!loading && hasMore) {
+          loadTribe();
+        }
       }
     };
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+
+    window.addEventListener(
+      "scroll",
+      handleScroll
+    );
+
+    return () =>
+      window.removeEventListener(
+        "scroll",
+        handleScroll
+      );
+
   }, [loading, hasMore]);
 
-  const handleJoinToggle = async (communityId: string, joined: boolean) => {
+  // JOIN / REQUEST
+  const handleJoinToggle = async (
+    communityId: string
+  ) => {
+
     try {
-      if (joined) {
-        await leaveCommunity(communityId);
-      } else {
-        await joinCommunity(communityId);
-      }
+
+      const response =
+        await joinCommunity(
+          communityId
+        );
+
       setTribe(prev => {
+
         if (!prev) return prev;
+
         return {
           ...prev,
-          communities: prev.communities.map(c =>
-            c.id === communityId ? { ...c, joined: !joined, members_count: joined ? c.members_count - 1 : c.members_count + 1} : c
-          ),
+
+          communities:
+            prev.communities.map(c => {
+
+              if (
+                c.id !== communityId
+              ) {
+                return c;
+              }
+
+              // JOINED
+              if (
+                response.status ===
+                "joined"
+              ) {
+
+                return {
+                  ...c,
+                  joined: true,
+                  requested: false,
+
+                  membersCount:
+                    c.membersCount + 1,
+                };
+              }
+
+              // REQUESTED
+              if (
+                response.status ===
+                "requested"
+              ) {
+
+                return {
+                  ...c,
+                  requested: true,
+                };
+              }
+
+              return c;
+            }),
         };
       });
+
     } catch (err) {
-      console.error("Failed to toggle join:", err);
+
+      console.error(
+        "Failed to join:",
+        err
+      );
     }
   };
 
-  if (!tribe) return <Skeleton  />;
+  if (!tribe) {
+    return <Skeleton />;
+  }
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-6">
-      <header className="mb-6 border-indigo-600 dark:border-white border p-4 rounded-xl">
-        <h1 className="text-3xl text-gray-700 dark:text-white font-bold">{tribe.name}</h1>
-        <p className="text-gray-600 dark:text-gray-400">{tribe.description}</p>
-      
-        <div className="flex items-center gap-4 mt-2">
 
-          <Link
+      {/* HEADER */}
+      <header className="mb-6 border border-indigo-600 dark:border-white p-4 rounded-xl">
+
+        <h1 className="text-3xl font-bold text-gray-700 dark:text-white">
+          {tribe.name}
+        </h1>
+
+        <p className="text-gray-600 dark:text-gray-400">
+          {tribe.description}
+        </p>
+
+        <div className="flex items-center gap-4 mt-3">
+
+          <AppLink
             href={`/main/create-community?tribe=${tribe.id}`}
+            prefetch={false}
             className="px-3 py-1 bg-green-500 text-white rounded-full text-sm"
           >
             + Create Community
-          </Link>
+          </AppLink>
+
         </div>
       </header>
 
+      {/* COMMUNITIES */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {tribe.communities.map((community) => (
+
+        {tribe.communities.map(
+          (community) => (
+
           <div
             key={community.id}
-            className="border border-indigo-600 dark:border-white rounded-lg overflow-hidden hover:shadow-md transition"
+            className="border border-indigo-600 dark:border-white rounded-xl overflow-hidden hover:shadow-md transition"
           >
-            {/* 🔥 COVER IMAGE */}
+
+            {/* COVER */}
             <img
-              src={community.cover_image || "/default-cover.jpg"}
+              src={
+                community.cover_image ||
+                "/default-cover.jpg"
+              }
               alt={community.name}
               className="w-full h-32 object-cover"
             />
-        
-            {/* 🔥 CONTENT */}
+
+            {/* CONTENT */}
             <div className="p-4">
-              <div className="flex justify-between items-center">
-                <Link
+
+              <div className="flex items-center justify-between">
+
+                <AppLink
                   href={`/main/community/${community.id}`}
-                  className="font-semibold text-gray-700 dark:text-white text-lg"
+                  prefetch={false}
+                  className="font-semibold text-lg text-gray-700 dark:text-white"
                 >
                   {community.name}
-                </Link>
-        
-                <span className="text-xs opacity-60 flex items-center text-gray-700 dark:text-white gap-1">
+                </AppLink>
+
+                <span className="text-xs opacity-60 flex items-center gap-1 text-gray-700 dark:text-white">
+
                   <Users size={14} />
+
                   {community.membersCount ?? 0}
+
                 </span>
               </div>
-        
-              {/* 🔥 BUTTON */}
+
+              {/* JOIN BUTTON */}
               <button
-                onClick={() => handleJoinToggle(community.id, community.joined)}
-                className={`mt-3 px-3 py-1 rounded-full text-gray-600 dark:text-gray-300 text-xs font-medium ${
+                onClick={() =>
+                  handleJoinToggle(
+                    community.id
+                  )
+                }
+                disabled={
+                  community.joined ||
+                  community.requested
+                }
+                className={`mt-3 px-3 py-1 rounded-full text-xs font-medium transition ${
                   community.joined
-                    ? "bg-green-300 dark:bg-green-700"
-                    : "bg-blue-100 dark:bg-blue-700"
+                    ? "bg-green-300 dark:bg-green-700 text-black dark:text-white"
+
+                    : community.requested
+                    ? "bg-yellow-300 dark:bg-yellow-700 text-black dark:text-white"
+
+                    : "bg-blue-100 dark:bg-blue-700 text-black dark:text-white"
                 }`}
               >
-                {community.joined ? "Joined" : "Join"}
+
+                {community.joined
+                  ? "Joined"
+
+                  : community.requested
+                  ? "Requested"
+
+                  : community
+                      .join_approval_required
+                  ? "Request to Join"
+
+                  : "Join"}
+
               </button>
+
             </div>
+
           </div>
         ))}
       </div>
 
-      {loading && <div className="mt-4 text-center"><LoadingSpinner /></div>}
-      {!hasMore && <p className="mt-4 text-center text-gray-500">No more communities</p>}
+      {/* LOADING */}
+      {loading && (
+        <div className="mt-4 text-center">
+          <Skeleton />
+        </div>
+      )}
+
+      {/* END */}
+      {!hasMore && (
+        <p className="mt-4 text-center text-gray-500">
+          No more communities
+        </p>
+      )}
+
     </div>
   );
 }

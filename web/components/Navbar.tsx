@@ -1,16 +1,15 @@
 'use client'
 
 import { useState } from "react"
-import Link from "next/link"
+import AppLink from '@/components/AppLink';
 import { Home, MessageSquare, PlusCircle, Search, Bell, Menu } from "lucide-react";
 import Image from "next/image";
 import { tribe2 } from "@/assets";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import Sidebar from "./Sidebar";
 
 export default function Navbar() {
 
-  const router = useRouter()
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -24,7 +23,7 @@ export default function Navbar() {
 
   return (
     <>
-      <nav className="fixed top-0 left-0 w-full z-50 flex items-center justify-between px-6 py-3 bg-white dark:bg-gray-900 shadow-md">
+      <nav className="fixed top-0 left-0 w-full z-40 flex items-center justify-between px-6 py-3 bg-white dark:bg-gray-900 shadow-md">
 
         {/* LEFT — Logo */}
         <div className="w-16 h-16 border dark:border-indigo-600 rounded-full overflow-hidden shadow">
@@ -38,7 +37,7 @@ export default function Navbar() {
             const active = pathname === path;
 
             return (
-              <Link key={name} href={path}>
+              <AppLink key={name} prefetch={false} href={path}>
                 <li
                   className={`p-2 rounded-lg transition cursor-pointer text-indigo-500 dark:text-white
                   ${
@@ -49,7 +48,7 @@ export default function Navbar() {
                 >
                   <Icon size={22} />
                 </li>
-              </Link>
+              </AppLink>
             );
           })}
         </ul>
@@ -64,12 +63,13 @@ export default function Navbar() {
         </button>
 
         <div className="md:hidden flex justify-between gap-5">
-          <button
-            onClick={() => router.push(`/main/search`)}
+          <AppLink
+            href={`/main/search`}
+            prefetch={false}
             className="p-2 rounded-lg hover:bg-gray-200 bg-indigo-500 dark:hover:bg-zinc-800"
           >
             <Search size={24} />
-          </button>
+          </AppLink>
           <button
             onClick={() => setMenuOpen(true)}
             className="p-2 rounded-lg hover:bg-gray-200 bg-indigo-500 dark:hover:bg-zinc-800"

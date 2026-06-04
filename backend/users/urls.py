@@ -6,21 +6,22 @@ from .views import (
     ForgotPasswordView,
     ResetPasswordView,
     profile_view,
+    profile_posts,
     ProfileView,
     connected_users,
     connect_user,
     heartbeat,
-    save_public_key,
-    get_public_key,
     remove_connection,
     cancel_connection,
     PublicProfileView,
+    save_interests,
     discover_creators,
-    discover_friends,
+    discover_people,
     ProtectedView,
     GoogleLoginView,
     RefreshView,
     StarViewSet,
+    get_starred_users,
     decline_connection,
     accept_connection,
     pending_requests,
@@ -76,12 +77,8 @@ urlpatterns = [
     # -----------------------------
     path("me/", ProfileView.as_view(), name="current-user-profile"),
     path("profile/<str:username>/", profile_view),
-
-    # -----------------------------
-    # ENCRYPTION / PUBLIC KEY
-    # -----------------------------
-    path("<int:user_id>/public-key/", get_public_key),
-    path("save-key/", save_public_key),
+    path("profile/<str:username>/posts/", profile_posts),
+    path("save-interests/", save_interests),
 
     # -----------------------------
     # PRESENCE (ONLINE / LAST SEEN)
@@ -103,10 +100,11 @@ urlpatterns = [
     path("cancel/<int:user_id>/", cancel_connection),
     path("discover-creators/", discover_creators),
     path("connected/", connected_users),
-    path("discover-friends/", discover_friends),
+    path("discover-people/", discover_people),
     path("complete-onboarding/", complete_onboarding),
     path('onboarding-status/', onboarding_status),
     path('discover-connect/', discover_connect),
+    path("starred/", get_starred_users),
 
     # -----------------------------
     # PROTECTED

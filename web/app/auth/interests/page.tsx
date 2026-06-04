@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useNavigation } from "@/utils/useNavigation"
 import { apiRequest } from "@/utils/api"
+import { useOnboardingGuard } from "@/utils/useOnboardingGuard"
 
 const interestsList = [
   'Politics',
@@ -22,7 +23,7 @@ interface OnboardingStatus {
 }
 
 export default function Interests() {
-  const router = useRouter()
+  const { push } = useNavigation()
   const [interests, setInterests] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null); //
@@ -41,32 +42,9 @@ export default function Interests() {
     }
 
     fetchProfile()
-  }, [router])
+  }, [])
 
-  useEffect(() => {
-    const checkOnboarding = async () => {
-      try {
-        const status: OnboardingStatus = await apiRequest('api/users/onboarding-status/')
-  
-        if (status.completed) {
-          router.replace('/main/home')
-          return
-        }
-        if (!status.profileCompleted) {
-          router.replace('/auth/profile-setup')
-          return
-        }
-        if (status.interestsCompleted) {
-          router.replace('/auth/star')
-          return
-        }
-      } catch (err) {
-        console.error(err)
-      }
-    }
-  
-    checkOnboarding()
-  }, [router])
+  useOnboardingGuard('interests')
 
   const toggle = (item: string) => {
     if (interests.includes(item)) {
@@ -81,11 +59,11 @@ export default function Interests() {
     setLoading(true)
 
     try {
-      await apiRequest('api/users/me/', {
+      await apiRequest('api/users/save-interests/', {
         method: 'PATCH',
         data: { interests },
       })
-      router.push('/auth/star')
+      push('/auth/star')
     } catch (err: any) {
       alert(err.message || 'Something went wrong')
     } finally {

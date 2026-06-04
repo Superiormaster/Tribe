@@ -20,6 +20,7 @@ export function useVoiceRecorder(
   const analyserRef = useRef<AnalyserNode | null>(null);
   const dataArrayRef = useRef<Uint8Array | null>(null);
   const animationRef = useRef<any>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
   const [isPaused, setIsPaused] = useState(false);
   
   const [waveform, setWaveform] = useState<number[]>([]);
@@ -116,6 +117,8 @@ export function useVoiceRecorder(
   const startRecording = async () => {
     if (recorderRef.current?.state === "recording") return;
   
+    chunksRef.current = [];
+  
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mediaStreamRef.current = stream;
   
@@ -136,29 +139,35 @@ export function useVoiceRecorder(
   
     const draw = () => {
       analyser.getByteTimeDomainData(dataArray);
-  
       setWaveform([...dataArray.slice(0, 30)]);
-  
       animationRef.current = requestAnimationFrame(draw);
     };
   
     draw();
   
-    // 🎙️ MEDIA RECORDER
+    // 🎙️ MEDIA RECORDER (CREATE FIRST)
     const recorder = new MediaRecorder(stream);
     recorderRef.current = recorder;
+  
+    // ✅ NOW safe to attach handlers
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) {
+        chunksRef.current.push(e.data);
+      }
+    };
   
     recorder.onstart = () => {
       startTimeRef.current = Date.now();
       pausedTimeRef.current = 0;
       elapsedRef.current = 0;
-      
+  
       timerRef.current = setInterval(() => {
         if (!pauseStartRef.current) {
           setDuration(
-            elapsedRef.current + Math.floor(
-              (Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000
-            )
+            elapsedRef.current +
+              Math.floor(
+                (Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000
+              )
           );
         }
       }, 1000);
@@ -167,19 +176,27 @@ export function useVoiceRecorder(
     recorder.onstop = async () => {
       cancelAnimationFrame(animationRef.current);
   
-      setPreviewBlob(blob); // 👈 NEW
+      const blob = new Blob(chunksRef.current, {
+        type: "audio/webm",
+      });
+  
+      setPreviewBlob(blob);
+      chunksRef.current = [];
+  
       clearInterval(timerRef.current);
     };
   
     recorder.start();
     setIsRecording(true);
   };
-  
+
   const sendRecording = async () => {
     if (!previewBlob) return;
   
     await sendAudioOptimistic(previewBlob);
+  
     setPreviewBlob(null);
+    setDuration(0);
   };
 
   // ========================

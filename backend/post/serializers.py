@@ -1,14 +1,15 @@
 from rest_framework import serializers
-from users.models import User
-from communities.models import Community
-from .models import Post, PostMedia, Like, Comment, Feed
+from users.models import User, Star
+from communities.models import Community, CommunityMembership
+from .models import Post, PostMedia, Like, Comment, Feed, Repost
+from users.serializers import UserSerializer
 
 class UserMiniSerializer(serializers.ModelSerializer):
     avatar = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["username", "avatar"]
+        fields = ["id", "username", "avatar"]
 
     def get_avatar(self, obj):
         if obj.avatar:
@@ -52,10 +53,16 @@ class PostSerializer(serializers.ModelSerializer):
     likes_count = serializers.IntegerField(read_only=True)
     comments_count = serializers.IntegerField(read_only=True)
     is_liked = serializers.BooleanField(read_only=True)
+    is_edited = serializers.BooleanField(read_only=True)
+    profile_pinned = serializers.BooleanField(read_only=True)
+    profile_pin_order = serializers.IntegerField(read_only=True)
+    community_pinned = serializers.BooleanField(read_only=True)
+    community_pin_order = serializers.IntegerField(read_only=True)
     is_reposted = serializers.SerializerMethodField()
     views_count = serializers.IntegerField(read_only=True)
     shares_count = serializers.IntegerField(read_only=True)
-    is_starred_by_user = serializers.BooleanField(read_only=True)
+    is_starred_by_user = serializers.SerializerMethodField()
+    community_joined = serializers.SerializerMethodField()
 
     class Meta:
         model = Post
@@ -72,13 +79,20 @@ class PostSerializer(serializers.ModelSerializer):
             'community_name',
             'community_id',
             'created_at',
+            'updated_at',
             'likes_count',
             'comments_count',
             'views_count',
             'shares_count',
-            'is_reposted'
+            'is_reposted',
+            'is_edited',
+            'community_joined',
+            "profile_pinned",
+            "profile_pin_order",
+            "community_pinned",
+            "community_pin_order",
         ]
-        read_only_fields = ['id', 'user', 'created_at', 'media_files']
+        read_only_fields = ['id', 'user', 'created_at', 'updated_at', 'media_files']
 
     def create(self, validated_data):
       request = self.context.get('request')
@@ -101,24 +115,32 @@ class PostSerializer(serializers.ModelSerializer):
       return data
 
     def get_is_starred_by_user(self, obj):
-      request = self.context.get("request")
+      user = self.context["request"].user
   
-      if request and request.user.is_authenticated:
-          return obj.user.stars_received.filter(
-              star=request.user
-          ).exists()
+      if not user.is_authenticated:
+          return False
   
-      return False
+      return Star.objects.filter(
+          star=user,
+          starred_user=obj.user
+      ).exists()
+  
+    def get_community_joined(self, obj):
+
+      user = self.context["request"].user
+  
+      if not user.is_authenticated:
+          return False
+  
+      return CommunityMembership.objects.filter(
+          community=obj.community,
+          user=user,
+          banned=False
+      ).exists()
 
     def get_is_reposted(self, obj):
         user = self.context["request"].user
         return obj.reposts.filter(user=user).exists()
-
-    def get_is_liked(self, obj):
-        request = self.context.get("request")
-        if request and request.user.is_authenticated:
-            return obj.likes.filter(user=request.user).exists()
-        return False
 
 # -------------------------------
 # Like Serializer
@@ -182,3 +204,28 @@ class FeedSerializer(serializers.ModelSerializer):
         model = Feed
         fields = ['id', 'user', 'post', 'created_at']
         read_only_fields = ['user', 'post', 'created_at']
+
+
+class RepostSerializer(serializers.ModelSerializer):
+
+    user = UserSerializer(read_only=True)
+
+    post = PostSerializer(read_only=True)
+
+    type = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Repost
+
+        fields = [
+            "id",
+            "type",
+            "user",
+            "post",
+            "repost_type",
+            "quote_text",
+            "created_at",
+        ]
+
+    def get_type(self, obj):
+        return "repost"

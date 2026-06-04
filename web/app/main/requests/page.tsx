@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useNavigation } from "@/utils/useNavigation"
 import { apiRequest } from '@/utils/api';
 import { removeConnection } from '@/lib/api';
 
@@ -15,7 +15,7 @@ type User = {
 type Tab = "connections" | "requests" | "sent";
 
 export default function ConnectionsPage() {
-  const router = useRouter();
+  const { push } = useNavigation();
 
   const [tab, setTab] = useState<Tab>("connections");
 
@@ -89,12 +89,12 @@ export default function ConnectionsPage() {
 
   const openChat = async (user: any) => {
     try {
-      const res = await apiRequest("/api/chats/get-or-create/", {
+      const res = await apiRequest("api/chats/get-or-create/", {
         method: "POST",
         data: { user_id: user.id },
       });
   
-      router.push(
+      push(
         `/main/messages/chat/${res.chat_id}?username=${encodeURIComponent(res.username)}&avatar=${encodeURIComponent(res.avatar || '')}`
       );
     } catch (err) {

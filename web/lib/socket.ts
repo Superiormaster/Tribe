@@ -1,11 +1,15 @@
 import { io, Socket } from "socket.io-client";
+import { flushOfflineMessages } from "./offlineFlush";
+import { apiRequest } from "@/utils/api";
 
-const WS_BASE = process.env.NEXT_PUBLIC_WS_URL;
-let socket: Socket;
+let socketInstance: Socket | null = null;
 
-export const connectSocket = (user) => {
-  if (!socket) {
-    socket = io(
+// ----------------------
+// CONNECT SOCKET
+// ----------------------
+export const connectSocket = (user: any) => {
+  if (!socketInstance) {
+    socketInstance = io(
       process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:5000",
       {
         auth: {
@@ -14,26 +18,47 @@ export const connectSocket = (user) => {
             username: user.username,
             avatar: user.avatar,
             token: user.token,
-          }
-        }
+          },
+        },
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 2000,
       }
     );
+
+    socketInstance.on("connect", () => {
+      console.log("✅ socket connected");
+
+      flushOfflineMessages();
+    });
+
+    socketInstance.on("disconnect", async (reason) => {
+      console.log("socket disconnected", reason);
+    
+      try {
+        const auth = await apiRequest(
+          "api/users/socket-auth/",
+          { method: "POST" }
+        );
+    
+        socketInstance.auth = {
+          user: {
+            user_id: auth.user_id,
+            username: auth.username,
+            avatar: auth.avatar,
+            token: auth.token,
+          },
+        };
+    
+        socketInstance.connect();
+    
+      } catch (err) {
+        console.error("reconnect failed");
+      }
+    });
   }
-  return socket;
+
+  return socketInstance;
 };
 
-export const getSocket = () => socket;
-
-export function localSocket(postId: number) {
-  const socket = new WebSocket(
-    `${WS_BASE}/ws/comments/${postId}/`
-  );
-
-  return socket;
-}
-
-export function notificationSocket() {
-  return new WebSocket(
-    `${WS_BASE}/ws/notifications/`
-  );
-}
+export const getSocket = () => socketInstance;

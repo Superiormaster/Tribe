@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import Link from 'next/link'
 import Image from "next/image";
 import { tribe2 } from "@/assets";
 import LoadingScreen from '@/components/LoadingScreen';
@@ -8,15 +8,13 @@ import useAuthRedirect from "@/utils/useAuthRedirect";
 import { useState, useEffect } from 'react';
 
 export default function Home() {
-
-  const router = useRouter()
   const [loading, setLoading] = useState(true);
   useAuthRedirect();
   
   if (loading) return <LoadingScreen onComplete={() => setLoading(false)} />;
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100">
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-gray-100">
 
       {/* NAVBAR */}
       <nav className="flex justify-between items-center px-8 py-4 border-b border-gray-200 dark:border-gray-800">
@@ -26,19 +24,19 @@ export default function Home() {
         </div>
 
         <div className="flex gap-4">
-          <button
-            onClick={() => router.push("/auth/login")}
+          <Link
+            href={"/auth/login"}
             className="px-4 py-2 rounded-lg border"
           >
             Login
-          </button>
+          </Link>
 
-          <button
-            onClick={() => router.push("/auth/register")}
+          <Link
+            href={"/auth/register"}
             className="px-4 py-2 rounded-lg bg-indigo-600 text-white"
           >
             Get Started
-          </button>
+          </Link>
         </div>
 
       </nav>
@@ -57,19 +55,19 @@ export default function Home() {
 
         <div className="flex justify-center gap-4">
 
-          <button
-            onClick={() => router.push("/auth/register")}
+          <Link
+            href={"/auth/register"}
             className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-lg"
           >
             Join Tribe
-          </button>
+          </Link>
 
-          <button
-            onClick={() => router.push("/auth/login")}
+          <Link
+            href={"/auth/login"}
             className="px-6 py-3 border rounded-xl text-lg"
           >
             Login
-          </button>
+          </Link>
 
         </div>
 
@@ -114,12 +112,12 @@ export default function Home() {
           Ready to join your Tribe?
         </h2>
 
-        <button
-          onClick={() => router.push("/auth/register")}
+        <Link
+          href={"/auth/register"}
           className="px-8 py-3 bg-indigo-600 text-white rounded-xl text-lg"
         >
           Create Account
-        </button>
+        </Link>
 
       </section>
 
@@ -130,4 +128,4 @@ export default function Home() {
 
     </div>
   )
-}
+}// test

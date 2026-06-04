@@ -1,12 +1,12 @@
 'use client'
 
 import { useContext, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useNavigation } from "@/utils/useNavigation"
 import { UserContext } from '@/components/UserContext'
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const ctx = useContext(UserContext)
-  const router = useRouter()
+  const { replace } = useNavigation()
 
   if (!ctx) return null
 
@@ -16,9 +16,9 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     if (loadingUser) return
 
     if (!user) {
-      router.replace('/auth/login')
+      replace('/auth/login')
     }
-  }, [user, loadingUser, router])
+  }, [user, loadingUser, replace])
 
   // ⛔ Prevent login flash
   if (loadingUser) return null
