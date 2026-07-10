@@ -2,16 +2,22 @@ from django.shortcuts import render
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
+from rest_framework.views import APIView
+from users.utils import redis_client
+from .services import build_community_feed, serialize_community_feed
+from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
 from itertools import chain
 from operator import attrgetter
 from post.models import Repost, Post
+from feedback.models import Report
 from post.serializers import RepostSerializer, PostSerializer
 from .permissions import IsSuperUser
-from .models import Community, Tribe, CommunityMembership, CommunityInvite, CommunityJoinRequest
-from .serializers import CommunitySerializer, InviteUserSerializer, CommunityInviteSerializer, TribeDetailSerializer, TribeSerializer
+from .models import Community, Tribe, CommunityMembership, CommunityInvite, CommunityJoinRequest, TribeRequest
+from .serializers import TribeRequestSerializer, CommunitySerializer, InviteUserSerializer, CommunityInviteSerializer, TribeDetailSerializer, TribeSerializer
+from users.models import Star
 from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
 from notifications.services import create_notification
@@ -63,12 +69,47 @@ class CommunityViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def perform_create(self, serializer):
-        tribe_id = self.request.data.get('tribe')
-        community = serializer.save(
-            owner=self.request.user,
-            tribe_id=tribe_id 
+      print("REQUEST DATA:", self.request.data)
+  
+      serializer.is_valid(raise_exception=True)
+  
+      tribe_id = self.request.data.get("tribe")
+  
+      community = serializer.save(
+          owner=self.request.user,
+          tribe_id=tribe_id,
+      )
+  
+      CommunityMembership.objects.create(
+          community=community,
+          user=self.request.user,
+          role="owner",
+      )
+
+    @action(detail=True, methods=["post"])
+    def report(self, request, pk=None):
+        community = self.get_object()
+    
+        report, created = Report.objects.get_or_create(
+            reporter=request.user,
+            report_type="community",
+            target_community=community,
+            defaults={
+                "reason": request.data.get("reason"),
+                "details": request.data.get("details", "")
+            }
         )
-        community.members.add(self.request.user)
+    
+        if not created:
+            return Response(
+                {"message": "You already reported this message"},
+                status=400
+            )
+    
+        return Response({
+            "success": True,
+            "message": "Message reported successfully"
+        })
 
     @action(detail=True, methods=["post"])
     def join(self, request, pk=None):
@@ -93,6 +134,16 @@ class CommunityViewSet(viewsets.ModelViewSet):
                 "status": "already_joined"
             })
     
+        existing_invite = CommunityInvite.objects.filter(
+            community=community,
+            receiver=request.user
+        ).exists()
+        
+        if existing_invite:
+            return Response({
+                "status": "invited"
+            })
+
         # APPROVAL REQUIRED
         if community.join_approval_required:
     
@@ -102,6 +153,31 @@ class CommunityViewSet(viewsets.ModelViewSet):
                     user=request.user
                 )
             )
+  
+            if not created:
+              return Response({
+                  "status": "already_requested"
+              })
+  
+            recipients = {community.owner.id: community.owner}
+
+            staff_members = CommunityMembership.objects.filter(
+                community=community,
+                role__in=["admin", "moderator"]
+            ).exclude(
+                user=community.owner
+            )
+
+            for member in staff_members:
+                recipients[member.user.id] = member.user
+            
+            for recipient in recipients.values():
+                create_notification(
+                    type="join_request",
+                    recipient=recipient,
+                    actors=[request.user],
+                    community=community
+                )
     
             if not created:
                 return Response({
@@ -230,6 +306,13 @@ class CommunityViewSet(viewsets.ModelViewSet):
             community=community,
             defaults={"role": "member"}
         )
+
+        create_notification(
+            type="join_approved",
+            recipient=join_request.user,
+            actors=[request.user],
+            community=community
+        )
     
         join_request.delete()
     
@@ -269,6 +352,13 @@ class CommunityViewSet(viewsets.ModelViewSet):
                 {"error": "Request not found"},
                 status=404
             )
+  
+        create_notification(
+            type="join_rejected",
+            recipient=join_request.user,
+            actors=[request.user],
+            community=community
+        )
     
         join_request.delete()
     
@@ -320,8 +410,11 @@ class CommunityViewSet(viewsets.ModelViewSet):
                 "user": {
                     "id": r.user.id,
                     "username": r.user.username,
-                    "avatar": r.user.avatar.url
-                    if r.user.avatar else None
+                    "avatar": (
+                        r.user.avatar.url
+                        if hasattr(r.user.avatar, "url")
+                        else r.user.avatar
+                    )
                 }
             }
             for r in result
@@ -399,87 +492,60 @@ class CommunityViewSet(viewsets.ModelViewSet):
     def feed(self, request, pk=None):
     
         community = self.get_object()
+        user = request.user
     
-        posts = Post.objects.filter(
+        interests = user.interests or []
+    
+        starred_ids = set(
+            Star.objects.filter(star=user).values_list("starred_user_id", flat=True)
+        )
+    
+        two_weeks_ago = (
+            timezone.now() -
+            timedelta(days=14)
+        )
+    
+        items = build_community_feed(
             community=community,
-            is_deleted=False,
-            is_approved=True, 
-            is_rejected=False
-        ).select_related(
-            "user",
-            "community"
-        ).prefetch_related(
-            "media_files"
-        ).annotate(
-            likes_count=Count("likes", distinct=True),
-            comments_count=Count(
-                "comments",
-                distinct=True
-            ),
-            shares_count=Count(
-                "shares",
-                distinct=True
-            ),
-            is_pinned=F("community_pinned"),
-            pin_order=F("community_pin_order")
-        ).order_by(
-            "-community_pinned",
-            "community_pin_order",
-            "-created_at"
+            user=user,
+            interests=interests,
+            starred_ids=starred_ids,
+            two_weeks_ago=two_weeks_ago
         )
     
-        reposts = Repost.objects.filter(
-            community=community
-        ).select_related(
-            "user",
-            "post",
-            "post__user",
-            "post__community",
-        ).prefetch_related(
-            "post__media_files"
+        data = serialize_community_feed(
+            items,
+            request,
+            starred_ids
         )
-        
-        for post in posts:
-            post.type = "post"
     
-        for repost in reposts:
-            repost.type = "repost"
-    
-        post_data = PostSerializer(
-            posts,
-            many=True,
-            context={"request": request}
-        ).data
-    
-        repost_data = RepostSerializer(
-            reposts,
-            many=True,
-            context={"request": request}
-        ).data
-    
-        combined = list(chain(post_data, repost_data))
-        
-        combined.sort(
-            key=lambda x: (
-                x.get("community_pinned", False),
-                -(x.get("community_pin_order") or 0),
-                parse_datetime(x["created_at"]).timestamp()
-                if x.get("created_at")
-                else 0
-            ),
-            reverse=True
-        )
-
         paginator = FeedPagination()
+    
         result_page = paginator.paginate_queryset(
-            combined,
+            data,
             request
         )
     
         return paginator.get_paginated_response(
             result_page
         )
-  
+
+    @action(
+        detail=True,
+        methods=["post"]
+    )
+    def refresh_feed(self, request, pk=None):
+    
+        user = request.user
+    
+        key = f"feed_seed:{user.id}"
+    
+        redis_client.delete(key)
+    
+        return Response({
+            "success": True
+        })
+
     @action(detail=True, methods=["get"])
     def pending_posts(self, request, pk=None):
         community = self.get_object()
@@ -546,15 +612,13 @@ class CommunityViewSet(viewsets.ModelViewSet):
         for repost in reposts:
             repost.type = "repost"
     
-        combined = list(chain(post_data, repost_data))
-        
+        combined = list(chain(posts, reposts))
+  
         combined.sort(
             key=lambda x: (
-                x.get("community_pinned", False),
-                -(x.get("community_pin_order") or 0),
-                parse_datetime(x["created_at"]).timestamp()
-                if x.get("created_at")
-                else 0
+                getattr(x, "community_pinned", False),
+                -(getattr(x, "community_pin_order", 0) or 0),
+                x.created_at.timestamp() if x.created_at else 0,
             ),
             reverse=True
         )
@@ -588,7 +652,7 @@ class CommunityViewSet(viewsets.ModelViewSet):
               )
     
         return paginator.get_paginated_response(
-            serializer_data
+            serialized_data
         )
 
     @action(detail=True, methods=["get"])
@@ -623,26 +687,6 @@ class CommunityViewSet(viewsets.ModelViewSet):
             serializer.data
         )
 
-    @action(detail=False, methods=["post"])
-    def bulk_moderate(self, request):
-        post_ids = request.data.get("post_ids", [])
-        action_type = request.data.get("action")
-    
-        posts = Post.objects.filter(id__in=post_ids)
-    
-        for post in posts:
-            if action_type == "approve":
-                post.is_approved = True
-                post.is_rejected = False
-    
-            elif action_type == "reject":
-                post.is_rejected = True
-                post.is_approved = False
-    
-            post.save()
-    
-        return Response({"status": "done"})
-
     @action(detail=True, methods=["post"])
     def add_moderator(self, request, pk=None):
         community = self.get_object()
@@ -668,6 +712,13 @@ class CommunityViewSet(viewsets.ModelViewSet):
     
         membership.role = "moderator"
         membership.save()
+  
+        create_notification(
+            type="moderator_added",
+            recipient=membership.user,
+            actors=[request.user],
+            community=community
+        )
     
         return Response({"status": "moderator_added"})
 
@@ -685,6 +736,13 @@ class CommunityViewSet(viewsets.ModelViewSet):
     
         membership.role = "member"
         membership.save()
+
+        create_notification(
+            type="role_removed",
+            recipient=membership.user,
+            actors=[request.user],
+            community=community
+        )
     
         return Response({"status": "moderator_removed"})
 
@@ -702,6 +760,13 @@ class CommunityViewSet(viewsets.ModelViewSet):
     
         membership.role = "admin"
         membership.save()
+  
+        create_notification(
+            type="admin_added",
+            recipient=membership.user,
+            actors=[request.user],
+            community=community
+        )
     
         return Response({"status": "admin_added"})
 
@@ -719,46 +784,76 @@ class CommunityViewSet(viewsets.ModelViewSet):
     
         membership.role = "member"
         membership.save()
+
+        create_notification(
+            type="role_removed",
+            recipient=membership.user,
+            actors=[request.user],
+            community=community
+        )
     
         return Response({"status": "admin_removed"})
 
-    @action(detail=True, methods=["post"])
-    def approve_post(self, request, pk=None):
-        post_id = request.data.get("post_id")
-
-        post = Post.objects.get(
-            id=post_id,
-            community=community
-        )
-        community = post.community
+    @action(detail=False, methods=["post"])
+    def bulk_delete(self, request):
+        ids = request.data.get("ids", [])
     
-        if not can_moderate(request.user, community):
-            return Response({"error": "Not allowed"}, status=403)
+        if not isinstance(ids, list):
+            return Response({"error": "Invalid"}, status=400)
     
-        post.is_approved = True
-        post.is_rejected = False
-        post.save()
+        Post.objects.filter(id__in=ids, user=request.user).update(is_deleted=True)
     
-        return Response({"status": "approved"})
-
-    @action(detail=True, methods=["post"])
-    def reject_post(self, request, pk=None):
-        post_id = request.data.get("post_id")
-
-        post = Post.objects.get(
-            id=post_id,
-            community=community
-        )
-        community = post.community
+        return Response({"status": "deleted"})
+  
+    @action(detail=False, methods=["post"])
+    def moderate(self, request):
+        post_ids = request.data.get("post_ids", [])
+        action = request.data.get("action")
     
-        if not can_moderate(request.user, community):
-            return Response({"error": "Not allowed"}, status=403)
+        if not post_ids or not action:
+            return Response({"error": "Invalid request"}, status=400)
     
-        post.is_rejected = True
-        post.is_approved = False
-        post.save()
+        posts = Post.objects.filter(id__in=post_ids)
     
-        return Response({"status": "rejected"})
+        updated_posts = []
+    
+        for post in posts:
+            community = post.community
+    
+            if not can_moderate(request.user, community):
+                continue
+    
+            if action == "approve":
+                post.is_approved = True
+                post.is_rejected = False
+    
+                create_notification(
+                    type="post_approved",
+                    recipient=post.user,
+                    actors=[request.user],
+                    community=community,
+                    post=post
+                )
+    
+            elif action == "reject":
+                post.is_rejected = True
+                post.is_approved = False
+    
+                create_notification(
+                    type="post_rejected",
+                    recipient=post.user,
+                    actors=[request.user],
+                    community=community,
+                    post=post
+                )
+    
+            post.save()
+            updated_posts.append(post.id)
+    
+        return Response({
+            "status": "done",
+            "updated": updated_posts
+        })
 
     @action(detail=True, methods=["post"])
     def ban_user(self, request, pk=None):
@@ -774,6 +869,13 @@ class CommunityViewSet(viewsets.ModelViewSet):
     
         membership.banned = True
         membership.save()
+
+        create_notification(
+            type="community_ban",
+            recipient=membership.user,
+            actors=[request.user],
+            community=community
+        )
     
         return Response({"status": "banned"})
 
@@ -792,6 +894,13 @@ class CommunityViewSet(viewsets.ModelViewSet):
         membership.banned = False
         membership.save()
 
+        create_notification(
+            type="community_unban",
+            recipient=membership.user,
+            actors=[request.user],
+            community=community
+        )
+
         return Response({"status": "restored"})
 
     def get_permissions(self):
@@ -809,9 +918,46 @@ class PublicTribeViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = TribeSerializer
 
     def get_serializer_class(self):
-        if self.action == 'retrieve':
+        if self.action == "retrieve":
             return TribeDetailSerializer
         return TribeSerializer
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context["request"] = self.request
+        return context
+
+class SuggestedCommunityView(APIView):
+    def get(self, request, community_id):
+        user = request.user
+
+        community = Community.objects.get(id=community_id)
+
+        joined_ids = CommunityMembership.objects.filter(
+            user=user
+        ).values_list("community_id", flat=True)
+
+        invited_ids = CommunityInvite.objects.filter(
+            receiver=user
+        ).values_list("community_id", flat=True)
+
+        communities = (
+            Community.objects
+            .filter(tribe=community.tribe)
+            .exclude(id__in=joined_ids)
+            .exclude(id__in=invited_ids)   # 🔥 THIS IS THE FIX
+            .exclude(id=community.id)
+            .annotate(member_count=Count("memberships"))
+            .order_by("-member_count")[:5]
+        )
+
+        serializer = CommunitySerializer(
+            communities,
+            many=True,
+            context={"request": request}
+        )
+
+        return Response(serializer.data)
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -929,6 +1075,12 @@ def send_community_invite(request, community_id):
         User,
         id=receiver_id
     )
+    
+    if receiver == request.user:
+      return Response(
+          {"error": "You cannot invite yourself"},
+          status=400
+      )
 
     # 🔥 SECURITY CHECK
     is_owner = community.owner == request.user
@@ -950,6 +1102,7 @@ def send_community_invite(request, community_id):
 
     count = CommunityInvite.objects.filter(
         sender=request.user,
+        community=community,
         created_at__gte=today
     ).count()
 
@@ -962,17 +1115,29 @@ def send_community_invite(request, community_id):
         )
 
     # 🔥 ALREADY MEMBER
-    already_member = CommunityMembership.objects.filter(
+    membership = CommunityMembership.objects.filter(
         community=community,
         user=receiver
-    ).exists()
-
-    if already_member:
+    ).first()
+    
+    if membership:
+        if membership.banned:
+            return Response(
+                {"error": "User is banned"},
+                status=400
+            )
+    
         return Response(
             {"error": "Already a member"},
             status=400
         )
 
+    # remove pending request
+    CommunityJoinRequest.objects.filter(
+        community=community,
+        user=receiver
+    ).delete()
+  
     # 🔥 CREATE INVITE
     invite, created = CommunityInvite.objects.get_or_create(
         sender=request.user,
@@ -1096,3 +1261,64 @@ def get_my_invites(request):
     paginated = paginator.paginate_queryset(invites, request)
     serializer = CommunityInviteSerializer(paginated, many=True)
     return paginator.get_paginated_response(serializer.data)
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def tribe_requests(request):
+
+    if request.method == "POST":
+        serializer = TribeRequestSerializer(
+            data=request.data,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        tribe_request = serializer.save()
+
+        return Response(
+            TribeRequestSerializer(tribe_request).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    # GET
+    search = request.GET.get("search", "").strip()
+    status_filter = request.GET.get("status")
+
+    qs = TribeRequest.objects.filter(
+        creator=request.user
+    )
+
+    if status_filter and status_filter != "all":
+        qs = qs.filter(status=status_filter)
+
+    if search:
+        qs = qs.filter(name__icontains=search)
+
+    paginator = PageNumberPagination()
+    paginator.page_size = 20
+
+    page = paginator.paginate_queryset(qs, request)
+
+    serializer = TribeRequestSerializer(
+        page,
+        many=True
+    )
+
+    return paginator.get_paginated_response(serializer.data)
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def tribe_request_detail(request, pk):
+    try:
+        tribe_request = TribeRequest.objects.get(
+            id=pk,
+            creator=request.user
+        )
+    except TribeRequest.DoesNotExist:
+        return Response(
+            {"detail": "Not found."},
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    return Response(
+        TribeRequestSerializer(tribe_request).data
+    )

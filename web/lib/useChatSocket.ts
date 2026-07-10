@@ -1,60 +1,43 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { connectSocket } from '@/lib/socket';
-import { apiRequest } from '@/utils/api';
-import { flushOfflineMessages } from "@/lib/offlineFlush";
-import { useNetworkStatus } from "@/utils/useNetworkStatus";
+import { reconnectSocket } from "@/lib/socket";
+import {
+  mergeMessages,
+  sortMessages
+} from '@/utils/chat/messageMerger';
 
 export function useChatSocket(
   chatIdNum: number | null,
-  currentUser: any
+  currentUser: any,
+  handlers?: {
+    onSeen?: (data:any)=>void;
+    onDelivered?: (data:any)=>void;
+  }
 ) {
   const socketRef = useRef<any>(null);
   const mountedRef = useRef(true);
-  const isOnline = useNetworkStatus();
 
-  useEffect(() => {
-    if (!isOnline) return;
-  
-    const socket = socketRef.current;
-  
-    if (!socket) return;
-  
-    const timer = setTimeout(() => {
-      if (socket?.connected) {
-        console.log("🌐 Network restored");
-        flushOfflineMessages(currentUser.id);
-      }
-    }, 1000);
-  
-    return () => clearTimeout(timer);
-  
-  }, [isOnline, currentUser?.id]);
+  const {
+    onSeen,
+    onDelivered,
+  } = handlers || {};
   
   useEffect(() => {
-    console.log(
-      "NETWORK:",
-      isOnline
-    );
-  }, [isOnline]);
-  
-  useEffect(() => {
+    console.log("MOUNT useChatSocket", chatIdNum);
     if (!chatIdNum) return;
 
     mountedRef.current = true;
 
-    let socket: any;
-
     const init = async () => {
       try {
-        const auth = await apiRequest("api/users/socket-auth/", {
-          method: "POST",
-        });
+        const socket = await reconnectSocket();
+        console.log(socket.id);
 
-        if (!mountedRef.current) return;
-
-        socket = connectSocket(auth);
+        if (!mountedRef.current) {
+          return;
+        }
+  
         socketRef.current = socket;
 
         // ======================
@@ -62,6 +45,10 @@ export function useChatSocket(
         // ======================
         const handleConnect = () => {
           console.log("✅ socket connected:", socket.id);
+  
+          socket.emit(
+            "user_online"
+          );
 
           socket.emit("join_chat", {
             chatId: chatIdNum,
@@ -70,8 +57,6 @@ export function useChatSocket(
           socket.emit("mark_seen", {
             chatId: chatIdNum,
           });
-
-          flushOfflineMessages(currentUser.id);
         };
 
         socket.on("connect", handleConnect);
@@ -79,81 +64,132 @@ export function useChatSocket(
         // ======================
         // RECEIVE MESSAGE
         // ======================
-        const handleMessage = (msg: any) => {
-          console.log("📩 SOCKET:", msg);
+        const handleMessage = (message: Message) => {
+          if (Number(message.chat) !== Number(chatIdNum)) return;
         
-          if (Number(msg.chatId || msg.chat) !== Number(chatIdNum)) return;
-        
-          const normalized = {
-            localId: msg.clientId,
-            id: msg.id,
-        
-            chatId: msg.chatId,
-        
-            senderId: msg.sender || msg.senderId,
-        
-            username: msg.sender_username,
-        
-            text: msg.encrypted_text || "",
-        
-            media_url: msg.media_url || null,
-            media_type: msg.media_type || null,
-        
-            status: 'sent',
-        
-            created_at: msg.created_at,
-          };
-        
-          socketRef.current?.onMessage?.(normalized);
+          socketRef.current?.onMessage?.(message);
         };
 
-        socket.on("receive_message", handleMessage);
+        const handleReceiveMessage = (msg:any) => {
+          if (msg.chatId !== chatIdNum) return;
+      
+          handleMessage(msg);
+        };
+      
+        socket.on(
+          "receive_message",
+          handleReceiveMessage
+        );
+  
+        const handleTyping =
+          (data: any) => {
+            socketRef.current?.onTyping?.(
+              data
+            );
+          };
 
-        // ======================
-        // DELIVERED
-        // ======================
-        socket.on("delivered", (data) => {
-          socketRef.current?.onDelivered?.(data);
-        });
+        const handleStopTyping =
+          (data: any) => {
+            socketRef.current?.onStopTyping?.(
+              data
+            );
+          };
+  
+        const handleReaction =
+          (data: any) => {
+            socketRef.current?.onReaction?.(
+              data
+            );
+          };
+  
+        const handleDelivered =
+          (data: any) => {
+            onDelivered?.(data);
+        
+            window.dispatchEvent(
+              new CustomEvent(
+                "message-delivered",
+                {
+                  detail: data,
+                }
+              )
+            );
+          };
 
-        // ======================
-        // SEEN
-        // ======================
-        socket.on("seen", (data) => {
-          socketRef.current?.onSeen?.(data);
-        });
+        const handleSeen =
+          (data: any) => {
+            onSeen?.(data);
+        
+            window.dispatchEvent(
+              new CustomEvent(
+                "message-seen",
+                {
+                  detail: data,
+                }
+              )
+            );
+          };
+  
+        const handleUserStatus =
+          (data: any) => {
+            socketRef.current?.onUserStatus?.(
+              data
+            );
+          };
 
-        // ======================
-        // REACTIONS
-        // ======================
-        socket.on("reaction", (data) => {
-          socketRef.current?.onReaction?.(data);
-        });
+        socket.on("typing", handleTyping);
+        socket.on("stop_typing", handleStopTyping);
+        socket.on("reaction", handleReaction);
+        socket.on("delivered", handleDelivered);
+        socket.on("seen", handleSeen);
+        socket.on("user_status", handleUserStatus);
 
-        // ======================
-        // TYPING
-        // ======================
-        socket.on("typing", (data) => {
-          socketRef.current?.onTyping?.(data);
-        });
-
-        socket.on("stop_typing", (data) => {
-          socketRef.current?.onStopTyping?.(data);
-        });
-
-        // ======================
-        // USER STATUS
-        // ======================
-        socket.on("user_status", (data) => {
-          socketRef.current?.onUserStatus?.(data);
-        });
+        socketRef.current.setHandlers = ({
+          setMessages,
+          setIsTyping,
+        }) => {
+          if (!socketRef.current) return;
+        
+          socketRef.current.onTyping = ({
+            userId,
+          }) => {
+        
+            if (userId === currentUser?.id)
+              return;
+        
+            setIsTyping(true);
+          };
+        
+          socketRef.current.onStopTyping =
+            ({ userId }) => {
+        
+              if (userId === currentUser?.id)
+                return;
+        
+              setIsTyping(false);
+            };
+  
+          socketRef.current.onMessage = (message: Message) => {
+            setMessages(prev =>
+              sortMessages(
+                mergeMessages(prev, [message])
+              )
+            );
+          };
+        };
 
         // ======================
         // STORE CLEANUP
         // ======================
         socketRef.current.__handlers = {
           handleConnect,
-          handleMessage,
+          handleTyping,
+          handleStopTyping,
+          handleReaction,
+          handleDelivered,
+          handleSeen,
+          handleReceiveMessage,
+          handleUserStatus,
         };
 
       } catch (err) {
@@ -167,22 +203,71 @@ export function useChatSocket(
     // CLEANUP
     // ======================
     return () => {
+      console.log("UNMOUNT useChatSocket", chatIdNum);
       mountedRef.current = false;
-
+    
       const socket = socketRef.current;
-
-      if (socket) {
-        const h = socket.__handlers;
-
-        if (h) {
-          socket.off("connect", h.handleConnect);
-          socket.off("receive_message", h.handleMessage);
-        }
-
-        socket.off();
+      const h = socket?.__handlers;
+    
+      if (!socket || !h) {
+        return;
       }
+    
+      if (
+        socket.connected &&
+        chatIdNum
+      ) {
+        socket.emit("leave_chat", {
+          chatId: chatIdNum,
+        });
+      }
+    
+      socket.off(
+        "connect",
+        h.handleConnect
+      );
+    
+      socket.off(
+        "receive_message",
+        h.handleReceiveMessage
+      );
+    
+      socket.off(
+        "typing",
+        h.handleTyping
+      );
+    
+      socket.off(
+        "stop_typing",
+        h.handleStopTyping
+      );
+    
+      socket.off(
+        "reaction",
+        h.handleReaction
+      );
+    
+      socket.off(
+        "delivered",
+        h.handleDelivered
+      );
+    
+      socket.off(
+        "seen",
+        h.handleSeen
+      );
+    
+      socket.off(
+        "user_status",
+        h.handleUserStatus
+      );
+    
+      socket.__handlers = undefined;
     };
-  }, [chatIdNum]);
+  }, [
+      chatIdNum,
+      currentUser?.id,
+    ]);
 
   return socketRef;
 }

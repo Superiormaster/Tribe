@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigation } from "@/utils/useNavigation"
 import AppLink from '@/components/AppLink';
 
@@ -31,6 +31,10 @@ export default function CommunityPage({
   const [posts, setPosts] = useState<any[]>([]);
   const [pendingPosts, setPendingPosts] = useState<any[]>([]);
   const [members, setMembers] = useState<any[]>([]);
+  
+  const [pageCount, setPageCount] = useState(1);
+  const [showRefresh, setShowRefresh] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
 
   const [activeTab, setActiveTab] = useState("posts");
 
@@ -38,10 +42,11 @@ export default function CommunityPage({
 
   const [selectMode, setSelectMode] = useState(false);
   const [selectedPosts, setSelectedPosts] = useState<number[]>([]);
-  const [actionType, setActionType] =
-    useState<"approve" | "reject" | null>(null);
+  const [starredUsers, setStarredUsers] =
+    useState<Set<number>>(new Set());
 
   const [loading, setLoading] = useState(false);
+  const [suggestedCommunities, setSuggestedCommunities] = useState([]);
   
   const isOwner =
   Number(user?.id) === Number(community?.owner?.id) ||
@@ -69,12 +74,29 @@ export default function CommunityPage({
   
   // ❌ ONLY NON-OWNER CAN LEAVE
   const canLeave = !isOwner;
-
+  
   useEffect(() => {
     fetchCommunity();
     fetchPosts();
     fetchPendingPosts();
     fetchMembers();
+    fetchSuggested();
+  }, []);
+  
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await apiRequest(
+          "api/users/starred/"
+        );
+  
+        setStarredUsers(
+          new Set(res.starred_users)
+        );
+      } catch (err) {
+        console.error(err);
+      }
+    })();
   }, []);
 
   const fetchCommunity = async () => {
@@ -83,6 +105,14 @@ export default function CommunityPage({
     );
 
     setCommunity(data);
+  };
+  
+  const fetchSuggested = async () => {
+    const data = await apiRequest(
+      `api/communities/${communityId}/suggested/`
+    );
+  
+    setSuggestedCommunities(data || []);
   };
 
   const fetchPosts = async () => {
@@ -96,7 +126,7 @@ export default function CommunityPage({
       );
   
       const results = data.results || data;
-  
+
       const mapped = results.map((item: any) => {
   
         // -------------------------
@@ -177,15 +207,79 @@ export default function CommunityPage({
   
     }
   };
+  
+  const refreshFeed = async () => {
+    try {
+  
+      await apiRequest(
+        `api/communities/${communityId}/refresh_feed/`,
+        {
+          method: "POST",
+        }
+      );
+  
+      setPageCount(1);
+      setShowRefresh(false);
+  
+      fetchPosts();
+  
+    } catch (err) {
+      console.error(err);
+    }
+  };
+  
+  const loadMore = async () => {
+    if (!hasMore) return;
+  
+    try {
+      const nextPage = pageCount + 1;
+  
+      const data = await apiRequest(
+        `api/communities/${communityId}/feed/?page=${nextPage}`
+      );
+  
+      const newPosts = data.results || [];
+  
+      if (newPosts.length === 0) {
+        setHasMore(false);
+        return;
+      }
+  
+      setPosts(prev => [
+        ...prev,
+        ...newPosts,
+      ]);
+  
+      setPageCount(nextPage);
+  
+      if (nextPage >= 5) {
+        setShowRefresh(true);
+        setHasMore(false);
+      }
+  
+    } catch (err) {
+  
+      console.error(err);
+  
+      // page doesn't exist
+      setHasMore(false);
+    }
+  };
+  
+  const showSuggestions =
+    suggestedCommunities.length > 0 &&
+    suggestedCommunities.some(c => !c.joined);
 
   const fetchPendingPosts = async () => {
     const data = await apiRequest(
-      `api/post/?community=${communityId}&is_approved=false`
+      `api/communities/${communityId}/pending_posts/`
     );
-
+  
+    console.log("RAW PENDING RESPONSE:", data);
+  
     setPendingPosts(data.results || data);
   };
-  
+
   const fetchMembers = async () => {
     const data = await apiRequest(
       `api/communities/${communityId}/members/`
@@ -272,30 +366,116 @@ export default function CommunityPage({
     );
   };
   
+  const applyJoinStatus = (status: string) => {
+    if (
+      status === "joined" ||
+      status === "already_joined"
+    ) {
+      setCommunity(prev => ({
+        ...prev,
+        joined: true,
+        requested: false,
+        invited: false,
+      }));
+      return;
+    }
+  
+    if (
+      status === "requested" ||
+      status === "already_requested"
+    ) {
+      setCommunity(prev => ({
+        ...prev,
+        joined: false,
+        requested: true,
+        invited: false,
+      }));
+      return;
+    }
+  
+    // 🔥 INVITED = BLOCK STATE
+    if (status === "invited") {
+      setCommunity(prev => ({
+        ...prev,
+        joined: false,
+        requested: false,
+        invited: true,
+      }));
+      return;
+    }
+  };
+  
+  const handleJoinCommunity = async (communityId: number) => {
+    const previousSuggested = [...suggestedCommunities];
+  
+    // 🔥 OPTIMISTIC UPDATE (like TribePage)
+    setSuggestedCommunities(prev =>
+      prev.map(c => {
+        if (c.id !== communityId) return c;
+  
+        return {
+          ...c,
+          joined: true,
+          requested: false,
+        };
+      })
+    );
+  
+    try {
+      const response = await apiRequest(
+        `api/communities/${communityId}/join/`,
+        { method: "POST" }
+      );
+  
+      console.log("JOIN RESPONSE", response);
+  
+      applyJoinStatus(response.status);
+  
+    } catch (err) {
+      console.error(err);
+  
+      // rollback
+      setSuggestedCommunities(previousSuggested);
+    }
+  };
+  
   const onJoin = async () => {
+    const previousCommunity = { ...community };
+  
     // optimistic update
     setCommunity((prev: any) => ({
       ...prev,
       joined: true,
+      requested: false,
+      invited: false,
     }));
   
     try {
-      await apiRequest(`api/communities/${communityId}/join/`, {
-        method: "POST",
-      });
+      const response = await apiRequest(
+        `api/communities/${communityId}/join/`,
+        {
+          method: "POST",
+        }
+      );
+  
+      applyJoinStatus(response.status);
+  
     } catch (err) {
+  
+      console.error(err);
+  
       // rollback
-      setCommunity((prev: any) => ({
-        ...prev,
-        joined: false,
-      }));
+      setCommunity(previousCommunity);
     }
   };
   
   const handleLeave = async () => {
+    const previous = community;
+
     setCommunity((prev: any) => ({
       ...prev,
       joined: false,
+      requested: false,
     }));
   
     try {
@@ -303,10 +483,8 @@ export default function CommunityPage({
         method: "POST",
       });
     } catch (err) {
-      setCommunity((prev: any) => ({
-        ...prev,
-        joined: true,
-      }));
+      setCommunity(previous);
+      console.error(err);
     }
   };
   
@@ -335,39 +513,20 @@ export default function CommunityPage({
     }
   }
 
-  const handleBulkAction = async () => {
-    await apiRequest(`api/post/bulk-moderate/`, {
-      method: "POST",
-      data: {
-        post_ids: selectedPosts,
-        action: actionType,
-      },
-    });
-
-    setSelectedPosts([]);
-    setSelectMode(false);
-
-    fetchPendingPosts();
-  };
+  const handleModeration = async (action: "approve" | "reject", ids?: number[]) => {
+    const targetIds = ids || selectedPosts;
   
-  const handleBulkApprove = async () => {
     try {
-  
-      await apiRequest(
-        `api/post/bulk-moderate/`,
-        {
-          method: "POST",
-          data: {
-            post_ids: selectedPosts,
-            action: "approve",
-          },
-        }
-      );
+      await apiRequest(`api/communities/moderate/`, {
+        method: "POST",
+        data: {
+          post_ids: targetIds,
+          action,
+        },
+      });
   
       setPendingPosts(prev =>
-        prev.filter(
-          p => !selectedPosts.includes(p.id)
-        )
+        prev.filter(p => !targetIds.includes(p.id))
       );
   
       setSelectedPosts([]);
@@ -378,36 +537,8 @@ export default function CommunityPage({
     }
   };
   
-  const handleBulkReject = async () => {
-    try {
-  
-      await apiRequest(
-        `api/post/bulk-moderate/`,
-        {
-          method: "POST",
-          data: {
-            post_ids: selectedPosts,
-            action: "reject",
-          },
-        }
-      );
-  
-      setPendingPosts(prev =>
-        prev.filter(
-          p => !selectedPosts.includes(p.id)
-        )
-      );
-  
-      setSelectedPosts([]);
-      setSelectMode(false);
-  
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
   return (
-    <div className="max-w-3xl mx-auto space-y-4 mt-8">
+    <div className="max-w-3xl mx-auto space-y-4 my-20 min-w-0 overflow-x-hidden">
 
       <CommunityHeader
         community={community}
@@ -416,6 +547,7 @@ export default function CommunityPage({
         onJoin={onJoin}
         onOpenMenu={() => setShowMenuModal(true)}
         communityId={communityId}
+        canManage={canManage}
       />
 
       {/* 🔥 CREATE POST */}
@@ -460,24 +592,33 @@ export default function CommunityPage({
             posts={posts}
             loading={loading}
             onToggleCommunityPin={handleToggleCommunityPin}
+            handleJoinCommunity={(id) => handleJoinCommunity(id)}
+            currentUser={user}
             canDelete={canModerate}
-            canEdit={true}
             canRepost={true}
-            onToggleProfilePin={undefined}
             canManage={canManage} 
             handlePostAction={handlePostAction}
+            showRefresh={showRefresh}
+            hasMore={hasMore}
+            starredUserIds={starredUsers}
+            setStarredUsers={setStarredUsers}
+            loadMore={loadMore}
+            refreshFeed={refreshFeed}
+            suggestedCommunities={suggestedCommunities}
+            showSuggestions={showSuggestions}
           />
         </>
       )}
 
-      {activeTab === "pending" && canModerate && (
+      {activeTab === "pending" && (
         <CommunityPending
           pendingPosts={pendingPosts}
           selectMode={selectMode}
           selectedPosts={selectedPosts}
           toggleSelect={toggleSelect}
-          setActionType={setActionType}
+          handleModeration={handleModeration}
           setSelectMode={setSelectMode}
+          canModerate={canModerate} 
         />
       )}
 
@@ -524,8 +665,8 @@ export default function CommunityPage({
             setSelectMode(false);
             setSelectedPosts([]);
           }}
-          onApprove={handleBulkApprove}
-          onReject={handleBulkReject}
+          onApprove={() => handleModeration("approve", selectedPosts)}
+          onReject={() => handleModeration("reject", selectedPosts)}
         />
       )}
 

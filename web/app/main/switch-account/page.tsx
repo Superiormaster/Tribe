@@ -29,7 +29,7 @@ export default function SwitchAccountPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center p-2">
+    <div className="min-h-screen flex flex-col items-center mt-24 p-2">
       <h1 className="text-2xl font-bold mb-6 text-gray-800 dark:text-white">
         Switch Account
       </h1>

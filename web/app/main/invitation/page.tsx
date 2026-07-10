@@ -86,9 +86,9 @@ export default function CommunityInvitesPage() {
   }
 
   return (
-    <div className="max-w-xl mx-auto p-4">
+    <div className="max-w-xl mt-20 mx-auto p-4">
 
-      <h1 className="text-2xl font-bold mb-4">
+      <h1 className="text-2xl text-gray-700 dark:text-gray-300 font-bold mb-4">
         Community Invitations
       </h1>
 
@@ -104,7 +104,7 @@ export default function CommunityInvitesPage() {
 
           <div
             key={invite.id}
-            className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl p-4 flex items-center justify-between"
+            className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-indigo-800 border-indigo-500 rounded-2xl p-4 flex items-center justify-between"
           >
 
             <div className="flex items-center gap-3">
@@ -120,7 +120,7 @@ export default function CommunityInvitesPage() {
 
               <div>
 
-                <p className="font-semibold">
+                <p className="font-semibold text-gray-600 dark:text-gray-200">
                   {invite.sender.username}
                 </p>
 
@@ -128,7 +128,7 @@ export default function CommunityInvitesPage() {
                   invited you to join
                 </p>
 
-                <p className="text-sm font-medium">
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-200">
                   {invite.community.name}
                 </p>
 

@@ -13,9 +13,17 @@ type ChatUser = {
 type Props = {
   chatUser: ChatUser | null;
   isTyping: boolean;
+  isMuted: boolean;
+  mutedUntil?: string | null;
+  formatMutedUntil: (
+    date?: string | null
+  ) => string;
   onAudioCall: () => void;
   onVideoCall: () => void;
-  formatLastSeen: (date?: string) => string;
+  formatLastSeen: (
+    date?: string
+  ) => string;
+  onMore: () => void;
 };
 
 export default function ChatHeader({
@@ -24,6 +32,10 @@ export default function ChatHeader({
   onAudioCall,
   onVideoCall,
   formatLastSeen,
+  isMuted,
+  mutedUntil,
+  formatMutedUntil,
+  onMore,
 }: Props) {
   return (
     <div className="flex fixed top-0 left-0 right-0 z-50 text-gray-700 dark:text-gray-100 md:left-64 bg-white dark:bg-gray-900 gap-2 justify-between px-3 py-2 border-b">
@@ -55,26 +67,35 @@ export default function ChatHeader({
             {chatUser?.username}
           </span>
 
-          {isTyping ? (
-            <span className="text-xs text-gray-500">
-              typing...
-            </span>
-          ) : (
-            <span className="flex items-center gap-1 text-xs text-gray-500">
-              {chatUser?.status === 'online' ? (
-                <>
-                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-                  <span className="text-green-500">
-                    online
-                  </span>
-                </>
-              ) : (
-                <span>
-                  {formatLastSeen(chatUser?.last_seen)}
+          <div className="text-xs text-gray-500">
+            {isTyping ? (
+              <span>typing...</span>
+            ) : chatUser?.status ===
+              "online" ? (
+              <span className="flex items-center gap-1">
+                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                <span className="text-green-500">
+                  online
                 </span>
-              )}
-            </span>
-          )}
+              </span>
+            ) : (
+              <span>
+                {formatLastSeen(
+                  chatUser?.last_seen
+                )}
+              </span>
+            )}
+          
+            {isMuted && (
+              <div className="text-[11px] text-gray-400">
+                {mutedUntil
+                  ? formatMutedUntil(
+                      mutedUntil
+                    )
+                  : "Muted"}
+              </div>
+            )}
+          </div>
         </div>
 
       </div>
@@ -95,9 +116,14 @@ export default function ChatHeader({
           <Video size={20} />
         </button>*/}
 
-        <button className="hover:text-indigo-600 text-xl">
-          <MoreVertical size={20} />
-        </button>
+        <div className="relative">
+          <button
+            onClick={onMore}
+            className="hover:text-indigo-600 text-xl"
+          >
+            <MoreVertical size={20} />
+          </button>
+        </div>
 
       </div>
 

@@ -1,6 +1,7 @@
 'use client';
 
 import PostCard from "@/components/PostCard";
+import ReelCard from "@/components/ReelCard";
 
 type Props = {
   pendingPosts: any[];
@@ -9,6 +10,8 @@ type Props = {
   toggleSelect: (id: number) => void;
   setActionType: (type: "approve" | "reject") => void;
   setSelectMode: (v: boolean) => void;
+  canModerate: boolean;
+  handleModeration: (action: "approve" | "reject", ids: number[]) => void;
 };
 
 export default function CommunityPending({
@@ -18,14 +21,16 @@ export default function CommunityPending({
   toggleSelect,
   setActionType,
   setSelectMode,
+  canModerate,
+  handleModeration,
 }: Props) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 max-w-3xl mx-auto">
 
       {pendingPosts.map((post) => (
         <div
           key={post.id}
-          className="relative"
+          className="relative w-full max-w-full overflow-hidden"
         >
       
           {post.content_type === "short_video" ? (
@@ -65,6 +70,17 @@ export default function CommunityPending({
                 toggleSelect(post.id);
               }}
               setSelectMode={setSelectMode}
+              canDelete={canModerate}
+              canEdit={canModerate}
+              canRepost={false}
+    
+              onApprove={(id) =>
+                handleModeration("approve", [id])
+              }
+    
+              onReject={(id) =>
+                handleModeration("reject", [id])
+              }
             />
       
           )}
@@ -73,10 +89,7 @@ export default function CommunityPending({
             <div className="absolute top-2 right-2 flex gap-2">
 
               <button
-                onClick={() => {
-                  setActionType("approve");
-                  toggleSelect(post.id);
-                }}
+                onClick={() => toggleSelect(post.id)}
                 className={`w-8 h-8 rounded-full ${
                   selectedPosts.includes(post.id)
                     ? "bg-green-500"
@@ -87,11 +100,12 @@ export default function CommunityPending({
               </button>
 
               <button
-                onClick={() => {
-                  setActionType("reject");
-                  toggleSelect(post.id);
-                }}
-                className="w-8 h-8 rounded-full bg-red-500"
+                onClick={() => toggleSelect(post.id)}
+                className={`w-8 h-8 rounded-full ${
+                  selectedPosts.includes(post.id)
+                    ? "bg-red-500"
+                    : "bg-gray-500"
+                }`}
               >
                 ✕
               </button>

@@ -15,15 +15,11 @@ import Skeleton from "@/components/Skeleton";
 interface Community {
   id: string;
   name: string;
-
   membersCount: number;
-
   cover_image: string;
-
   joined: boolean;
-
   requested?: boolean;
-
+  invited?: boolean;
   join_approval_required?: boolean;
 }
 
@@ -62,6 +58,16 @@ export default function TribePage() {
       const data = await fetchTribeData(
         id,
         page
+      );
+
+      console.log(
+        "COMMUNITIES FROM API",
+        data.communities
+      );
+      console.log(
+        data.communities.find(
+          (c: Community) => c.id === 7
+        )
       );
 
       if (!tribe) {
@@ -149,72 +155,58 @@ export default function TribePage() {
   }, [loading, hasMore]);
 
   // JOIN / REQUEST
-  const handleJoinToggle = async (
-    communityId: string
-  ) => {
-
+  const handleJoinToggle = async (communityId: string) => {
     try {
-
-      const response =
-        await joinCommunity(
-          communityId
-        );
-
+      const response = await joinCommunity(communityId);
+  
+      console.log("TRIBE JOIN RESPONSE", response);
+  
       setTribe(prev => {
-
         if (!prev) return prev;
-
+  
         return {
           ...prev,
-
-          communities:
-            prev.communities.map(c => {
-
-              if (
-                c.id !== communityId
-              ) {
-                return c;
-              }
-
-              // JOINED
-              if (
-                response.status ===
-                "joined"
-              ) {
-
+          communities: prev.communities.map(c => {
+            if (c.id !== communityId) return c;
+  
+            switch (response.status) {
+  
+              case "joined":
+              case "already_joined":
                 return {
                   ...c,
                   joined: true,
                   requested: false,
-
-                  membersCount:
-                    c.membersCount + 1,
+                  invited: false,
+                  membersCount: c.membersCount + 1,
                 };
-              }
-
-              // REQUESTED
-              if (
-                response.status ===
-                "requested"
-              ) {
-
+  
+              case "requested":
+              case "already_requested":
                 return {
                   ...c,
+                  joined: false,
                   requested: true,
+                  invited: false,
                 };
-              }
-
-              return c;
-            }),
+  
+              case "invited":
+                return {
+                  ...c,
+                  joined: false,
+                  requested: false,
+                  invited: true,
+                };
+  
+              default:
+                return c;
+            }
+          }),
         };
       });
-
+  
     } catch (err) {
-
-      console.error(
-        "Failed to join:",
-        err
-      );
+      console.error("Failed to join:", err);
     }
   };
 
@@ -223,7 +215,7 @@ export default function TribePage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6">
+    <div className="max-w-4xl mt-20 mb-12 mx-auto px-4 py-6">
 
       {/* HEADER */}
       <header className="mb-6 border border-indigo-600 dark:border-white p-4 rounded-xl">
@@ -301,7 +293,8 @@ export default function TribePage() {
                 }
                 disabled={
                   community.joined ||
-                  community.requested
+                  community.requested ||
+                  community.invited
                 }
                 className={`mt-3 px-3 py-1 rounded-full text-xs font-medium transition ${
                   community.joined
@@ -313,17 +306,14 @@ export default function TribePage() {
                     : "bg-blue-100 dark:bg-blue-700 text-black dark:text-white"
                 }`}
               >
-
                 {community.joined
                   ? "Joined"
-
                   : community.requested
                   ? "Requested"
-
-                  : community
-                      .join_approval_required
+                  : community.invited
+                  ? "Already Invited"
+                  : community.join_approval_required
                   ? "Request to Join"
-
                   : "Join"}
 
               </button>

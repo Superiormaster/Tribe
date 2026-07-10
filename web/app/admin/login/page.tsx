@@ -27,41 +27,74 @@ export default function LoginPage() {
 
   // Handle email/password login
   const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (loading) return
-    setLoading(true)
-    setError('')
+    e.preventDefault();
+  
+    if (loading) return;
+  
+    setLoading(true);
+    setError('');
+  
     try {
-      const res = await apiRequest('api/users/login/', {
+      const res = await apiRequest('api/admin/login/', {
         method: 'POST',
-        data: { email, password },
-      })
+        data: {
+          email,
+          password,
+        },
+      });
+  
       const { access, refresh, user } = res;
-
+  
       await storeRefreshToken(user.email, refresh);
       setAccessToken(access);
-
-      // Fetch user profile
-      const profile = await apiRequest('api/users/me/', {
-        method: 'GET',
-      })
-    } catch(err:any) {
-      const detail = err?.detail || err?.message || 'Login failed'
-      if (detail.includes("Email not verified")) {
-      } else if (detail.includes("credentials")) {
-        setError("Wrong email or password.")
+  
+      setUser(user);
+  
+      // Only admins can login here
+      if (
+        user.role !== 'admin' &&
+        user.role !== 'superadmin'
+      ) {
+        setError('You are not an admin.');
+        return;
+      }
+  
+      push('/admin');
+    } catch (err: any) {
+      const detail =
+        err?.detail ||
+        err?.message ||
+        'Login failed';
+  
+      if (detail.includes('Email not verified')) {
+        setError('Email not verified.');
+      } else if (
+        detail.includes('credentials')
+      ) {
+        setError('Wrong email or password.');
       } else {
-        setError(detail)
+        setError(detail);
       }
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   };
+  
+  useEffect(() => {
+    if (!loadingUser && user) {
+      if (
+        user.role === 'admin' ||
+        user.role === 'superadmin'
+      ) {
+        push('/admin');
+      }
+    }
+  }, [user, loadingUser, push]);
 
   return (
-    <div className="flex justify-center items-center rounded-2xl text-gray-700 dark:text-gray-200 dark:bg-gray-200 bg-gray-50 dark:bg-gray-950">
-      <form onSubmit={handleLogin} className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-lg w-96 space-y-4">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Login to Tribe</h1>
+    <div className="min-h-screen flex justify-center items-center text-gray-700 dark:text-gray-200">
+      <form onSubmit={handleLogin} className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-lg w-full max-w-md space-y-4">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Login Admin Tribe</h1>
 
         {error && <div className="bg-red-100 text-red-600 px-3 py-2 rounded">{error}</div>}
 

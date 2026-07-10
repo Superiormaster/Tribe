@@ -11,6 +11,7 @@ type Props = {
   onJoin: () => void;
   onOpenMenu: () => void;
   communityId: string;
+  canManage: boolean;
 };
 
 export default function CommunityHeader({
@@ -20,6 +21,7 @@ export default function CommunityHeader({
   onJoin,
   onOpenMenu,
   communityId,
+  canManage,
 }: Props) {
   const [muted, setMuted] = useState(true);
   
@@ -84,13 +86,25 @@ export default function CommunityHeader({
               {membersCount} members
             </span>
 
-            {!community.joined && (
+            {!community.joined && !community.requested && !community.invited && (
               <button
                 onClick={handleJoin}
                 className="px-3 py-1 bg-indigo-600 text-white rounded-full text-sm"
               >
                 Join
               </button>
+            )}
+            
+            {!community.joined && community.requested && (
+              <span className="px-3 py-1 bg-gray-500 text-white rounded-full text-sm">
+                Requested
+              </span>
+            )}
+            
+            {!community.joined && community.invited && (
+              <span className="px-3 py-1 bg-yellow-500 text-black rounded-full text-sm">
+                Invited
+              </span>
             )}
 
             <AppLink
@@ -100,14 +114,16 @@ export default function CommunityHeader({
             >
               <Search size={18} />
             </AppLink>
-
-            <AppLink
-              className="text-xs px-2 py-1 bg-yellow-500 text-black rounded"
-              href={`/main/community/${communityId}/invite`}
-              prefetch={false}
-            >
-              Invite
-            </AppLink>
+    
+            {canManage && (
+              <AppLink
+                className="text-xs px-2 py-1 bg-yellow-500 text-black rounded"
+                href={`/main/community/${communityId}/invite`}
+                prefetch={false}
+              >
+                Invite
+              </AppLink>
+            )}
 
           </div>
 

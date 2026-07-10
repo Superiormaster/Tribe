@@ -47,7 +47,7 @@ export default function AudioWaveform({
     <canvas
       ref={canvasRef}
       width={200}
-      height={40}
+      height={20}
       className="w-full"
     />
   );

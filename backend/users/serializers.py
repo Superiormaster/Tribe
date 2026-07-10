@@ -5,7 +5,7 @@ from django.contrib.auth.password_validation import validate_password
 from django.core.validators import validate_email
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.db import IntegrityError
-from .models import Star
+from .models import Star, PrivacySettings, BlockedUser, MutedUser
 from post.models import PostView
 
 User = get_user_model()
@@ -105,6 +105,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "country",
             "website",
             "creator_type",
+            "role",
             "interests",
             "gender",
             "date_of_birth",
@@ -193,3 +194,51 @@ class DiscoveryUserSerializer(serializers.ModelSerializer):
 
     def get_stars_received_count(self, obj):
         return obj.stars_received.count() if hasattr(obj, "stars_received") else 0
+
+class PrivacySettingsSerializer(serializers.ModelSerializer): 
+  class Meta: 
+    model = PrivacySettings 
+    fields = [ "profile_visibility", "location_visible", ]
+
+class BlockedUserSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(source="blocked_user.id")
+    username = serializers.CharField(source="blocked_user.username")
+    full_name = serializers.CharField(source="blocked_user.full_name")
+    avatar = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BlockedUser
+        fields = ["id", "username", "full_name", "avatar", "created_at"]
+
+    def get_avatar(self, obj):
+        user = obj.blocked_user
+
+        if not user.avatar:
+            return None
+
+        return user.avatar.url if hasattr(user.avatar, "url") else user.avatar
+
+class MutedUserSerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(source="muted_user.id")
+    username = serializers.CharField(source="muted_user.username")
+    full_name = serializers.CharField(source="muted_user.full_name")
+    avatar = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MutedUser
+        fields = ["id", "username", "full_name", "avatar", "created_at"]
+
+    def get_avatar(self, obj):
+        user = obj.muted_user
+        if not user.avatar:
+            return None
+        return user.avatar.url if hasattr(user.avatar, "url") else user.avatar
+
+class ChangePasswordSerializer(serializers.Serializer):
+    old_password = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=True)
+
+    def validate_new_password(self, value):
+        from django.contrib.auth.password_validation import validate_password
+        validate_password(value)
+        return value

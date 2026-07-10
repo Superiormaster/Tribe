@@ -107,7 +107,7 @@ export default function JoinRequestsPage() {
   if (loading) return <Skeleton />;
 
   return (
-    <div className="max-w-2xl mx-auto p-4 space-y-4">
+    <div className="max-w-2xl my-20 mx-auto p-3 space-y-4">
 
       <h1 className="text-2xl font-bold text-gray-700 dark:text-white">
         Join Requests
@@ -118,8 +118,7 @@ export default function JoinRequestsPage() {
           key={request.id}
           className="p-4 border rounded-2xl flex items-center justify-between"
         >
-
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
 
             <AppLink
               href={`/main/profile/${request.user.username}`}
@@ -134,26 +133,26 @@ export default function JoinRequestsPage() {
                 <div className="w-12 h-12 rounded-full bg-gray-400" />
               )}
             </AppLink>
-
-            <div>
-              <p className="font-semibold text-gray-700 dark:text-white">
+          
+            <div className="min-w-0">
+              <p className="font-semibold truncate text-gray-700 dark:text-white max-w-[180px]">
                 {request.user.username}
               </p>
-
+          
               <p className="text-sm text-gray-500">
                 Requested to join
               </p>
             </div>
-
+          
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex flex-col gap-2">
 
             <button
               onClick={() =>
                 handleApprove(request.id)
               }
-              className="px-3 py-1 rounded-full bg-green-600 text-white"
+              className="px-2 py-1 rounded-full bg-green-600 text-white"
             >
               Approve
             </button>
@@ -162,7 +161,7 @@ export default function JoinRequestsPage() {
               onClick={() =>
                 handleReject(request.id)
               }
-              className="px-3 py-1 rounded-full bg-red-600 text-white"
+              className="px-2 py-1 rounded-full bg-red-600 text-white"
             >
               Reject
             </button>

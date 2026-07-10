@@ -9,7 +9,23 @@ export function useChatInputState() {
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [mediaTab, setMediaTab] = useState<"photos" | "videos" | "files">("photos");
 
+  // 🆕 IMPORTANT: message draft state (MISSING BEFORE)
+  const [text, setText] = useState("");
+
+  const resetInput = () => {
+    setText("");
+    setSelectedFiles([]);
+    setPreviewIndex(null);
+    setShowMediaPicker(false);
+    setShowCaptionBar(false);
+    setMediaTab("photos");
+  };
+
   return {
+    // input state
+    text,
+    setText,
+
     selectedFiles,
     setSelectedFiles,
 
@@ -24,5 +40,7 @@ export function useChatInputState() {
 
     mediaTab,
     setMediaTab,
+
+    resetInput,
   };
 }

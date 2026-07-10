@@ -175,7 +175,7 @@ export default function InviteMembers({
   };
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-2xl my-20 mx-auto">
 
       {/* SEARCH */}
       <div className="sticky top-0 z-20 p-3 border-b border-gray-200 dark:border-gray-800">

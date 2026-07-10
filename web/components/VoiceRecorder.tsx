@@ -1,101 +1,144 @@
 'use client';
 
-import { Send, Trash2, Pause } from 'lucide-react';
+import { Send, Trash2, Play, Pause } from 'lucide-react';
+import { useEffect, useState, useMemo, useRef } from 'react';
+import AudioWaveform from '@/components/AudioWaveform';
 
 type VoiceState =
-  | "idle"
   | "recording"
   | "locked"
-  | "paused"
+  | "idle";
+
+type Props = {
+  voiceState: VoiceState;
+  duration: number;
+  waveform: number[];
+  drag: { x: number; y: number };
+
+  isLocked: boolean;
+  previewBlob: Blob | null;
+  isPaused: boolean;
+  onPauseToggle: () => void;
+
+  onCancel: () => void;
+  onSend: () => void;
+};
 
 export default function VoiceRecorderUI({
-  isRecording,
+  voiceState,
   duration,
   waveform,
   drag,
-  isPaused,
   isLocked,
+  isPaused,
+  onPauseToggle,
+  previewBlob,
   onCancel,
   onSend,
-  togglePause,
-  onPauseToggle,
-}: any) {
+}: Props) {
+
+  const [displayWaveform, setDisplayWaveform] = useState<number[]>([]);
   
+  const visibleWave = useMemo(() => {
+    return waveform.slice(-60);
+  }, [waveform]);
+  
+  const handlePauseClick =
+  onPauseToggle;
+
   const format = (sec: number) => {
     const m = Math.floor(sec / 60);
     const s = sec % 60;
     return `${m}:${s.toString().padStart(2, "0")}`;
   };
-  
-  const handlePauseClick = () => {
-    // If preview exists and user presses play → resume recording
-    if (previewBlob && isPaused) {
-      togglePause();
-      return;
-    }
-  
-    togglePause();
-  };
-  
-  return (
-    <div className="fixed bottom-0 left-0 right-0 bg-gray-300 dark:bg-gray-800 text-white z-[999] px-4 py-3">
 
-      {/* Waveform */}
-      {!isPaused && (
-        <div className="flex items-end gap-[2px] h-10 overflow-hidden">
-          {waveform.map((v: number, i: number) => (
+  // ❌ DO NOT SHOW UI if not recording or locked
+  if (voiceState === "idle") return null;
+
+  return (
+    <div className="fixed bottom-0 left-0 right-0 bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-white z-[999] px-4 py-3">
+
+      {/* TIMER + RECORD DOT */}
+      <div className="flex items-center gap-2">
+        <span className="text-red-500 animate-pulse text-lg">●</span>
+        <span className="text-sm font-medium">
+          {format(duration)}
+        </span>
+      </div>
+  
+      <div className="relative flex items-center h-12">
+
+        {isPaused && (
+          <button
+            onTouchEnd={(e) => {
+              e.stopPropagation();
+              onPauseToggle();
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onPauseToggle();
+            }}
+            className="
+              mr-3
+              text-gray-600
+              dark:text-gray-300
+            "
+          >
+            <Play />
+          </button>
+        )}
+      
+        <div className="flex items-center">
+          {visibleWave.map((v, i) => (
             <div
               key={i}
-              className="w-[2px] bg-green-400"
+              className="w-[3px] mx-[1px] bg-gray-600 dark:bg-gray-300 rounded-full"
               style={{
-                height: `${Math.abs(v) * 40}px`,
+                height: `${Math.max(
+                  3,
+                  v * 25
+                )}px`,
               }}
             />
           ))}
         </div>
-      )}
-      
-      {/* Controls */}
-      <div className="flex text-gray-700 dark:text-white items-center justify-between mt-2">
-        <button onClick={onCancel}>
+      </div>
+
+      {/* CONTROLS */}
+      <div className="flex items-center justify-between">
+
+        {/* CANCEL */}
+        <button
+          onClick={onCancel}
+          className="p-2 rounded-full hover:bg-red-600/20"
+        >
           <Trash2 size={20} />
         </button>
 
-        <button
-          onClick={handlePauseClick}
-          className="flex items-center gap-2"
-        >
-          <div className="flex items-center gap-1">
-            <span className="text-red-500 animate-pulse">●</span>
-            <span className="text-sm">
-              {Math.floor(duration / 60)}:
-              {(duration % 60).toString().padStart(2, "0")}
-            </span>
-          </div>
-        </button>
-
-        <div className="relative h-6 overflow-hidden">
-          <div
-            className="absolute left-1/2 -translate-x-1/2 text-xs text-gray-400 transition-transform duration-75"
-            style={{
-              transform: `translate(${drag.x}px, ${drag.y}px)`,
-              transition: "transform 0.08s ease-out",
+        {!isPaused && (
+          <button
+            onTouchEnd={(e) => {
+              e.stopPropagation();
+              onPauseToggle();
             }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onPauseToggle();
+            }}
+            className="text-red-500 text-4xl"
           >
-            ⬅ slide to cancel | ⬆ lock
-          </div>
-        </div>
+            <Pause />
+          </button>
+        )}
 
-        <button onClick={onSend}>
-          <Send size={20} />
+        {/* SEND */}
+        <button
+          onClick={onSend}
+          className="p-2 rounded-full bg-green-500 hover:bg-green-600"
+        >
+          <Send size={18} />
         </button>
       </div>
-
-      {isLocked && (
-        <div className="text-center text-green-400 text-xs mt-1">
-          🔒
-        </div>
-      )}
     </div>
   );
 }

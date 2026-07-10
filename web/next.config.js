@@ -12,6 +12,14 @@ const nextConfig = {
         "/sys/",
       ],
     };
+  
+     // Disable optional ws native modules
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      bufferutil: false,
+      "utf-8-validate": false,
+    };
+
     return config;
   },
 };

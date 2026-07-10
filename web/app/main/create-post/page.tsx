@@ -1,13 +1,17 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useContext } from 'react';
 import { useSearchParams, usePathname } from 'next/navigation';
 import { useNavigation } from "@/utils/useNavigation"
+import AppLink from '@/components/AppLink';
 import toast from 'react-hot-toast';
 import { Toaster } from 'react-hot-toast';
+import { NotificationContext } from "@/components/NotificationContext";
 import {
-  savePostDraft,
+  saveAutoPostDraft,
+  saveManualPostDraft,
   getPostDraft,
-  deletePostDraft
+  deletePostDraft,
+  getAllPostDrafts,
 } from "@/lib/messageDB";
 import ButtonLoader from "@/components/ButtonLoader";
 import Skeleton from '@/components/Skeleton';
@@ -18,7 +22,8 @@ export default function CreatePostPage() {
   const [content, setContent] = useState('');
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const draftId = searchParams.get("draftId");
+  const [imageFiles, setImageFiles] = useState<(File | string)[]>([]);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
   const [video, setVideo] = useState<File | string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -27,6 +32,8 @@ export default function CreatePostPage() {
   const isEdit = searchParams.get('edit') === 'true';
   const postId = searchParams.get('postId');
   const modeParam = searchParams.get('mode');
+  const { addNotification } = useContext(NotificationContext);
+  const [draftCount, setDraftCount] = useState(0);
 
   const [mode, setMode] = useState<'global' | 'community' | 'reel'>(
     modeParam === 'reel'
@@ -57,38 +64,116 @@ export default function CreatePostPage() {
   const MAX_IMAGES = 5;
 
   useEffect(() => {
-    const save = async () => {
-      await savePostDraft({
-        draftId: selectedCommunity ? `community-${selectedCommunity}` : "global",
-        content,
-        imageFiles: imageUrls,
-        imageUrls,
-        video: typeof video === "string" ? video : null,
-        selectedCommunity,
-      });
+    const loadCount = async () => {
+      const drafts = await getAllPostDrafts();
+      setDraftCount(drafts.length);
     };
   
-    save();
-  }, [content, imageUrls, video, selectedCommunity]);
+    loadCount();
+  }, []);
 
   useEffect(() => {
-    const load = async () => {
-      const draftId = selectedCommunity
-        ? `community-${selectedCommunity}`
-        : "global";
+      if (isEdit || draftId) return;
   
-      const draft = await getPostDraft(draftId);
+      const timer = setTimeout(async () => {
+          await saveAutoPostDraft({
+              draftId: selectedCommunity
+                  ? `auto-community-${selectedCommunity}`
+                  : "auto-global",
   
-      if (!draft) return;
+              title: selectedCommunity
+                  ? "Community Post"
+                  : "Global Post",
   
-      setContent(draft.content || "");
-      setImageUrls(draft.imageUrls || []);
-      setVideo(draft.video || null);
-      setSelectedCommunity(draft.selectedCommunity || null);
-    };
+              content,
   
-    if (!isEdit) load();
-  }, [selectedCommunity]);
+              imageFiles,
+  
+              imageUrls,
+  
+              video,
+  
+              selectedCommunity,
+  
+              communityName:
+                  communityData?.name || "",
+          });
+      }, 1000);
+  
+      return () => clearTimeout(timer);
+  }, [
+      content,
+      imageFiles,
+      imageUrls,
+      video,
+      selectedCommunity,
+      communityData,
+  ]);
+
+  useEffect(() => {
+
+      if (isEdit) return;
+  
+      const load = async () => {
+  
+          const id =
+              draftId ??
+              (
+                  selectedCommunity
+                      ? `auto-community-${selectedCommunity}`
+                      : "auto-global"
+              );
+  
+          const draft = await getPostDraft(id);
+  
+          if (!draft) return;
+  
+          setContent(draft.content || "");
+  
+          setImageFiles(draft.imageFiles || []);
+  
+          setImageUrls(draft.imageUrls || []);
+  
+          setVideo(draft.video || null);
+  
+          setSelectedCommunity(
+              draft.selectedCommunity || null
+          );
+      };
+  
+      load();
+  
+  }, [draftId]);
+  
+  const handleSaveDraft = async () => {
+
+      await saveManualPostDraft({
+  
+          title: allowReel
+              ? "Entertainment"
+              : selectedCommunity
+              ? "Community Post"
+              : "Global Post",
+  
+          communityName:
+              communityData?.name || "",
+  
+          content,
+  
+          imageFiles,
+  
+          imageUrls,
+  
+          video,
+  
+          selectedCommunity,
+      });
+  
+      const drafts = await getAllPostDrafts();
+      setDraftCount(drafts.length);
+  
+      toast.success("Draft saved");
+  };
 
   useEffect(() => {
     setImageUrls([]);
@@ -207,8 +292,11 @@ export default function CreatePostPage() {
       let mediaUrls: any[] = [];
 
       const filesToUpload = [
-        ...(imageFiles.filter(i => i instanceof File) as File[]),
-        ...(video instanceof File ? [video] : [])
+          ...imageFiles.filter(
+              (i): i is File => i instanceof File
+          ),
+      
+          ...(video instanceof File ? [video] : []),
       ];
 
       for (let file of filesToUpload) {
@@ -238,7 +326,10 @@ export default function CreatePostPage() {
         contentType = "short_video";
       } else if (video) {
         contentType = "long_video";
-      } else if (imageFiles.length > 0) {
+      } else if (
+        imageFiles.length > 0 ||
+        imageUrls.length > 0
+      ) {
         contentType = "image";
       }
       
@@ -266,16 +357,30 @@ export default function CreatePostPage() {
   
         toast.success("Post created!");
       }
+
+      addNotification({
+        id: Date.now(),
+        message: isEdit ? "Post updated!" : "Post created!",
+        created_at: new Date().toISOString(),
+        sender: {
+          avatar: "/default.png"
+        }
+      });
   
-      alert('Post created successfully!');
       setContent('');
       setImageUrls([]);
       setImageFiles([]);
       setVideo(null);
       setFileProgress({});
       await deletePostDraft(
-        selectedCommunity ? `community-${selectedCommunity}` : "global"
+          selectedCommunity
+              ? `auto-community-${selectedCommunity}`
+              : "auto-global"
       );
+      
+      if (draftId) {
+          await deletePostDraft(draftId);
+      }
       push('/main/home');
     } catch (err:any) {
       console.log("FULL ERROR:", err.data || err);
@@ -325,10 +430,16 @@ export default function CreatePostPage() {
   if (selectedCommunity && isEntertainmentTribe === null) {
     return <Skeleton />;
   }
-  if (loading && (!video && images.length === 0)) return <div className="text-center mt-10"><Skeleton onComplete={() => setLoading(false)} /></div>;
+  
+  if (
+    loading &&
+    !video &&
+    imageFiles.length === 0 &&
+    imageUrls.length === 0
+  ) return <div className="text-center mt-10"><Skeleton onComplete={() => setLoading(false)} /></div>;
 
   return (
-    <div className="max-w-3xl mx-auto p-4 space-y-4">
+    <div className="max-w-3xl mt-6 mx-auto p-4 space-y-4">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{allowReel ? "Create Entertainment Post" : selectedCommunity ? "Create Community Post" : isEdit ? "Edit Post" : "Create Post"}
       </h1>
 
@@ -380,6 +491,9 @@ export default function CreatePostPage() {
           )}
         
         </div>
+        <AppLink href="/main/draft" className="absolute top-24 right-10 text-sm font-bold mb-6">
+          Drafts • {draftCount}
+        </AppLink>
 
         {/* Textarea */}
         <textarea
@@ -396,10 +510,14 @@ export default function CreatePostPage() {
             {imageFiles.map((file, idx) => (
               <div key={idx} className="relative group">
                 <img
-                  src={URL.createObjectURL(file)}
                   alt={`preview-${idx}`}
+                  src={
+                      file instanceof File
+                          ? URL.createObjectURL(file)
+                          : file
+                  }
                   className="w-full h-24 object-cover rounded-lg"
-                />
+              />
                 <button
                   onClick={() => removeImage(idx)}
                   className="absolute top-1 right-1 bg-gray-800 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-80 hover:opacity-100 transition"
@@ -463,19 +581,28 @@ export default function CreatePostPage() {
               accept="video/*"
               onChange={handleVideoChange}
               className="hidden"
-              disabled={images.length > 0}
+              disabled={imageFiles.length > 0 || imageUrls.length > 0}
             />
           </label>
         </div>
 
         {/* Post button */}
-        <button
-          onClick={handlePost}
-          disabled={loading}
-          className="w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium"
-        >
-          {loading ? <ButtonLoader /> : isEdit ? "Update Post" : "Post"}
-        </button>
+        <div className="flex gap-3">
+            <button
+                onClick={handleSaveDraft}
+                className="w-full py-2 rounded-lg text-gray-700 dark:text-white border border-gray-300"
+            >
+                Save Draft
+            </button>
+        
+            <button
+              onClick={handlePost}
+              disabled={loading}
+              className="w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium"
+            >
+              {loading ? <ButtonLoader /> : isEdit ? "Update Post" : "Post"}
+            </button>
+        </div>
       </div>
     </div>
   );

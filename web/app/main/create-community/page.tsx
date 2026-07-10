@@ -1,3 +1,5 @@
+'use client';
+
 import { useContext } from "react";
 import { UserContext } from "@/components/UserContext";
 import CreateCommunity from "@/components/CreateCommunity";

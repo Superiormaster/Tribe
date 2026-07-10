@@ -1,8 +1,8 @@
 'use client';
 
 import AppLink from '@/components/AppLink';
-import { Repeat, AlarmClock } from 'lucide-react';
-import { useState, useEffect } from "react";
+import { Repeat, AlarmClock, MoreHorizontal, Trash2 } from 'lucide-react';
+import { useState, useEffect, useRef } from "react";
 import { timeAgo } from '@/utils/timeAgo'
 import { starCreator } from '@/lib/api'
 import PostCard from '@/components/PostCard';
@@ -15,10 +15,10 @@ export default function RepostCard({
   hideStarButton = false,
   starredUserIds = new Set(),
   shouldHideStar,
+  canModerateReposts = false,
 }) {
-  const [isStarred, setIsStarred] = useState(
-    starredUserIds.has(repost.user.id)
-  );
+  const [isStarred, setIsStarred] = useState(false);
+
   const currentUserId = Number(currentUser?.id);
   const repostUserId = Number(repost.user.id);
   const isOwnProfile = currentUserId === repostUserId;
@@ -27,6 +27,31 @@ export default function RepostCard({
   shouldHideStar ||
   isOwnProfile;
   
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        menuRef.current &&
+        !menuRef.current.contains(e.target as Node)
+      ) {
+        setMenuOpen(false);
+      }
+    };
+  
+    document.addEventListener(
+      "mousedown",
+      handleClickOutside
+    );
+  
+    return () =>
+      document.removeEventListener(
+        "mousedown",
+        handleClickOutside
+      );
+  }, []);
+
   const handleStar = async (userId: number) => {
     if (userId === currentUser?.id) {
       console.warn("Cannot star yourself");
@@ -48,10 +73,31 @@ export default function RepostCard({
       setIsStarred(previous);
     }
   };
-  
+
   useEffect(() => {
+    if (!repost?.user?.id) return;
+  
     setIsStarred(starredUserIds.has(repost.user.id));
-  }, [starredUserIds, repost.user.id]);
+  }, [starredUserIds, repost?.user?.id]);
+
+  const handleDeleteRepost = async () => {
+    try {
+      await apiRequest(`api/reposts/${repost.id}/`, {
+        method: "DELETE",
+      });
+  
+      handlePostAction?.("delete_repost", repost.id);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+  
+  const isRepostOwner =
+    currentUserId === repostUserId;
+  
+  const canDeleteRepost =
+    isRepostOwner ||
+    canModerateReposts;
 
   const fetchReposts = async (page = 1) => {
     const res = await apiRequest(
@@ -62,14 +108,12 @@ export default function RepostCard({
   };
   
   return (
-    <AppLink
-      href={`/main/reposts/${repost.id}`}
-      prefetch={false}
-      className="block bg-white dark:bg-gray-900 border-b-4 border-gray-600 p-1 space-y-3"
+    <div
+      className="block bg-white dark:bg-gray-900 border-b-4 border-gray-600 p-2 space-y-3"
     >
 
       {/* REPOST HEADER */}
-      <div className="flex items-center gap-2 text-gray-500">
+      <div className="flex items-center gap-2 mb-2 text-gray-500">
 
         <AppLink href={`/main/profile/${repost.user.username}`}
         prefetch={false} className="flex-shrink-0">  
@@ -122,44 +166,85 @@ export default function RepostCard({
         <span className="ml-2 flex flex-1 items-center text-gray-500 text-sm">  
           <AlarmClock className="text-sm mr-1" /> {timeAgo(repost.created_at)}  
         </span>
-      </div>
-
-      {/* QUOTE TEXT */}
-      {repost.repost_type === 'quote' && repost.quote_text && (
-        <div className="text-gray-800 dark:text-gray-200 whitespace-pre-line">
-          {repost.quote_text}
-        </div>
-      )}
-
-      {/* ORIGINAL POST */}
-      <div className="border border-gray-300 dark:border-gray-700 rounded-2xl overflow-hidden">
-        {repost.post && (
-          <PostCard
-            post={repost.post}
-  
-            hideCommunityName={false}
-            hideStarButton={false}
-            isEmbedded={true}
-  
-            canEdit={false}
-            canDelete={true}
-            canRepost={false}
-            showPinnedLabel={false}
-  
-            showManageButtons={true}
-  
-            handlePostAction={handlePostAction}
-            hideStarButton={true}
-            showJoinButton={false} 
-            shouldHideStar={true}
-
-            isRepostContext={true}
-            repostId={repost.id}
-            repostOwnerId={repost.user.id}
-          />
+        
+        {canDeleteRepost && (
+          <div
+            className="relative"
+            ref={menuRef}
+          >
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setMenuOpen(!menuOpen);
+              }}
+              className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800"
+            >
+              <MoreHorizontal className="w-5 h-5" />
+            </button>
+        
+            {menuOpen && (
+              <div className="absolute right-0 top-full mt-1 w-36 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-lg z-50">
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+        
+                    handleDeleteRepost();
+        
+                    setMenuOpen(false);
+                  }}
+                  className="flex items-center gap-2 w-full px-3 py-2 text-red-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete
+                </button>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
-    </AppLink>
+      <AppLink
+        href={`/main/reposts/${repost.id}`}
+        prefetch={false}>
+        {/* QUOTE TEXT */}
+        {repost.repost_type === 'quote' && repost.quote_text && (
+          <div className="text-gray-800 dark:text-gray-200 mb-1 whitespace-pre-line">
+            {repost.quote_text}
+          </div>
+        )}
+  
+        {/* ORIGINAL POST */}
+        <div className="border border-gray-300 dark:border-gray-700 rounded-2xl overflow-hidden">
+          {repost.post && (
+            <PostCard
+              post={repost.post}
+    
+              hideCommunityName={false}
+              hideStarButton={false}
+              isEmbedded={true}
+    
+              canEdit={false}
+              canDelete={false}
+              canRepost={false}
+              showPinnedLabel={false}
+    
+              showManageButtons={false}
+    
+              handlePostAction={handlePostAction}
+              hideStarButton={true}
+              showJoinButton={false} 
+              shouldHideStar={true}
+  
+              isRepostContext={true}
+              repostId={repost.id}
+              repostOwnerId={repost.user.id}
+            />
+          )}
+        </div>
+      </AppLink>
+
+    </div>
   );
 }

@@ -18,7 +18,7 @@ export default function AccountSwitcherModal({ open, onClose, onSwitch }) {
         <>
           {/* backdrop */}
           <motion.div
-            className="fixed inset-0 bg-black/40"
+            className="fixed z-50 inset-0 bg-black/40"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -33,7 +33,7 @@ export default function AccountSwitcherModal({ open, onClose, onSwitch }) {
             exit={{ y: "100%" }}
             transition={{ type: "spring", stiffness: 120 }}
           >
-            <h2 className="text-center font-bold mb-4">
+            <h2 className="text-gray-700 dark:text-gray-300 text-center font-bold mb-4">
               Switch Account
             </h2>
 
@@ -48,7 +48,7 @@ export default function AccountSwitcherModal({ open, onClose, onSwitch }) {
                   <AvatarMorph src={acc.avatar} />
 
                   <div>
-                    <p className="font-semibold">{acc.username}</p>
+                    <p className="text-gray-600 dark:text-gray-400 font-semibold">{acc.username}</p>
                     <p className="text-xs text-gray-500">{acc.email}</p>
                   </div>
                 </motion.div>

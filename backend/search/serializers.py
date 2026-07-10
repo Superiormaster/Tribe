@@ -35,7 +35,11 @@ class PostSearchSerializer(serializers.ModelSerializer):
           {
               "type": m.media_type,
               "url": m.file if isinstance(m.file, str) else getattr(m.file, "url", None),
-              "thumbnail": m.thumbnail.url if m.thumbnail else None
+              "thumbnail": (
+                  m.thumbnail.url
+                  if hasattr(m.thumbnail, "url")
+                  else m.thumbnail
+              )
           }
           for m in obj.media_files.all()
       ]

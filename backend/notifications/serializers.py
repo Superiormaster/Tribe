@@ -1,6 +1,6 @@
 # notifications/serializers.py
 from rest_framework import serializers
-from .models import Notification
+from .models import Notification, NotificationSettings
 from users.serializers import UserSerializer
 from communities.models import Community
 
@@ -152,4 +152,66 @@ class NotificationSerializer(serializers.ModelSerializer):
                 f"in {obj.community.name}"
             )
 
+        if obj.type == "join_request":
+            return f"{first_actor} requested to join {obj.community.name}"
+  
+        if obj.type == "join_approved":
+            return f"Your request to join {obj.community.name} was approved 🎉"
+  
+        if obj.type == "join_rejected":
+            return f"Your request to join {obj.community.name} was rejected"
+  
+        if obj.type == "community_ban":
+            return f"You were removed from {obj.community.name}"
+  
+        if obj.type == "community_unban":
+            return f"You can join {obj.community.name} again"
+  
+        if obj.type == "moderator_added":
+            return f"You were made a moderator in {obj.community.name}"
+        
+        if obj.type == "admin_added":
+            return f"You were made an admin in {obj.community.name}"
+  
+        if obj.type == "role_removed":
+            return f"Your staff role was removed in {obj.community.name}"
+  
+        if obj.type == "post_approved":
+            return f"Your post was approved in {obj.community.name}"
+  
+        if obj.type == "post_rejected":
+            return f"Your post was rejected in {obj.community.name}"
+
+        if obj.type == "tribe_request_approved":
+            tribe = (
+                obj.tribe_request.name
+                if obj.tribe_request
+                else "your"
+            )
+        
+            return (
+                f"Your request for the "
+                f"{tribe} tribe has been approved 🎉"
+            )
+
+        if obj.type == "tribe_request_rejected":
+            tribe = (
+                obj.tribe_request.name
+                if obj.tribe_request
+                else "your"
+            )
+        
+            return (
+                f"Your request for the "
+                f"{tribe} tribe has been rejected."
+            )
+  
         return obj.type.capitalize()
+
+class NotificationSettingsSerializer(
+    serializers.ModelSerializer
+):
+    class Meta:
+        model = NotificationSettings
+        fields = "__all__"
+        read_only_fields = ["user"]

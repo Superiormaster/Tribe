@@ -1,7 +1,8 @@
 'use client'
 
-import { createContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useState, useMemo, useEffect, ReactNode } from "react";
 import { apiRequest } from "@/utils/api";
+import { connectNotificationSocket } from "@/lib/notifications-socket";
 
 interface NotificationContextType {
   notifications: any[];
@@ -27,10 +28,16 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
   const [count, setCount] = useState(0);
   const [socket, setSocket] = useState<WebSocket | null>(null);
 
+  const normalizeNotifications = (data: any) => {
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.results)) return data.results;
+    return [];
+  };
+
   const loadNotifications = async () => {
     try {
       const data = await apiRequest("api/notifications/");
-      setNotifications(data);
+      setNotifications(normalizeNotifications(data));
     } catch (err) {
       console.error(err);
     }
@@ -39,12 +46,16 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
   // Add a notification safely (no duplicates)
   const addNotification = (n: any) => {
     setNotifications(prev => {
-      if (prev.find(item => item.id === n.id)) return prev;
-      return [n, ...prev];
+      const list = Array.isArray(prev) ? prev : [];
+  
+      if (list.find(item => item.id === n.id)) return list;
+  
+      return [n, ...list];
     });
+  
     setCount(prev => prev + 1);
     setToast(n);
-    setTimeout(() => setToast(null), 4000); 
+    setTimeout(() => setToast(null), 4000);
   };
   
   const dismissToast = () => setToast(null);
@@ -52,25 +63,61 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     // Load first page and count unread
     apiRequest("api/notifications/?page=1").then(data => {
-      setNotifications(data.results);
-      const unread = data.results.filter((n: any) => !n.read).length;
+      const list = normalizeNotifications(data);
+    
+      setNotifications(list);
+    
+      const unread = list.filter((n: any) => !n.read).length;
       setCount(unread);
     });
-
-    // Open WebSocket globally
-    const ws = new WebSocket("ws://localhost:8000/ws/notifications/");
-    ws.onmessage = event => {
-      const data = JSON.parse(event.data);
-      addNotification(data);
+    
+    let ws;
+  
+    const connect =
+      async () => {
+        ws =
+          await connectNotificationSocket();
+  
+        if (!ws) return;
+  
+        ws.onmessage =
+          event => {
+            const notification =
+              JSON.parse(event.data);
+  
+            addNotification(
+              notification
+            );
+          };
+  
+        setSocket(ws);
+      };
+  
+    connect();
+  
+    return () => {
+      ws?.close();
     };
-    setSocket(ws);
-    loadNotifications()
-
-    return () => ws.close();
   }, []);
+  
+  const value = useMemo(() => ({
+    notifications, 
+    count, 
+    setCount, 
+    addNotification, 
+    toast, 
+    dismissToast,
+  }), [
+    notifications, 
+    count, 
+    setCount, 
+    addNotification, 
+    toast, 
+    dismissToast,
+  ]);
 
   return (
-    <NotificationContext.Provider value={{ notifications, count, setCount, addNotification, toast, dismissToast }}>
+    <NotificationContext.Provider value={value}>
       {children}
     </NotificationContext.Provider>
   );

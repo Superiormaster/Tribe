@@ -1,0 +1,12 @@
+
+> web@0.1.0 dev
+> next dev
+
+  ▲ Next.js 13.5.11
+  - Local:        http://localhost:3000
+  - Environments: .env.local, .env
+
+ ✓ Ready in 10.2s
+ ○ Compiling /main/messages/page ...
+ ✓ Compiled /main/messages/page in 29.6s (1628 modules)
+ ○ Compiling /main/messages/chat/[chatId]/page ...

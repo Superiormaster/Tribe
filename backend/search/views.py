@@ -10,8 +10,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.exceptions import NotFound
 
 from .models import SearchQuery
-
-from users.models import User
+from users.models import BlockedUser, User
 from communities.models import Community, Tribe
 from post.models import Post, Repost
 
@@ -23,6 +22,25 @@ from .serializers import (
     RepostSearchSerializer,
 )
 
+def get_block_filters(user):
+    muted_ids = user.muted_users.values_list(
+        "muted_user_id",
+        flat=True
+    )
+
+    blocked_ids = user.blocked_users.values_list(
+        "blocked_user_id",
+        flat=True
+    )
+
+    blocked_me_ids = BlockedUser.objects.filter(
+        blocked_user=user
+    ).values_list(
+        "user_id",
+        flat=True
+    )
+
+    return muted_ids, blocked_ids, blocked_me_ids
 
 class SearchPagination(PageNumberPagination):
     page_size = 10
@@ -35,6 +53,9 @@ class GlobalSearchView(APIView):
     pagination_class = SearchPagination
 
     def get(self, request):
+        user = request.user
+
+        muted_ids, blocked_ids, blocked_me_ids = get_block_filters(user)
 
         q = request.GET.get("q", "").strip()
         search_type = request.GET.get("type", "all")
@@ -62,6 +83,9 @@ class GlobalSearchView(APIView):
             users_qs = (
                 User.objects
                 .filter(username__icontains=q)
+                .exclude(id__in=muted_ids)
+                .exclude(id__in=blocked_ids)
+                .exclude(id__in=blocked_me_ids)
                 .order_by("-date_joined")
             )
 
@@ -172,6 +196,9 @@ class GlobalSearchView(APIView):
                     is_approved=True,
                     is_deleted=False
                 )
+                .exclude(user_id__in=muted_ids)
+                .exclude(user_id__in=blocked_ids)
+                .exclude(user_id__in=blocked_me_ids)
                 .select_related(
                     "user",
                     "community"
@@ -188,6 +215,9 @@ class GlobalSearchView(APIView):
                     post__caption__icontains=q,
                     is_deleted=False
                 )
+                .exclude(post__user_id__in=muted_ids)
+                .exclude(post__user_id__in=blocked_ids)
+                .exclude(post__user_id__in=blocked_me_ids)
                 .select_related(
                     "user",
                     "post",
@@ -256,6 +286,12 @@ class GlobalSearchView(APIView):
         users = UserSearchSerializer(
             User.objects.filter(
                 username__icontains=q
+            ).exclude(
+                id__in=muted_ids
+            ).exclude(
+                id__in=blocked_ids
+            ).exclude(
+                id__in=blocked_me_ids
             )[:5],
             many=True
         ).data
@@ -281,6 +317,9 @@ class GlobalSearchView(APIView):
                 is_approved=True,
                 is_deleted=False
             )
+            .exclude(user_id__in=muted_ids)
+            .exclude(user_id__in=blocked_ids)
+            .exclude(user_id__in=blocked_me_ids)
             .select_related(
                 "user",
                 "community"
@@ -297,6 +336,9 @@ class GlobalSearchView(APIView):
                 post__caption__icontains=q,
                 is_deleted=False
             )
+            .exclude(post__user_id__in=muted_ids)
+            .exclude(post__user_id__in=blocked_ids)
+            .exclude(post__user_id__in=blocked_me_ids)
             .select_related(
                 "user",
                 "post",

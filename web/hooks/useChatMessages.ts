@@ -2,23 +2,24 @@
 
 import { useEffect, useState } from 'react';
 import { apiRequest } from '@/utils/api';
-import { useNetworkStatus } from '@/utils/useNetworkStatus';
-import { emitMessage } from "@/utils/chat/emitMessage";
+import { useNetwork } from '@/components/networkConnection/NetworkContext';
+import { sendChatMessage } from "@/utils/chat/sendChatMessage";
+import { restoreFiles } from "@/utils/chat/restoreFiles";
 
 import {
-  saveMessage,
   saveMessages,
-  getMessagesByChat,
-  replaceOptimisticMessage,
+  getChatScroll,
+  getLatestMessages,
+  getMessagesWindow,
+  deleteMessagesOutsideWindow,
   updateMessage,
-  savePendingMessage,
+  getPendingMessages,
 } from '@/lib/messageDB';
 
-import { normalizeMessage } from '@/utils/chat/messageNormalizer';
+import type { Message } from "@/utils/chat/messageContract";
 import {
-  mergeMessages as mergeUtil,
-  sortMessages,
-  normalizeMessages as normalizeApi,
+  mergeMessages,
+  sortMessages
 } from '@/utils/chat/messageMerger';
 
 type Props = {
@@ -31,15 +32,18 @@ type Props = {
   replyingTo: any;
   setReplyingTo: (v: any) => void;
   clearDraft: () => Promise<void>;
+  updateConversationStatus: (
+    status: "sent" | "delivered" | "seen"
+  ) => void;
 };
 
 type ChatMessage = {
-  localId: string;
+  client_id: string;
   id?: number;
-  chatId: number;
+  chat: number;
   ownerId: number;
 
-  senderId: number;
+  sender: number;
 
   encrypted_text: string;
 
@@ -64,197 +68,215 @@ export function useChatMessages({
   replyingTo,
   setReplyingTo,
   clearDraft,
+  updateConversationStatus,
 }: Props) {
 
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
-
-  const dispatchMessage = async (msg: any) => {
-    const socket = socketRef.current;
-  
-    const canSend = navigator.onLine && socket?.connected;
-  
-    if (!canSend) {
-      await savePendingMessage({
-        ...msg,
-        status: "pending",
-      });
-  
-      return;
-    }
-  
-    return emitMessage(
-      socket,
-      msg,
-      currentUser.id,
-      setMessages
-    );
-  };
+  const [loadingMore, setLoadingMore] =
+    useState(false);
+  const [hasNewer, setHasNewer] = useState(false);
+  const [loadingNewer, setLoadingNewer] = useState(false);
+  const { canCommunicate } = useNetwork();
 
   // =========================
   // INIT LOAD
   // =========================
   useEffect(() => {
     if (!chatId) return;
-
+  
     const init = async () => {
-      const local = await getMessagesByChat(chatId, currentUser.id);
-
-      const normalizedLocal =
-        (local ?? []).map((m) =>
-          normalizeMessage(
-            {
-              ...m,
-              text: m.encrypted_text,
-            },
-            currentUser.id
-          )
-        );
-
-      const res = await apiRequest(
-        `api/chats/chats/${chatId}/messages/?page=1`
-      );
-
-      const serverRaw = normalizeApi(res);
-
-      // convert server → DB RAW format ONLY
-      const rawMessages = serverRaw.map((m: any) => ({
-        localId: m.id?.toString() || crypto.randomUUID(),
-        id: m.id,
+      const scroll = await getChatScroll(
         chatId,
-        ownerId: currentUser.id,
-        senderId:
-          m.sender?.id ||
-          m.senderId ||
-          null,
-        encrypted_text: m.encrypted_text,
-        status: "sent",
-        created_at: m.created_at,
-        reply_to: m.reply_to || null,
-      }));
-
-      await saveMessages(rawMessages, currentUser.id);
-
-      const normalizedServer =
-        serverRaw.map((m: any) =>
-          normalizeMessage(
-            {
-              ...m,
-              text: m.encrypted_text,
-            },
-            currentUser.id
-          )
-        );
-
-      setMessages(
-        mergeUtil(
-          normalizedLocal,
-          normalizedServer
-        )
-      );
-
-      setHasMore(!!res.next);
-    };
-
-    init();
-  }, [chatId]);
-  
-  useEffect(() => {
-    if (!socketRef.current) return;
-  
-    const socket = socketRef.current;
-  
-    const handler = (msg: any) => {
-      console.log("RECEIVED MESSAGE:", msg);
-  
-      const normalized = normalizeMessage(
-        {
-          ...msg,
-          text: msg.encrypted_text,
-        },
         currentUser.id
       );
   
-      setMessages(prev => {
-        const exists = prev.some(m =>
-          (m.id && m.id === normalized.id) ||
-          (m.localId && m.localId === normalized.localId) ||
-          (m.clientId && m.clientId === normalized.clientId)
-          );
+      let localWindow: Message[] = [];
   
-        if (exists) return prev;
+      if (scroll?.messageId) {
+        localWindow = await getMessagesWindow(
+          chatId,
+          currentUser.id,
+          Number(scroll.messageId),
+          25,
+          25
+        );
+      } else {
+        localWindow = await getLatestMessages(
+          chatId,
+          currentUser.id,
+          50
+        );
+      }
   
-        return sortMessages([...prev, normalized]);
-      });
+      const pending = (await getPendingMessages(currentUser.id))
+        .filter(m => m.chat === chatId);
+  
+      localWindow = mergeMessages(localWindow, pending);
+  
+      const restored = localWindow.map(m => ({
+        ...m,
+        files: restoreFiles(m.files || []),
+      }));
+  
+      if (restored.length) {
+        setMessages(sortMessages(restored));
+      }
+  
+      const url =
+        scroll?.messageId
+          ? `api/chats/${chatId}/messages/window/?anchor=${scroll.messageId}&before=25&after=25`
+          : `api/chats/${chatId}/messages/window/?before=25&after=25`;
+  
+      const res = await apiRequest(url);
+  
+      const serverMessages: Message[] =
+        Array.isArray(res?.messages)
+          ? res.messages
+          : [];
+  
+      await saveMessages(
+        serverMessages,
+        currentUser.id
+      );
+  
+      if (serverMessages.length === 0) {
+        setMessages(prev => sortMessages(prev));
+        setHasMore(false);
+        setHasNewer(false);
+        return;
+      }
+      
+      setMessages(prev =>
+        deleteMessagesOutsideWindow(
+          mergeMessages(prev, serverMessages),
+          scroll?.messageId
+            ? Number(scroll.messageId)
+            : serverMessages[serverMessages.length - 1]?.id,
+          40,
+          40
+        )
+      );
+  
+      setHasMore(!!res.hasOlder);
+      setHasNewer(!!res.hasNewer);
     };
   
-    socket.on("receive_message", handler);
+    init();
+  }, [chatId]);
+
+  const loadNewer = async () => {
+    if (
+      !chatId ||
+      !messages.length ||
+      loadingNewer ||
+      !hasNewer
+    ) {
+      return;
+    }
   
-    return () => {
-      socket.off("receive_message", handler);
-    };
-  }, [currentUser.id]);
+    setLoadingNewer(true);
+  
+    try {
+      const last = messages[messages.length - 1];
+  
+      const res = await apiRequest(
+        `api/chats/${chatId}/messages/after/?anchor=${last.id}&limit=25`
+      );
+  
+      const newer: Message[] =
+        Array.isArray(res?.messages)
+          ? res.messages
+          : [];
+  
+      await saveMessages(
+        newer,
+        currentUser.id
+      );
+  
+      setMessages(prev =>
+        deleteMessagesOutsideWindow(
+          mergeMessages(
+            prev,
+            newer
+          ),
+          last.id,
+          40,
+          40
+        )
+      );
+  
+      setHasNewer(
+        !!res.hasNewer
+      );
+    } finally {
+      setLoadingNewer(false);
+    }
+  };
 
   // =========================
   // SEND MESSAGE
   // =========================
-  const sendMessage = async () => {
-    if (!input.trim() || !chatUser?.id) return;
-
-    const localId = crypto.randomUUID();
-
-    const encrypted =  input
-
-    const optimistic = normalizeMessage({
-      localId,
-      chatId,
-      ownerId: currentUser.id,
-      senderId: currentUser.id,
-    
-      text: input,
-      encrypted_text: encrypted,
-    
-      status: navigator.onLine
-        ? "sending"
-        : "pending",
+  const sendMessage = async (
+    text?: string
+  ) => {
+    const messageText =
+      text ?? input;
+  
+    if (
+      !messageText.trim() ||
+      !chatUser?.id
+    ) {
+      return;
+    }
+  
+    const message: Message = {
+      client_id: crypto.randomUUID(),
+  
+      chat: chatId!,
+  
+      sender: currentUser.id,
+  
+      encrypted_text: messageText,
+      caption: "",
+  
+      media_type: "text",
+      media_url: [],
+  
+      thumbnail: [],
+      duration: [],
+      waveform: [],
+  
+      reply_to: replyingTo?.id ?? null,
+  
+      status: "pending",
+      upload_progress: 0,
+  
       created_at: new Date().toISOString(),
-      reply_to: replyingTo
-        ? {
-            id: replyingTo.id,
-            username: replyingTo.username,
-            text:
-              replyingTo.text ||
-              replyingTo.encrypted_text,
-          }
-        : null
-    },
-      currentUser.id
+  
+      reactions: [],
+      hidden_for: [],
+      is_deleted: false,
+  
+      files: [],
+    };
+
+    await sendChatMessage({
+      message,
+      currentUser,
+      socketRef,
+      setMessages,
+      canCommunicate,
+    });
+  
+    updateConversationStatus(
+      "sent"
     );
-
-    await saveMessage(optimistic, currentUser.id);
-
-    setMessages((prev) =>
-      sortMessages(
-        [...prev, optimistic].map((m) =>
-          normalizeMessage(m, currentUser.id)
-        )
-      )
-    );
-
-    setInput('');
+  
+    setInput("");
     setReplyingTo(null);
-    console.log(
-      "OPTIMISTIC REPLY:",
-      JSON.stringify(
-        optimistic.reply_to,
-        null,
-        2
-      )
-    );
-
-    await dispatchMessage(optimistic);
-
+  
     await clearDraft();
   };
 
@@ -262,68 +284,86 @@ export function useChatMessages({
   // LOAD MORE
   // =========================
   const loadMore = async () => {
-    if (!chatId || !hasMore) return;
 
-    const nextPage = page + 1;
-
-    const res = await apiRequest(
-      `api/chats/chats/${chatId}/messages/?page=${nextPage}`
-    );
-
-    const serverRaw = normalizeApi(res);
-
-    const incoming =
-      serverRaw.map((m: any) =>
-        normalizeMessage(
-          {
-            ...m,
-            text: m.encrypted_text,
-          },
-          currentUser.id
+    if (
+      !chatId ||
+      !messages.length ||
+      loadingMore ||
+      !hasMore
+    ) {
+      return;
+    }
+  
+    setLoadingMore(true);
+  
+    try {
+  
+      const first =
+        messages[0];
+  
+      const res = await apiRequest(
+        `api/chats/${chatId}/messages/before/?anchor=${first.id}&limit=25`
+      );
+  
+      const older: Message[] =
+        Array.isArray(res?.messages)
+          ? res.messages
+          : [];
+  
+      await saveMessages(
+        older,
+        currentUser.id
+      );
+  
+      setMessages(prev =>
+        deleteMessagesOutsideWindow(
+          mergeMessages(
+            older,
+            prev
+          ),
+          first.id,
+          40,
+          40
         )
       );
-
-    await saveMessages(incoming, currentUser.id);
-    console.log(
-      "PREV",
-      prev.map(m => ({
-        id: m.id,
-        localId: m.localId,
-        clientId: m.clientId,
-      }))
-    );
-    
-    console.log(
-      "INCOMING",
-      incoming.map(m => ({
-        id: m.id,
-        localId: m.localId,
-        clientId: m.clientId,
-      }))
-    );
-
-    setMessages((prev) =>
-      mergeUtil(incoming, prev.map(normalize))
-    );
-
-    setPage(nextPage);
-    setHasMore(!!res.next);
+  
+      setHasMore(
+        !!res.hasOlder
+      );
+    } finally {
+      setLoadingMore(false);
+    }
   };
 
   // =========================
   // RESEND
   // =========================
-  const resendMessage = async (msg: any) => {
-    if (!chatId || !socketRef.current) return;
-
-    const socket = socketRef.current;
-    if (!socket.connected) socket.connect();
-
-    await updateMessage(msg.localId, currentUser.id, {
-      status: "sending",
+  const resendPendingMessage = async (msg: any) => {
+    await sendChatMessage({
+      message: {
+        ...msg,
+        client_id: msg.client_id,
+      },
+  
+      currentUser,
+      socketRef,
+      setMessages,
+      canCommunicate,
     });
-
-    await dispatchMessage(msg);
+  };
+  
+  const retryFailedMessage = async (msg: any) => {
+    await sendChatMessage({
+      message: {
+        ...msg,
+        client_id: msg.client_id,
+      },
+  
+      currentUser,
+      socketRef,
+      setMessages,
+      canCommunicate,
+    });
   };
 
   // =========================
@@ -357,7 +397,7 @@ export function useChatMessages({
         prev.map(msg => {
           const isTarget =
             String(msg.id) === String(messageId) ||
-            String(msg.localId) === String(messageId);
+            String(msg.client_id) === String(messageId);
   
           if (!isTarget) return msg;
   
@@ -425,7 +465,7 @@ export function useChatMessages({
       prev.map(msg => {
         const isTarget =
           String(msg.id) === String(messageId) ||
-          String(msg.localId) === String(messageId);
+          String(msg.client_id) === String(messageId);
   
         if (!isTarget) return msg;
   
@@ -466,7 +506,7 @@ export function useChatMessages({
   
         return {
           ...msg,
-          reactions: [...reactions], // FORCE NEW reference
+          reactions: [...reactions],
         };
       })
     );
@@ -487,9 +527,12 @@ export function useChatMessages({
     messages,
     setMessages,
     sendMessage,
-    resendMessage,
+    resendPendingMessage,
+    retryFailedMessage,
     loadMore,
+    loadNewer,
     hasMore,
+    hasNewer,
     reactToMessage,
   };
 }

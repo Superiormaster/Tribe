@@ -72,7 +72,7 @@ export default function EditProfile() {
     }
 
     fetchProfile()
-  }, [router])
+  }, [push])
 
   // Avatar preview
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -280,13 +280,18 @@ export default function EditProfile() {
         <input placeholder="Website" value={website} onChange={e => setWebsite(e.target.value)} className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-100 dark:bg-gray-800" />
 
         {/* Creator Type */}
-        <select value={creatorType} onChange={e => setCreatorType(e.target.value)} className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-100 dark:bg-gray-800">
+        <select
+          value={creatorType}
+          onChange={e => setCreatorType(e.target.value)}
+          className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-100 dark:bg-gray-800"
+        >
           <option value="">Creator Type</option>
-          <option>Journalist</option>
-          <option>Analyst</option>
-          <option>Blogger</option>
-          <option>News Organization</option>
-          <option>Community Reporter</option>
+        
+          <option value="journalist">Journalist</option>
+          <option value="analyst">Analyst</option>
+          <option value="blogger">Blogger</option>
+          <option value="news_org">News Organization</option>
+          <option value="reporter">Community Reporter</option>
         </select>
 
         {/* Interests */}

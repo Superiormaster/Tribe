@@ -57,7 +57,7 @@ export default function RejectedPostsPage() {
     try {
 
       const data = await apiRequest(
-        `api/post/rejected/?community=${communityId}`
+        `api/communities/${communityId}/rejected_posts/`
       );
 
       setPosts(data.results || data);
@@ -88,7 +88,7 @@ export default function RejectedPostsPage() {
     try {
 
       await apiRequest(
-        `api/post/bulk-delete/`,
+        `api/communities/bulk_delete/`,
         {
           method: 'POST',
           data: {
@@ -114,11 +114,11 @@ export default function RejectedPostsPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto py-4">
+    <div className="max-w-3xl my-20 mx-auto py-4">
 
       <div className="sticky top-0 z-20 bg-white dark:bg-black border-b p-4">
 
-        <h1 className="text-2xl font-bold">
+        <h1 className="text-2xl text-gray-700 dark:text-gray-300 font-bold">
           Rejected Posts
         </h1>
 
@@ -201,6 +201,7 @@ export default function RejectedPostsPage() {
                 setSelectMode(true);
                 toggleSelect(post.id);
               }}
+              hideStarButton={true}
               setSelectMode={setSelectMode}
       
               onDelete={(id: number) => {

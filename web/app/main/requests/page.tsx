@@ -28,8 +28,11 @@ export default function ConnectionsPage() {
   // =========================
   const fetchConnectedUsers = async () => {
     try {
-      const res = await apiRequest("api/users/connected/");
-      setConnectedUsers(res);
+      const res = await apiRequest(
+        "api/users/connected/"
+      );
+  
+      setConnectedUsers(res.results);
     } catch (err) {
       console.error(err);
     }
@@ -38,7 +41,7 @@ export default function ConnectionsPage() {
   const fetchRequests = async () => {
     try {
       const res = await apiRequest("api/users/pending-requests/");
-      setRequests(res);
+      setRequests(res.results);
     } catch (err) {
       console.error(err);
     }
@@ -47,7 +50,7 @@ export default function ConnectionsPage() {
   const fetchSentRequests = async () => {
     try {
       const res = await apiRequest("api/users/sent-requests/");
-      setSentRequests(res);
+      setSentRequests(res.results);
     } catch (err) {
       console.error(err);
     }
@@ -112,38 +115,44 @@ export default function ConnectionsPage() {
     user: User;
     actions: React.ReactNode;
   }) => (
-    <div className="flex items-center justify-between p-3 border rounded-xl">
+    <div className="flex items-center justify-between p-3 border rounded-xl gap-3">
 
       {/* LEFT */}
-      <div className="flex items-center gap-3">
-
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+    
         {user.avatar ? (
           <img
             src={user.avatar}
-            className="w-12 h-12 rounded-full object-cover"
+            className="w-12 h-12 rounded-full object-cover flex-shrink-0"
           />
         ) : (
-          <div className="w-12 h-12 bg-gray-400 rounded-full flex items-center justify-center text-white font-bold">
+          <div className="w-12 h-12 bg-gray-400 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">
             {user.username.slice(0, 2).toUpperCase()}
           </div>
         )}
-
-        <div>
-          <p className="text-gray-700 dark:text-white font-semibold">{user.username}</p>
-          <p className="text-xs text-gray-500">
+    
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-gray-700 max-w-[70px] dark:text-white truncate">
+            {user.username}
+          </p>
+    
+          <p className="text-xs text-gray-500 max-w-[120px] truncate">
             {user.bio || "No bio"}
           </p>
         </div>
+    
       </div>
-
+    
       {/* RIGHT */}
-      <div className="flex gap-2">{actions}</div>
-
+      <div className="flex gap-2 flex-shrink-0">
+        {actions}
+      </div>
+    
     </div>
   );
 
   return (
-    <div className="p-4 max-w-2xl mx-auto">
+    <div className="p-4 mt-20 max-w-2xl mx-auto">
 
       <h1 className="text-xl text-gray-700 dark:text-white font-bold mb-4">Connections</h1>
 

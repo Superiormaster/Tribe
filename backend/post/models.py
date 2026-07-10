@@ -32,7 +32,7 @@ class Post(models.Model):
     skipped_views = models.IntegerField(default=0)
     views_count = models.PositiveIntegerField(default=0)
     is_deleted = models.BooleanField(default=False)
-    is_approved = models.BooleanField(default=True)
+    is_approved = models.BooleanField(default=False)
     is_rejected = models.BooleanField(default=False)
     is_edited = models.BooleanField(default=False)
 

@@ -16,7 +16,7 @@ export default function ModerationBar({
   onCancel,
 }: Props) {
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-black text-white p-4 flex items-center justify-between z-50">
+    <div className="fixed bottom-14 left-0 right-0 dark:bg-gray-800 bg-gray-200 dark:text-white text-gray-600 p-4 flex items-center justify-between z-50">
 
       <button onClick={onCancel}>
         Cancel
@@ -49,7 +49,7 @@ export default function ModerationBar({
         {onDelete && (
           <button
             onClick={onDelete}
-            className="bg-red-700 px-4 py-2 rounded"
+            className="bg-red-500 dark:bg-red-700 text-gray-200 px-4 py-2 rounded"
           >
             Delete
           </button>

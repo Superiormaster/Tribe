@@ -60,6 +60,9 @@ export const fetchTribeData = async (
     membersCount: c.members_count || 0,
     cover_image: c.cover_image || "",
     joined: c.joined || false,
+    requested: c.requested || false, 
+    invited: c.invited || false,
+    join_approval_required: c.join_approval_required || false,
   }));
 
   return {
@@ -70,11 +73,3 @@ export const fetchTribeData = async (
     communities: communities,
   };
 };
-
-// Send a star/friend request
-export async function sendStarRequest(userId: number, targetUserId: number) {
-  return apiRequest('api/users/star/', {
-    method: 'POST',
-    data: { user: userId, target: targetUserId },
-  });
-}

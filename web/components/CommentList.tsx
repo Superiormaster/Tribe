@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { apiRequest } from "@/utils/api";
 import Avatar from "@/components/Avatar";
 import { timeAgo } from "@/utils/timeAgo";
+import ReportCommentModal from "@/components/ReportCommentModal";
 import { connectCommentsSocket } from "@/lib/comment-socket";
 import { ThumbsUp } from 'lucide-react';  
 
@@ -13,6 +14,14 @@ export default function CommentList({ postId, user, setReplyTarget, comments, se
   const [showReplies, setShowReplies] = useState<Record<number, boolean>>({});
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  
+  const [editTarget, setEditTarget] = useState<number | null>(null);
+  const [editText, setEditText] = useState("");
+  
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+  const [reportDetails, setReportDetails] = useState("");
+  const [reportTarget, setReportTarget] = useState<number | null>(null);
  
   const loaderRef = useRef<HTMLDivElement | null>(null);
   
@@ -21,6 +30,74 @@ export default function CommentList({ postId, user, setReplyTarget, comments, se
       ...prev,
       [commentId]: !prev[commentId]
     }));
+  };
+  
+  const handleReport = async () => {
+    if (!reportTarget) return;
+  
+    if (!reportReason) {
+      alert("Please select a reason");
+      return;
+    }
+  
+    try {
+      const res = await apiRequest(
+        `api/comments/${reportTarget}/report/`,
+        {
+          method: "POST",
+          data: {
+            reason: reportReason,
+            details: reportDetails,
+          },
+        }
+      );
+  
+      alert(res.message);
+  
+      setReportOpen(false);
+      setReportTarget(null);
+      setReportReason("");
+      setReportDetails("");
+    } catch (err: any) {
+      alert(
+        err?.data?.message ||
+        "Failed to submit report"
+      );
+    }
+  };
+  
+  const handleCopyText = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      alert("Copied");
+    } catch (err) {
+      console.error("Failed to copy text", err);
+    }
+  };
+  
+  const handleEdit = async (commentId: number) => {
+    if (!editText.trim()) return;
+  
+    try {
+      const res = await apiRequest(`api/comments/${commentId}/edit/`, {
+        method: "PATCH",
+        data: {
+          text: editText.trim(),
+        },
+      });
+  
+      setComments(prev =>
+        updateCommentTree(prev, commentId, (c: any) => ({
+          ...c,
+          text: res.text,
+        }))
+      );
+  
+      setEditTarget(null);
+      setEditText("");
+    } catch (err) {
+      console.error("Edit failed", err);
+    }
   };
   
   // 🔥 Fetch comments
@@ -152,9 +229,33 @@ export default function CommentList({ postId, user, setReplyTarget, comments, se
                 {item.user?.username}
               </p>
     
-              <p className="text-xs dark:text-gray-300 text-gray-600">
-                {item.text}
-              </p>
+              {editTarget === item.id ? (
+                <div className="mt-2">
+                  <input
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    className="w-full p-2 border rounded"
+                  />
+              
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      onClick={() => handleEdit(item.id)}
+                      className="bg-green-600 text-white px-3 py-1 rounded"
+                    >
+                      Save
+                    </button>
+              
+                    <button
+                      onClick={() => setEditTarget(null)}
+                      className="px-3 py-1"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs dark:text-gray-300 text-gray-600">{item.text}</p>
+              )}
     
               {/* ACTIONS */}
               <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
@@ -220,6 +321,11 @@ export default function CommentList({ postId, user, setReplyTarget, comments, se
                           </button>
                       
                           <button
+                            onClick={() => {
+                              setEditTarget(item.id);
+                              setEditText(item.text);
+                              setOpenMenuId(null);
+                            }}
                             className="w-full text-left px-3 py-2"
                           >
                             Edit
@@ -228,12 +334,21 @@ export default function CommentList({ postId, user, setReplyTarget, comments, se
                       ) : (
                         <>
                           <button
+                            onClick={() => {
+                              setReportTarget(item.id);
+                              setReportOpen(true);
+                              setOpenMenuId(null);
+                            }}
                             className="w-full text-left px-3 py-2"
                           >
                             Report
                           </button>
-                      
+                    
                           <button
+                            onClick={() => {
+                              handleCopyText(item.text);
+                              setOpenMenuId(null);
+                            }}
                             className="w-full text-left px-3 py-2"
                           >
                             Copy text
@@ -388,9 +503,33 @@ export default function CommentList({ postId, user, setReplyTarget, comments, se
                     </p>
               
                     {/* text */}
-                    <p className="text-gray-600 dark:text-gray-300 text-sm">
-                      {comment.text}
-                    </p>
+                    {editTarget === comment.id ? (
+                      <div className="mt-2">
+                        <input
+                          value={editText}
+                          onChange={(e) => setEditText(e.target.value)}
+                          className="w-full p-2 border rounded"
+                        />
+                    
+                        <div className="flex gap-2 mt-2">
+                          <button
+                            onClick={() => handleEdit(comment.id)}
+                            className="bg-green-600 text-white px-3 py-1 rounded"
+                          >
+                            Save
+                          </button>
+                    
+                          <button
+                            onClick={() => setEditTarget(null)}
+                            className="px-3 py-1"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-xs dark:text-gray-300 text-gray-600">{comment.text}</p>
+                    )}
               
                     {/* actions */}
                     <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
@@ -457,6 +596,11 @@ export default function CommentList({ postId, user, setReplyTarget, comments, se
                                 </button>
                             
                                 <button
+                                  onClick={() => {
+                              setEditTarget(comment.id);
+                              setEditText(comment.text);
+                              setOpenMenuId(null);
+                            }}
                                   className="w-full text-left px-3 py-2"
                                 >
                                   Edit
@@ -465,12 +609,21 @@ export default function CommentList({ postId, user, setReplyTarget, comments, se
                             ) : (
                               <>
                                 <button
+                                  onClick={() => {
+                                    setReportTarget(comment.id);
+                                    setReportOpen(true);
+                                    setOpenMenuId(null);
+                                  }}
                                   className="w-full text-left px-3 py-2"
                                 >
                                   Report
                                 </button>
-                            
+            
                                 <button
+                                  onClick={() => {
+                                    handleCopyText(comment.text);
+                                    setOpenMenuId(null);
+                                  }}
                                   className="w-full text-left px-3 py-2"
                                 >
                                   Copy text
@@ -527,6 +680,21 @@ export default function CommentList({ postId, user, setReplyTarget, comments, se
             </div>
           )}
         </div>
+
+        <ReportCommentModal
+          open={reportOpen}
+          reason={reportReason}
+          details={reportDetails}
+          setReason={setReportReason}
+          setDetails={setReportDetails}
+          onClose={() => {
+            setReportOpen(false);
+            setReportReason("");
+            setReportDetails("");
+            setReportTarget(null);
+          }}
+          onSubmit={handleReport}
+        />
       </div>
   );
 }

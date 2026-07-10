@@ -1,80 +1,131 @@
-import {
-  replaceOptimisticMessage,
-  updateMessage,
-} from '@/lib/messageDB';
-import { normalizeMessage } from '@/utils/chat/messageNormalizer';
+import { updateMessage, syncServerMessage } from "@/lib/messageDB";
+import { safeEmit } from "./safeEmit";
 
-export const emitMessage = async (
+export const emitSocketMessage = async (
   socket: any,
   msg: any,
   ownerId: number,
   setMessages?: any
 ) => {
-  return new Promise((resolve, reject) => {
-    socket.emit(
-      "send_message",
-      {
-        clientId: msg.localId,
-        chatId: msg.chatId,
-        encrypted: msg.encrypted_text || msg.encrypted,
-        reply_to: msg.reply_to || null,
-      },
-      async (ack: any) => {
-        console.log(
-          "ACK RECEIVED",
-          JSON.stringify(ack, null, 2)
-        );
-        console.log(
-          "SENDING REPLY:",
-          JSON.stringify(msg.reply_to, null, 2)
-        );
+  console.log("emitSocketMessage called");
+  console.log("socket.connected =", socket?.connected);
+  
+  return new Promise(async(resolve, reject) => {
+    const payload = {
+      client_id: msg.client_id,
+      chat: msg.chat,
+      sender: msg.sender,
+      encrypted_text: msg.encrypted_text,
+      caption: msg.caption,
+    
+      media_type: msg.media_type,
+    
+      media_url: Array.isArray(msg.media_url)
+        ? msg.media_url
+        : msg.media_url
+          ? [msg.media_url]
+          : [],
+    
+      thumbnail: Array.isArray(msg.thumbnail)
+        ? msg.thumbnail
+        : msg.thumbnail
+          ? [msg.thumbnail]
+          : [],
+    
+      duration: Array.isArray(msg.duration)
+        ? msg.duration
+        : msg.duration != null
+          ? [msg.duration]
+          : [],
+    
+      waveform: Array.isArray(msg.waveform)
+        ? msg.waveform
+        : [],
+    
+      reply_to: msg.reply_to,
+      created_at: msg.created_at,
+    };
+    console.log("payload =", payload);
+
+    try {
+      console.log("Calling safeEmit(send_message)");
+      await safeEmit("send_message", payload, async (ack: any) => {
         try {
+          console.log("ACK RECEIVED", ack);
           if (!ack?.ok) {
-            await updateMessage(msg.localId, ownerId, {
+            await updateMessage(msg.client_id, ownerId, {
               status: "failed",
             });
-            return;
+  
+            setMessages?.((prev: any) =>
+              prev.map((m: any) =>
+                m.client_id === msg.client_id
+                  ? { ...m, status: "failed" }
+                  : m
+              )
+            );
+  
+            return resolve(ack);
           }
-    
-          console.log(
-            "ACK MESSAGE:",
-            JSON.stringify(ack.message, null, 2)
-          );
-    
-          const finalMessage = normalizeMessage({
-            localId: msg.localId,
-            id: ack.message.id,
-            chatId: msg.chatId,
-            ownerId: msg.ownerId,
-            encrypted_text: msg.encrypted_text,
-            status: "sent",
+  
+          // ONLY PATCH SERVER FIELDS (NO RE-NORMALIZATION)
+          const finalMessage = {
+            ...msg,
+            server_id: ack.message.id,
             created_at: ack.message.created_at,
-            reply_to: msg.reply_to || ack.message.reply_to || null,
-          }, msg.ownerId);
-    
-          await replaceOptimisticMessage(
-            msg.localId,
-            finalMessage,
-            ownerId
+            status: "sent",
+          };
+  
+          await syncServerMessage(
+            msg.client_id,
+            ownerId,
+            {
+                server_id:ack.message.id,
+                status:"sent",
+                created_at:ack.message.created_at
+            }
           );
-          console.log(
-            "FINAL MESSAGE",
-            JSON.stringify(finalMessage, null, 2)
+  
+          window.dispatchEvent(
+            new CustomEvent("message-delivered-ack", {
+              detail: {
+                client_id: msg.client_id,
+                messageId: ack.message.id,
+              },
+            })
+          );
+          window.dispatchEvent(
+            new CustomEvent(
+              "message-synced",
+              {
+                detail: {
+                  chat:
+                    finalMessage.chat,
+                  client_id:
+                    msg.client_id,
+                  messageId:
+                    ack.message.id,
+                },
+              }
+            )
+          );
+  
+          setMessages?.((prev: any) =>
+            prev.map((m: any) =>
+              m.client_id === msg.client_id
+                ? { ...m, ...finalMessage }
+                : m
+            )
           );
   
           resolve(ack);
-    
-          if (setMessages) {
-            setMessages((prev: any) =>
-              prev.map((m: any) =>
-                m.localId === msg.localId ? finalMessage : m
-              )
-            );
-          }
         } catch (err) {
+          console.log("emitSocketMessage ERROR", err);
           reject(err);
         }
-      }
-    );
+      });
+    } catch (err) {
+      reject(err);
+    }
   });
 };

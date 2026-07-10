@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useMemo, useState, useEffect, useRef, ReactNode } from "react";
 import { apiRequest, setAccessToken } from "@/utils/api";
 import { getRefreshToken } from "@/lib/keyStore"
 import { logout } from "@/utils/auth"
@@ -23,6 +23,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [isInactive, setIsInactive] = useState(false);
   const { replace } = useNavigation();
   
+  const renders = useRef(0);
+  renders.current++;
+  
+  console.log("UserProvider", renders.current);
   useEffect(() => {
     const cleanup = startActivityTracking(() => {
       setIsInactive(true);
@@ -107,6 +111,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
     };
   }, [replace]);
   
+  const value = useMemo(
+    () => ({ user, setUser, loadingUser }),
+    [user, loadingUser]
+  );
+  
   return (
     <>
       {isInactive && (
@@ -118,7 +127,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       )}
   
       <UserContext.Provider
-        value={{ user, setUser, loadingUser }}
+        value={value}
       >
         {children}
       </UserContext.Provider>

@@ -2,6 +2,7 @@
 
 import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useState } from 'react';
 
 type User = {
   id: number;
@@ -18,6 +19,11 @@ type Props = {
   setSelectedUsers: React.Dispatch<
     React.SetStateAction<Set<number>>
   >;
+  forwardCaption: string;
+  setForwardCaption:
+    React.Dispatch<
+      React.SetStateAction<string>
+    >;
 
   selectedMessages: any[];
   getMessageKey: (msg: any) => string;
@@ -34,6 +40,8 @@ export default function ForwardDrawer({
   setSelectedUsers,
   selectedMessages,
   getMessageKey,
+  forwardCaption,
+  setForwardCaption,
   onClose,
   onSend,
 }: Props) {
@@ -49,6 +57,70 @@ export default function ForwardDrawer({
 
       return next;
     });
+  };
+  
+  const canAddCaption =
+    selectedMessages.length === 1 &&
+    (
+      selectedMessages[0].media_type === "image" ||
+      selectedMessages[0].media_type === "video"
+    );
+  
+  const getPreview = (msg: any) => {
+    const media = Array.isArray(msg.media_url)
+      ? msg.media_url
+      : typeof msg.media_url === "string"
+      ? [msg.media_url]
+      : [];
+  
+    const first = media[0];
+  
+    if (msg.text?.trim()) {
+      return {
+        type: "text",
+        text: msg.text.slice(0, 30),
+      };
+    }
+  
+    switch (msg.media_type) {
+      case "image":
+        return {
+          type: "image",
+          thumb: first,
+        };
+  
+      case "video":
+        return {
+          type: "video",
+          thumb: msg.thumbnail || first,
+        };
+  
+      case "gif":
+        return {
+          type: "gif",
+          thumb: first,
+          text: "GIF",
+        };
+  
+      case "sticker":
+        return {
+          type: "sticker",
+          thumb: first,
+          text: "Sticker",
+        };
+  
+      case "audio":
+        return {
+          type: "audio",
+          text: "🎤 Voice message",
+        };
+  
+      default:
+        return {
+          type: "file",
+          text: "Attachment",
+        };
+    }
   };
 
   return (
@@ -171,22 +243,60 @@ export default function ForwardDrawer({
 
             {/* FOOTER */}
             <div className="border-t p-3">
-              <div className="flex gap-2 overflow-x-auto mb-3">
-                {selectedMessages.map(msg => (
-                  <div
-                    key={getMessageKey(msg)}
+              <div className="flex items-center gap-3 mb-3">
+                <div className="flex gap-2 overflow-x-auto">
+                  {selectedMessages.map(msg => {
+                    const preview = getPreview(msg);
+                
+                    return (
+                      <div
+                        key={getMessageKey(msg)}
+                        className="
+                          flex items-center gap-2
+                          bg-gray-200 dark:bg-gray-700
+                          rounded-lg
+                          px-2 py-2
+                          shrink-0
+                          max-w-[220px]
+                        "
+                      >
+                        {(preview.type === "image" ||
+                          preview.type === "video" ||
+                          preview.type === "gif" ||
+                          preview.type === "sticker") &&
+                          preview.thumb && (
+                            <img
+                              src={preview.thumb}
+                              className="
+                                w-9 h-9
+                                rounded-lg
+                                object-cover
+                              "
+                            />
+                          )}
+                
+                        <span className="text-xs truncate">
+                          {preview.text}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+  
+                {canAddCaption && (
+                  <input
+                    value={forwardCaption}
+                    onChange={(e) =>
+                      setForwardCaption(
+                        e.target.value
+                      )
+                    }
+                    placeholder="Add a message..."
                     className="
-                      text-xs
-                      bg-gray-200
-                      dark:bg-gray-700
-                      px-2 py-1
-                      rounded
-                      whitespace-nowrap
+                      px-4 py-3 flex-1 min-w-0 rounded-full bg-gray-100 dark:bg-gray-800 outline-none
                     "
-                  >
-                    {msg.text?.slice(0, 20) || 'media'}
-                  </div>
-                ))}
+                  />
+                )}
               </div>
 
               <button

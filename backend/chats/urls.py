@@ -6,6 +6,8 @@ from .views import (
     MessageViewSet,
     chat_detail,
     mark_seen,
+    mark_delivered,
+    mark_all_delivered,
     react_message,
     livekit_token,
     get_or_create_chat,
@@ -17,6 +19,12 @@ from .views import (
     AnnouncementChannelViewSet,
     AnnouncementPostViewSet,
     MessageThreadViewSet,
+    block_messages,
+    message_before,
+    message_after,
+    message_window,
+    unblock_messages,
+    hide_all_messages,
 )
 
 router = DefaultRouter()
@@ -74,10 +82,37 @@ urlpatterns = [
             "post": "delete_messages",
         }),
     ),
-    path("chats/<int:chat_id>/detail/", chat_detail),
+    path(
+        "<int:chat_id>/messages/before/",
+        message_before,
+    ),
+    path(
+        "<int:chat_id>/messages/after/",
+        message_after,
+    ),
+    path(
+        "<int:chat_id>/messages/window/",
+        message_window,
+    ),
+    path("<int:chat_id>/detail/", chat_detail),
     path("mark-seen/", mark_seen),
+    path("mark-delivered/", mark_delivered),
+    path("mark-all-delivered/", mark_all_delivered),
+    path(
+        "<int:chat_id>/hide-all/",
+        hide_all_messages
+    ),
     path("messages/<int:message_id>/react/", react_message),
     path("get-or-create/", get_or_create_chat),
+    path(
+        "message-block/<int:user_id>/",
+        block_messages
+    ),
+    
+    path(
+        "message-unblock/<int:user_id>/",
+        unblock_messages
+    ),
 
     # LIVEKIT
     path("livekit/token/", livekit_token),

@@ -1,6 +1,6 @@
 from rest_framework.routers import DefaultRouter
 from django.urls import path
-from .views import CommunityViewSet, TribeViewSet, PublicTribeViewSet, invite_users, send_community_invite, accept_community_invite, decline_community_invite, get_my_invites
+from .views import CommunityViewSet, TribeViewSet, PublicTribeViewSet, invite_users, send_community_invite, accept_community_invite, decline_community_invite, tribe_requests, tribe_request_detail, get_my_invites, SuggestedCommunityView
 
 router = DefaultRouter()
 router.register(r'communities', CommunityViewSet, basename='community')
@@ -11,6 +11,18 @@ urlpatterns = [
     path(
         "communities/<int:community_id>/invite-users/",
         invite_users
+    ),
+  
+    path(
+        "tribe-requests/",
+        tribe_requests,
+        name="tribe-requests",
+    ),
+  
+    path(
+        "tribe-requests/<int:pk>/",
+        tribe_request_detail,
+        name="tribe-request-detail",
     ),
 
     path(
@@ -31,6 +43,11 @@ urlpatterns = [
     path(
         "communities/invites/",
         get_my_invites
+    ),
+  
+    path(
+        "communities/<int:community_id>/suggested/",
+        SuggestedCommunityView.as_view(),
     ),
 
     # OPTIONAL admin route

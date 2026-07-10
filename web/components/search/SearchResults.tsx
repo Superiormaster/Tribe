@@ -35,24 +35,28 @@ export default function SearchResults({
   };
   
   const visibleUsers =
-  activeTab === "all"
-    ? results.users.slice(0, 5)
-    : results.users;
+    (results.users || []).slice(
+      activeTab === "all" ? 0 : undefined,
+      activeTab === "all" ? 5 : undefined
+    );
   
   const visiblePosts =
-  activeTab === "all"
-    ? results.posts.slice(0, 5)
-    : results.posts;
+    (results.posts || []).slice(
+      activeTab === "all" ? 0 : undefined,
+      activeTab === "all" ? 5 : undefined
+    );
   
   const visibleCommunities =
-  activeTab === "all"
-    ? results.communities.slice(0, 5)
-    : results.communities;
+    (results.communities || []).slice(
+      activeTab === "all" ? 0 : undefined,
+      activeTab === "all" ? 5 : undefined
+    );
 
   const visibleTribes =
-  activeTab === "all"
-    ? results.tribes.slice(0, 5)
-    : results.tribes;
+    (results.tribes || []).slice(
+      activeTab === "all" ? 0 : undefined,
+      activeTab === "all" ? 5 : undefined
+    );
 
   const noResults =
     results.users?.length === 0 &&

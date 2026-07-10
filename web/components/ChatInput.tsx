@@ -5,32 +5,30 @@ import {
   Mic,
   X,
   Plus,
-  Sticker,
-  Search,
   Keyboard,
-  File,
+  Reply,
+  Lock,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-
+import { isNative } from "@/utils/usePlatform";
+import ChatDrawer from "@/components/chat/ChatDrawer";
+import { getVideoDuration } from "@/utils/chat/videoThumbnail";
 import MediaPickerSheet from "@/components/chat/MediaPickerSheet";
-import CaptionBar from "@/components/chat/CaptionBar";
 import PreviewViewer from  "@/components/chat/PreviewViewer";
 import { useChatInputState } from "@/utils/chat/useChatInputState";
-
-import EmojiSection from '@/components/chat/EmojiSection';
-import GifSection from '@/components/chat/GifSection';
-import StickerSection from '@/components/chat/StickerSection';
-import AttachmentSection from '@/components/chat/AttachmentSection';
 import CameraCaptureModal
 from '@/components/CameraCaptureModal';
 import EmojiPicker from 'emoji-picker-react';
 
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useMemo, useState } from 'react';
 
 type ReplyData = {
   id: number;
   username: string;
   text?: string;
+  media_type?: string;
+  media_url?: string;
+  caption?: string;
+  thumbnail?: string;
 };
 
 type Props = {
@@ -41,9 +39,9 @@ type Props = {
   handleTyping?: (v: string) => void;
   saveDraftLocal: (v: string) => void;
 
-  onSend: () => void;
+  onSend: (payload?: any) => void;
 
-  onFileSelect: (file: File) => void;
+  onFileSelect: (file: MediaFile) => void;
 
   disabled?: boolean;
 
@@ -53,12 +51,20 @@ type Props = {
 
   // 🎤 Voice recording
   isRecording?: boolean;
+  micPressed?: boolean;
+  isLocked?: boolean;
+  voiceState?: string;
+  duration?: number;
 
   onMicStart?: (e: any) => void;
 
   onMicMove?: (e: any) => void;
 
   onMicEnd?: () => void;
+  drag: {
+    x: number;
+    y: number;
+  }
   
   showDrawer: boolean;
   setShowDrawer: (v: boolean) => void;
@@ -71,10 +77,23 @@ type Props = {
       | null
   ) => void;
   
-  selectedFiles: File[]
   showMediaPicker: boolean
   showCaptionBar: boolean 
   previewIndex: number | null  
+  
+  selectedFiles: MediaFile[];
+  files: MediaFile[];
+  setSelectedFiles: React.Dispatch<
+    React.SetStateAction<MediaFile[]>
+  >;
+  
+  index: number;
+  setIndex: React.Dispatch<React.SetStateAction<number>>;
+  onClose: () => void;
+  
+  setPreviewIndex: React.Dispatch<
+    React.SetStateAction<number | null>
+  >;
 };
 
 type InputMode =
@@ -83,6 +102,12 @@ type InputMode =
   | "gif"
   | "stickers"
   | "plus";
+
+export interface MediaFile extends File {
+  thumbnail?: string;
+  duration?: number;
+  preview?: string;
+}
 
 export default function ChatInput({
   value,
@@ -95,8 +120,17 @@ export default function ChatInput({
   disabled,
   replyingTo,
   onCancelReply,
+  drag,
+  selectedFiles,
+  setSelectedFiles,
+  previewIndex,
+  setPreviewIndex,
   setDrawerMode,
   isRecording,
+  micPressed,
+  isLocked,
+  duration,
+  voiceState,
   onMicStart,
   onMicMove,
   onMicEnd,
@@ -121,8 +155,6 @@ export default function ChatInput({
   const isActiveTab = (tab: string) =>
   drawerMode === tab;
   
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  
   const [inputMode, setInputMode] = useState<InputMode>("keyboard");
   const cursorRef = useRef<number>(0);
 
@@ -142,6 +174,10 @@ export default function ChatInput({
       : drawerMode === "stickers"
       ? stickerQuery
       : "";
+  
+  const canSend =
+    value?.trim()?.length > 0 ||
+    (selectedFiles?.length ?? 0) > 0;
 
   useEffect(() => {
     if (!textRef.current) return;
@@ -155,6 +191,32 @@ export default function ChatInput({
       ) + 'px';
 
   }, [value]);
+  
+  const formatTime = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+  
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  };
+  
+  const previewUrl = useMemo(() => {
+    const file = selectedFiles?.[0];
+  
+    if (!file) return null;
+  
+    return (
+      file.preview ??
+      URL.createObjectURL(file)
+    );
+  }, [selectedFiles]);
+  
+  const handleFileSelect = (file: File) => {
+    if (typeof onFileSelect === "function") {
+      onFileSelect(file);
+    } else {
+      console.error("onFileSelect is not a function");
+    }
+  };
   
   useEffect(() => {
     if (drawerMode !== "gif") return;
@@ -242,283 +304,156 @@ export default function ChatInput({
       textRef.current?.focus();
     }, 80);
   };
+  
+  const previewItems = useMemo(() => {
+    return selectedFiles.map((file: MediaFile) => ({
+      file,
+      url:
+        file.preview ||
+        URL.createObjectURL(file),
+      type: file.type.startsWith("video/")
+        ? "video"
+        : "image",
+    }));
+  }, [selectedFiles]);
+  
+  const getReplyPreview = (reply: any) => {
+    if (reply.encrypted_text) {
+      return {
+        type: "text",
+        text: reply.encrypted_text,
+      };
+    }
+  
+    switch (reply.media_type) {
+      case "image":
+        return {
+          type: "image",
+          thumb: reply.media_url,
+          text: reply.caption || "Photo",
+        };
+  
+      case "video":
+        return {
+          type: "video",
+          thumb: reply.thumbnail || reply.media_url,
+          text: reply.caption || "Video",
+        };
+  
+      case "gif":
+        return {
+          type: "gif",
+          thumb: reply.media_url,
+          text: "GIF",
+        };
+  
+      case "sticker":
+        return {
+          type: "sticker",
+          thumb: reply.media_url,
+          text: "Sticker",
+        };
+  
+      case "audio":
+        return {
+          type: "audio",
+          text: "Voice message",
+        };
+
+      case "gallery": {
+        const media = Array.isArray(reply.media_url)
+          ? reply.media_url
+          : [];
+      
+        const images = media.filter(
+          (m: any) =>
+            !m.includes(".mp4") &&
+            !m.includes(".mov") &&
+            !m.includes(".webm")
+        ).length;
+      
+        const videos = media.length - images;
+      
+        let text = "";
+      
+        if (images && videos) {
+          text = `${media.length} media`;
+        } else if (images) {
+          text = `${images} photo${images > 1 ? "s" : ""}`;
+        } else {
+          text = `${videos} video${videos > 1 ? "s" : ""}`;
+        }
+      
+        return {
+          type: "gallery",
+          thumb: media[0],
+          text,
+        };
+      }
+  
+      default:
+        return {
+          type: "file",
+          text: "Attachment",
+        };
+    }
+  };
+  
+  const preview = replyingTo
+    ? getReplyPreview(replyingTo)
+    : null;
+  
+  const lockProgress =
+    Math.min(
+        Math.abs(drag.y)/120,
+        1
+    );
+  
+  const progress =
+    Math.max(
+        Math.abs(drag.x),
+        Math.abs(drag.y)
+    )/120;
+  const p=Math.min(progress,1);
+  
+  const showRecorder =
+    voiceState==="recording" ||
+    voiceState==="locked";
 
   return (
     <div className="fixed bottom-0 left-0 right-0 md:left-64 flex flex-col z-50">
 
-      {/* EXPANDABLE DRAWER */}
-      <AnimatePresence>
-        {showDrawer && (
-          <>
-            {/* BACKDROP */}
-            <div
-              className="fixed inset-0 bg-black/40 z-30"
-              onClick={() => {
-                setShowDrawer(false);
-                setDrawerMode(null);
-              }}
-            />
-
-            <motion.div
-              initial={{ height: 0 }}
-              animate={{ height: 340 }}
-              exit={{ height: 0 }}
-              transition={{
-                type: "spring",
-                damping: 24,
-                stiffness: 240,
-              }}
-              style={{
-                transform: `translateY(${dragY}px)`,
-              }}
-              onTouchStart={onTouchStart}
-              onTouchMove={onTouchMove}
-              onTouchEnd={onTouchEnd}
-              className="
-                flex flex-col
-                overflow-hidden
-                dark:bg-[#111b21] order-2 bg-gray-300
-                z-40 relative
-              "
-            >
-      
-              {/* HANDLE */}
-              <div className="pt-2 pb-3 flex justify-center">
-                <div className="w-14 h-1.5 rounded-full bg-gray-100 dark:bg-gray-600" />
-              </div>
-              
-              {/* SEARCH */}
-              <div className="flex items-center gap-2 mx-5 bg-gray-200 dark:bg-[#202c33] rounded-xl px-3 py-2 mb-2">
-                <Search size={18} className="text-gray-400" />
-            
-                <input
-                  value={
-                    drawerMode === "gif"
-                      ? gifQuery
-                      : stickerQuery
-                  }
-                  onChange={(e) => {
-                    const val = e.target.value;
-                  
-                    if (drawerMode === "gif") {
-                      setGifQuery(val);
-                    } else if (drawerMode === "stickers") {
-                      setStickerQuery(val);
-                    }
-                  }}
-                  placeholder="Search GIFs or stickers"
-                  className="
-                    bg-transparent
-                    outline-none
-                    text-sm text-gray-700
-                    dark:text-white
-                    flex-1
-                  "
-                />
-              </div>
-      
-              {/* HEADER */}
-              <div className="flex items-center justify-center gap-4 px-4 pb-3 overflow-x-auto">
-  
-                <button
-                  onClick={() => {
-                    if (!showDrawer) setShowDrawer(true);
-                    setDrawerMode("emoji");
-                  }}
-                  className={`
-                    flex flex-col items-center gap-2
-                    px-2 py-1 rounded-xl transition
-                    ${
-                      isActiveTab("emoji")
-                        ? "bg-indigo-600/20"
-                        : "bg-transparent"
-                    }
-                  `}
-                >
-                  <div
-                    className={`
-                      w-10 h-10 rounded-2xl flex items-center justify-center
-                      ${
-                        isActiveTab("emoji")
-                          ? "bg-indigo-600"
-                          : "bg-yellow-500 dark:bg-yellow-500/20"
-                      }
-                    `}
-                  >
-                    😊
-                  </div>
-                
-                  <span
-                    className={`
-                      text-xs
-                      ${
-                        isActiveTab("emoji")
-                          ? "text-white"
-                          : "text-gray-700 dark:text-gray-300"
-                      }
-                    `}
-                  >
-                    Emoji
-                  </span>
-                </button>
-      
-                <button
-                  onClick={() => {
-                    setShowDrawer(true);
-                    setDrawerMode("gif");
-                  }}
-                  
-                  className={`
-                    flex flex-col items-center gap-2
-                    px-2 py-1 rounded-xl transition
-                    ${
-                      isActiveTab("gif")
-                        ? "bg-indigo-600/20"
-                        : "bg-transparent"
-                    }
-                  `}
-                >
-                  <div
-                    className={`
-                      w-10 h-10 rounded-2xl flex items-center justify-center
-                      ${
-                        isActiveTab("gif")
-                          ? "bg-indigo-600"
-                          : "bg-green-500 dark:bg-green-500/20"
-                      }
-                    `}
-                  >
-                    <File size={16} />
-                  </div>
-                
-                  <span
-                    className={`
-                      text-xs
-                      ${
-                        isActiveTab("gif")
-                          ? "text-white"
-                          : "text-gray-700 dark:text-gray-300"
-                      }
-                    `}
-                  >
-                    GIFs
-                  </span>
-                </button>
-      
-                <button
-                  onClick={() => {
-                    setShowDrawer(true);
-                    setDrawerMode("stickers");
-                  }}
-                  className={`
-                    flex flex-col items-center gap-2
-                    px-2 py-1 rounded-xl transition
-                    ${
-                      isActiveTab("stickers")
-                        ? "bg-indigo-600/20"
-                        : "bg-transparent"
-                    }
-                  `}
-                >
-                  <div
-                    className={`
-                      w-10 h-10 rounded-2xl flex items-center justify-center
-                      ${
-                        isActiveTab("stickers")
-                          ? "bg-indigo-600"
-                          : "bg-red-500 dark:bg-red-500/20"
-                      }
-                    `}
-                  >
-                    <Sticker size={14} />
-                  </div>
-                
-                  <span
-                    className={`
-                      text-xs
-                      ${
-                        isActiveTab("stickers")
-                          ? "text-white"
-                          : "text-gray-700 dark:text-gray-300"
-                      }
-                    `}
-                  >
-                    Stickers
-                  </span>
-                </button>
-              </div>
-      
-              {/* SCROLLABLE CONTENT */}
-              <div className="flex-1 min-h-0 overflow-hidden px-2 pb-2">
-
-                {drawerMode === 'emoji' && (
-                  <EmojiSection
-                    onEmojiSelect={insertEmoji}
-                  />
-                )}
-              
-                {drawerMode === 'gif' && (
-                  <GifSection
-                    query={gifQuery}
-                    onGifSelect={(gif) => {
-                      onChange(""); // optional clear text
-            
-                      console.log("SENDING PAYLOAD:", {
-                        media_type: "gif",
-                        media_source: "external",
-                        media_url: gif.images.original.url,
-                      });
-
-                      onSend({
-                        media_type: "gif",
-                        media_source: "external",
-                        media_url: gif.images.original.url,
-                      });
-                    
-                      closeDrawer();
-                    }}
-                  />
-                )}
-              
-                {drawerMode === 'stickers' && (
-                  <StickerSection
-                    query={gifQuery}
-                    onStickerSelect={(sticker) => {
-                      onSend({
-                        media_type: "sticker",
-                        media_source: "external",
-                        media_url: sticker.images.original.url,
-                      });
-                    
-                      closeDrawer();
-                    }}
-                  />
-                )}
-              
-                {drawerMode === 'plus' && (
-                  <AttachmentSection
-                    onCamera={() => {
-                      setShowDrawer(false);
-                      setShowCamera(true);
-                    }}
-                    onMedia={() => {
-                      media.setShowMediaPicker(true);
-                    }}
-                  />
-                )}
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      <ChatDrawer
+        showDrawer={showDrawer}
+        setShowDrawer={setShowDrawer}
+        drawerMode={drawerMode}
+        setDrawerMode={setDrawerMode}
+        dragY={dragY}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        gifQuery={gifQuery}
+        stickerQuery={stickerQuery}
+        setGifQuery={setGifQuery}
+        setStickerQuery={setStickerQuery}
+        onSend={onSend}
+        onChange={onChange}
+        insertEmoji={insertEmoji}
+        closeDrawer={closeDrawer}
+        isActiveTab={isActiveTab}
+        media={media}
+        isNative={isNative}
+        fileRef={fileRef}
+        setShowCamera={setShowCamera}
+      />
     
       {/* INPUT BAR */}
-      <div className="bg-gray-300 dark:bg-[#111b21] border-b z-50 order-1 border-gray-800">
+      <div className="bg-gray-300 dark:bg-[#111b21] border-t z-50 order-1 border-gray-200 dark:border-gray-800">
         <div className="flex items-end gap-2 px-3 py-2">
     
           {/* ATTACH */}
           <button
-            className="p-2 text-gray-700 rounded-full dark:text-gray-300 hover:bg-[#202c33]"
+            className="py-4 px-2 text-gray-700 rounded-full dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-[#202c33]"
             onClick={() => {
               if (showDrawer) {
                 closeDrawer();
@@ -534,14 +469,26 @@ export default function ChatInput({
                 onClick={() => setPreviewIndex(0)}
                 className="relative w-8 h-8 rounded-md overflow-hidden bg-gray-700"
               >
-                <img
-                  src={URL.createObjectURL(selectedFiles[0])}
-                  className="w-full h-full object-cover"
-                />
-          
-                {selectedFiles.length > 1 && (
-                  <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-xs text-white font-bold">
-                    {selectedFiles.length}
+                {selectedFiles.length > 0 && (
+                  <div className="flex gap-1 w-8 h-8 rounded-md overflow-hidden bg-gray-700">
+                    {previewItems[0].type === "video" ? (
+                      <video
+                        src={previewItems[0].url}
+                        className="w-full h-full object-cover"
+                        muted
+                      />
+                    ) : (
+                      <img
+                        src={previewItems[0].url}
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                
+                    {selectedFiles.length > 1 && (
+                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white text-xs">
+                        +{selectedFiles.length}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -558,14 +505,21 @@ export default function ChatInput({
             hidden
             multiple
             accept="image/*,video/*"
-            onChange={(e) => {
+            onChange={async (e) => {
               const files = e.target.files;
-          
               if (!files) return;
-          
-              Array.from(files).forEach((file) => {
+            
+              for (const rawFile of Array.from(files)) {
+                const file = rawFile as MediaFile;
+              
+                file.preview = URL.createObjectURL(file);
+
+                if (file.type.startsWith("video/")) {
+                  file.duration = await getVideoDuration(file);
+                }
+              
                 onFileSelect(file);
-              });
+              }
             }}
           />
 
@@ -588,12 +542,19 @@ export default function ChatInput({
   
                   <div className="flex-1 overflow-hidden">
   
-                    <p className="text-xs text-gray-900 dark:text-green-400 font-semibold">
-                      ↩ Replying to {replyingTo.username}
+                    <p className="text-xs items-center flex text-gray-900 dark:text-green-400 font-semibold">
+                      <Reply className="mr-2 w-5" /> Replying to {replyingTo.username}
                     </p>
   
+                    {preview?.thumb && (
+                      <img
+                        src={preview.thumb}
+                        className="w-10 h-10 rounded object-cover"
+                      />
+                    )}
+                    
                     <p className="text-xs text-gray-600 dark:text-gray-300 truncate">
-                      {replyingTo.text}
+                      {preview?.text}
                     </p>
   
                   </div>
@@ -609,6 +570,43 @@ export default function ChatInput({
               )}
             </div>
   
+            {showRecorder && (
+              <div
+                className="
+                  absolute
+                  inset-0
+                  flex
+                  items-center
+                  px-4
+                  bg-white
+                  dark:bg-[#202c33]
+                  rounded-2xl
+                  overflow-hidden
+                "
+              >
+                {/* Counter */}
+                <div className="flex items-center gap-2 min-w-[70px]">
+                  <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+            
+                  <span className="dark:text-white text-gray-600 text-lg">
+                    {formatTime(duration)}
+                  </span>
+                </div>
+            
+                {/* Slide text */}
+                {!isLocked && (
+                  <div
+                    className="flex-1 text-center text-gray-400 text-lg transition-all duration-75"
+                    style={{
+                      transform: `translateX(${drag.x}px)`,
+                    }}
+                  >
+                    &lt; Slide to cancel
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* TEXTAREA */}
             <textarea
               ref={textRef}
@@ -633,7 +631,11 @@ export default function ChatInput({
               onKeyUp={(e) => {
                 cursorRef.current = e.currentTarget.selectionStart;
               }}
-              placeholder="Message"
+              placeholder={
+                selectedFiles.length > 0
+                  ? "Add a caption..."
+                  : "Message"
+              }
               disabled={disabled}
               rows={1}
               className="
@@ -651,45 +653,117 @@ export default function ChatInput({
             />
   
           </div>
+          {canSend ? (
   
-          {/* MIC */}
-          <button
-            onMouseDown={onMicStart}
-            onMouseMove={onMicMove}
-            onMouseUp={onMicEnd}
-          
-            onTouchStart={onMicStart}
-            onTouchMove={onMicMove}
-            onTouchEnd={onMicEnd}
-          
-            className={`
-              p-2
-              rounded-full
-              transition
-              ${
-                isRecording
-                  ? 'bg-red-600 text-white scale-110'
-                  : 'text-gray-800 dark:text-gray-300 dark:hover:bg-[#202c33]'
-              }
-            `}
-          >
-            <Mic size={20} />
-          </button>
+            <button
+              onClick={() => {
+                onSend({
+                  encrypted_text: selectedFiles.length
+                    ? ""
+                    : value,
+                  caption: selectedFiles.length
+                    ? value
+                    : "",
+                  files: selectedFiles,
+                  media_source: selectedFiles.length
+                    ? "upload"
+                    : null,
+                });
+              
+                setSelectedFiles([]);
+                setPreviewIndex(null);
+                onChange("");
+                setShowDrawer(false);
+                setDrawerMode(null);
+                setInputMode("keyboard");
+              }}
+              className="
+                p-3
+                rounded-full
+                bg-indigo-600
+                text-white
+              "
+            >
+              <Send size={18} />
+            </button>
+          ) : (
+            <div className="relative flex items-center justify-center w-14 h-14">
+              {/* LOCK */}
+              {voiceState === "recording" && (
+                <div
+                  className="
+                    absolute
+                    bottom-20
+                    right-2
+                    w-12
+                    h-28
+                    rounded-full
+                    bg-white
+                    dark:bg-[#202c33]
+                    flex
+                    items-start
+                    justify-center
+                    p-2
+                    z-50
+                  "
+                >
+                  <div
+                    className="transition-all duration-150"
+                    style={{
+                      transform: `translateY(${
+                        Math.max(drag.y, -80) + 80
+                      }px)`
+                    }}
+                  >
+                    <Lock
+                      size={20}
+                      className={
+                        isLocked
+                          ? "text-green-400"
+                          : "text-gray-400"
+                      }
+                    />
+                  </div>
+                </div>
+              )}
   
-          {/* SEND */}
-          <button
-            onClick={onSend}
-            disabled={!value.trim()}
-            className="
-              p-3
-              rounded-full
-              bg-indigo-600
-              disabled:opacity-50
-              text-white
-            "
-          >
-            <Send size={18} />
-          </button>
+              {/* MIC BUTTON */}
+              <button
+                onMouseDown={onMicStart}
+                onMouseMove={onMicMove}
+                onMouseUp={onMicEnd}
+                onTouchStart={onMicStart}
+                onTouchMove={onMicMove}
+                onTouchEnd={onMicEnd}
+                className={`
+                  rounded-full
+                  flex z-50
+                  items-center border
+                  justify-center
+                  transition-all
+                  duration-200
+                  shadow-xl
+                  ${
+                    micPressed
+                      ? "bg-gray-500 text-gray-300 w-15 h-15"
+                      : "bg-transparent text-gray-700 dark:text-gray-300 w-10 h-10"
+                  }
+                `}
+                style={{
+                  transform:`
+                  translate(${drag.x}px,${drag.y}px)
+                  scale(${1-0.4*p})
+                  `,
+                  opacity:1-p,
+                  transition: micPressed ? "none" : "all 0.15s ease",
+                }}
+              >
+                <Mic
+                  size={micPressed ? 30 : 20}
+                />
+              </button>
+            </div>
+          )}
     
         </div>
       </div>
@@ -702,10 +776,8 @@ export default function ChatInput({
           }}
       
           onCapture={(file) => {
-            onFileSelect(file);
-      
+            handleFileSelect(file);
             setShowCamera(false);
-            setCapturedImage(null);
           }}
         />
       )}
@@ -714,22 +786,33 @@ export default function ChatInput({
         <MediaPickerSheet {...media} />
       )}
       
-      {media.showCaptionBar && (
-        <CaptionBar
-          selectedFiles={media.selectedFiles}
-          value={value}
-          onChange={onChange}
-          setPreviewIndex={media.setPreviewIndex}
-          onSend={onSend}
+      {previewIndex !== null && (
+        <PreviewViewer
+          files={selectedFiles}
+          index={previewIndex}
+          setIndex={setPreviewIndex}
+          onClose={() => setPreviewIndex(null)}
+          onAddFiles={(newFiles) => {
+            setSelectedFiles(prev => [
+              ...prev,
+              ...newFiles,
+            ]);
+          }}
+          onDelete={(index) => {
+            setSelectedFiles(prev => {
+              const next = prev.filter((_, i) => i !== index);
+          
+              if (next.length === 0) {
+                setPreviewIndex(null);
+              } else if (previewIndex >= next.length) {
+                setPreviewIndex(next.length - 1);
+              }
+          
+              return next;
+            });
+          }}
         />
       )}
-      
-      <PreviewViewer
-        files={media.selectedFiles}
-        index={media.previewIndex}
-        setIndex={media.setPreviewIndex}
-        onClose={() => media.setPreviewIndex(null)}
-      />
 
     </div>
   );

@@ -224,9 +224,7 @@ apiClient.interceptors.response.use(
         window.location.pathname !==
         "/auth/login"
       ) {
-        window.location.href(
-          "/auth/login"
-        );
+        window.location.href = "/auth/login";
       }
 
       return Promise.reject(

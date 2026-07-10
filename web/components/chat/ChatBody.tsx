@@ -1,8 +1,10 @@
 'use client';
 
+import React, { forwardRef } from 'react';
 import MessageBubbles from '@/components/MessageBubbles';
 
 type Props = {
+  chatId: number;
   messages: any[];
   currentUser: {
     id: number | null;
@@ -17,13 +19,34 @@ type Props = {
 
   page: number;
   hasMore: boolean;
-
+  hasNewer: boolean;
   loadMore: () => void;
+  loadNewer: () => void;
 
   selectionMode: boolean;
   selectedMessages: Set<string>;
 
-  resendMessage: (message: any) => void;
+  previewState: {
+    files: any[];
+    index: number;
+    msg: any;
+    isMine: boolean;
+    onReply?: (msg: Message) => void;
+  } | null;
+
+  setPreviewState: React.Dispatch<
+    React.SetStateAction<{
+      files: any[];
+      index: number;
+      msg: any;
+      isMine: boolean;
+      onReply?: (msg: Message) => void;
+    } | null>
+  >;
+
+  resendPendingMessage: (message: any) => void;
+  retryFailedMessage: (message: any) => void;
+  resendMedia: (message: any) => void;
 
   toggleSelectMessage: (
     id: string | number
@@ -33,6 +56,7 @@ type Props = {
 
   replyingTo: any;
   setReplyingTo: (message: any | null) => void;
+  onForward: (messages: Message[]) => void;
 
   onReaction: (
     messageId: number,
@@ -40,78 +64,93 @@ type Props = {
   ) => void;
 };
 
-export default function ChatBody({
-  messages,
-  currentUser,
+const ChatBody = forwardRef<
+  HTMLDivElement,
+  Props
+>(
+  (
+    {
+      chatId,
+      messages,
+      currentUser,
+      showDrawer,
+      setShowDrawer,
+      setDrawerMode,
+      page,
+      hasMore,
+      hasNewer,
+      loadMore,
+      loadNewer,
+      selectionMode,
+      selectedMessages,
+      previewState,
+      setPreviewState,
+      resendPendingMessage,
+      retryFailedMessage,
+      resendMedia,
+      toggleSelectMessage,
+      clearSelection,
+      replyingTo,
+      setReplyingTo,
+      onForward,
+      onReaction,
+    },
+    ref
+  ) => {
+    return (
+      <div
+        ref={ref}
+        className={`
+          flex-1
+          min-h-0
+          transition-all
+          duration-300
+          ${
+            showDrawer
+              ? 'pb-[420px]'
+              : 'pb-[72px]'
+          }
+        `}
+      >
+        <MessageBubbles
+          chatId={chatId}
+          messages={messages}
+          currentUser={currentUser.username}
+          currentUserId={currentUser.id}
+          loadMore={loadMore}
+          loadNewer={loadNewer}
+          onOpenDrawer={(mode) => {
+            setDrawerMode(mode);
+            setShowDrawer(true);
+          }}
+          onForward={onForward}
+          selectionMode={selectionMode}
+          selectedMessages={selectedMessages}
+          previewState={previewState}
+          setPreviewState={setPreviewState}
+          resendPendingMessage={
+            resendPendingMessage
+          }
+          retryFailedMessage={
+            retryFailedMessage
+          }
+          resendMedia={resendMedia}
+          toggleSelectMessage={
+            toggleSelectMessage
+          }
+          clearSelection={clearSelection}
+          replyingTo={replyingTo}
+          setReplyingTo={setReplyingTo}
+          onReply={setReplyingTo}
+          hasMore={hasMore}
+          hasNewer={hasNewer}
+          onReaction={onReaction}
+        />
+      </div>
+    );
+  }
+);
 
-  showDrawer,
-  setShowDrawer,
-  setDrawerMode,
+ChatBody.displayName = 'ChatBody';
 
-  page,
-  hasMore,
-  loadMore,
-
-  selectionMode,
-  selectedMessages,
-
-  resendMessage,
-
-  toggleSelectMessage,
-  clearSelection,
-
-  replyingTo,
-  setReplyingTo,
-
-  onReaction,
-}: Props) {
- 
-  return (
-    <div
-      className={`
-        flex-1
-        min-h-0
-        transition-all
-        duration-300
-        ${
-          showDrawer
-            ? 'pb-[420px]'
-            : 'pb-[72px]'
-        }
-      `}
-    >
-      <MessageBubbles
-        messages={messages}
-        currentUser={currentUser.username}
-        currentUserId={currentUser.id}
-
-        loadMore={loadMore}
-
-        onOpenDrawer={(mode) => {
-          setDrawerMode(mode);
-          setShowDrawer(true);
-        }}
-
-        selectionMode={selectionMode}
-        selectedMessages={selectedMessages}
-
-        resendMessage={resendMessage}
-
-        toggleSelectMessage={
-          toggleSelectMessage
-        }
-
-        clearSelection={clearSelection}
-
-        replyingTo={replyingTo}
-        setReplyingTo={setReplyingTo}
-
-        onReply={setReplyingTo}
-
-        hasMore={hasMore}
-
-        onReaction={onReaction}
-      />
-    </div>
-  );
-}
+export default ChatBody;

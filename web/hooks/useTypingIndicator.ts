@@ -44,7 +44,7 @@ export function useTypingIndicator({
             chatId,
           }
         );
-      }, 1000);
+      }, 2500);
   };
 
   const stopTyping = () => {

@@ -1,21 +1,33 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { apiRequest } from '@/utils/api';
 import { getConnectedUsers } from '@/lib/api';
+import { useNavigation } from "@/utils/useNavigation"
+import { saveMessage } from '@/lib/messageDB';
+import {
+  sendChatMessage,
+} from "@/utils/chat/sendChatMessage";
 
 type Props = {
   socketRef: any;
   chatUser?: any;
+  currentUser: any;
+  setMessages: any;
   clearSelection?: () => void;
 };
 
 export function useForwardMessages({
   socketRef,
   chatUser,
+  currentUser,
+  setMessages,
   clearSelection,
 }: Props) {
+  const { push } = useNavigation()
   const [forwardMode, setForwardMode] = useState(false);
+  const [forwardCaption, setForwardCaption] =
+    useState("");
 
   const [selectedForwardUsers, setSelectedForwardUsers] =
     useState<Set<number>>(new Set());
@@ -29,7 +41,7 @@ export function useForwardMessages({
   const fetchConnectedUsers = async () => {
     try {
       const res = await getConnectedUsers();
-      setConnectedUsers(res || []);
+      setConnectedUsers(res.results || []);
     } catch (err) {
       console.error('Failed to load users', err);
     }
@@ -51,48 +63,155 @@ export function useForwardMessages({
     setForwardMode(false);
     setSelectedForwardUsers(new Set());
     setForwardMessages([]);
+    setForwardCaption("");
+  };
+
+  const createForwardPayload = (
+    msg: any,
+    chatId: number,
+    forwardCaption: string
+  ) => {
+    const canUseCaption =
+      msg.media_type === "image" ||
+      msg.media_type === "video" ||
+      msg.media_type === "gallery";
+  
+    const originalCaption =
+      msg.caption ??
+      msg.text ??
+      "";
+  
+    const newCaption =
+      forwardCaption?.trim();
+  
+    return {
+      localId: crypto.randomUUID(),
+      chatId,
+    
+      caption:
+        canUseCaption
+          ? (
+              newCaption ||
+              originalCaption
+            )
+          : originalCaption,
+    
+      encrypted_text:
+        canUseCaption
+          ? (
+              newCaption ||
+              originalCaption
+            )
+          : (
+              msg.encrypted_text ??
+              msg.text ??
+              ""
+            ),
+    
+      media_url: msg.media_url ?? null,
+      media_type: msg.media_type ?? null,
+      thumbnail: msg.thumbnail ?? null,
+      media_source: "forward",
+      reply_to: null,
+    };
   };
 
   const sendForward = async () => {
+    const messagesToForward = [...forwardMessages];
+    const caption = forwardCaption;
+  
     if (
       forwardMessages.length === 0 ||
       selectedForwardUsers.size === 0
     ) {
       return;
     }
-
+  
     try {
-      for (const userId of selectedForwardUsers) {
+      // SINGLE USER
+      if (selectedForwardUsers.size === 1) {
+        const userId = [...selectedForwardUsers][0];
+  
         const chat = await apiRequest(
-          'api/chats/get-or-create/',
+          "api/chats/get-or-create/",
           {
-            method: 'POST',
+            method: "POST",
             data: {
               user_id: userId,
             },
           }
         );
-
-        for (const msg of forwardMessages) {
-          socketRef.current?.emit('send_message', {
-            chatId: chat.chat_id,
-            text: msg.text,
-            media_url: msg.media_url,
-            media_type: msg.media_type,
+  
+        closeForward();
+        clearSelection?.();
+  
+        push(`/main/messages/chat/${chat.chat_id}`);
+  
+        for (const msg of messagesToForward) {
+          const payload =
+            createForwardPayload(
+              msg,
+              chat.chat_id,
+              caption
+            );
+        
+          await sendChatMessage({
+            message: payload,
+            currentUser,
+            socketRef,
+            setMessages,
+          });
+        }
+  
+        return;
+      }
+  
+      // MULTIPLE USERS
+      for (const userId of selectedForwardUsers) {
+        const chat = await apiRequest(
+          "api/chats/get-or-create/",
+          {
+            method: "POST",
+            data: {
+              user_id: userId,
+            },
+          }
+        );
+      
+        for (const msg of messagesToForward) {
+          const payload =
+            createForwardPayload(
+              msg,
+              chat.chat_id,
+              caption
+            );
+      
+          await sendChatMessage({
+            message: payload,
+            currentUser,
+            socketRef,
+            setMessages,
           });
         }
       }
-
+  
       closeForward();
       clearSelection?.();
+  
+      push("/main/messages");
+  
     } catch (err) {
       console.error(err);
     }
   };
-
-  const filteredUsers = connectedUsers.filter(
-    (u) => u.id !== chatUser?.id
-  );
+  
+  const filteredUsers = Array.isArray(
+    connectedUsers
+  )
+    ? connectedUsers.filter(
+        u => u.id !== chatUser?.id
+      )
+    : [];
 
   return {
     forwardMode,
@@ -100,6 +219,8 @@ export function useForwardMessages({
     setSelectedForwardUsers,
 
     forwardMessages,
+    forwardCaption,
+    setForwardCaption,
 
     users: filteredUsers,
 

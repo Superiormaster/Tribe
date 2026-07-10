@@ -4,6 +4,10 @@ import { ThemeProvider } from "next-themes";
 import { UserProvider, UserContext } from "@/components/UserContext";
 import RouteLoader from "@/components/RouteLoader";
 import NProgressInit from "@/components/NProgressInit";
+import NetworkBannerWrapper from "@/components/networkConnection/NetworkBannerWrapper";
+import {
+  NetworkProvider,
+} from "@/components/networkConnection/NetworkContext";
 import { apiRequest } from "@/utils/api";
 import { useContext, useEffect } from "react";
 
@@ -68,7 +72,10 @@ export default function ClientWrapper({ children }: { children: React.ReactNode 
 
       <ThemeProvider attribute="class">
         <UserProvider>
-          <AppContent>{children}</AppContent>
+          <NetworkProvider>
+            <NetworkBannerWrapper />
+            <AppContent>{children}</AppContent>
+          </NetworkProvider>
         </UserProvider>
       </ThemeProvider>
     </>

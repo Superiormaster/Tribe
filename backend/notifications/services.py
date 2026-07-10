@@ -6,6 +6,7 @@ from channels.layers import get_channel_layer
 
 from .models import Notification
 from .serializers import NotificationSerializer
+from .push import push_notification
 
 
 def create_notification(
@@ -23,6 +24,15 @@ def create_notification(
         return None
 
     actor = actors[0]
+    
+    settings = getattr(
+        recipient,
+        "notification_settings",
+        None
+    )
+    
+    if settings and not settings.notifications_enabled:
+        return None
 
     # =========================
     # AUTO GROUP KEY
@@ -98,5 +108,39 @@ def create_notification(
             "data": serialized
         }
     )
-
+  
+    # push notification
+    token = getattr(
+        recipient,
+        "fcm_token",
+        None,
+    )
+    
+    if token:
+        push_notification(
+            token,
+            recipient.id,
+            {
+                "id":
+                    notif.id,
+    
+                "type":
+                    notif.type,
+    
+                "title":
+                    "Tribe",
+    
+                "body":
+                    serialized["message"],
+    
+                "postId":
+                    str(post.id)
+                    if post
+                    else "",
+    
+                "userId":
+                    str(actor.id),
+            },
+        )
+    
     return notif

@@ -1,12 +1,35 @@
 from .utils import redis_client
 from django.utils import timezone
 from datetime import datetime
+from .models import ConnectionRequest
+
+def get_presence_receivers(user):
+    from django.contrib.auth import get_user_model
+    User = get_user_model()
+  
+    sent = ConnectionRequest.objects.filter(
+        from_user=user,
+        status="accepted"
+    ).values_list(
+        "to_user_id",
+        flat=True
+    )
+
+    received = ConnectionRequest.objects.filter(
+        to_user=user,
+        status="accepted"
+    ).values_list(
+        "from_user_id",
+        flat=True
+    )
+
+    return list(set(sent) | set(received))
 
 def set_user_online(user_id):
     redis_client.set(
         f"user:{user_id}:status",
         "online",
-        ex=30
+        ex=60
     )
 
 def set_user_offline(user_id):

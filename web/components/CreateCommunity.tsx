@@ -29,6 +29,7 @@ export default function CreateCommunity({ onCreated, user }: Props) {
   const [videoProgress, setVideoProgress] = useState(0);
 
   const [requireApproval, setRequireApproval] = useState(false);
+  const [joinApprovalRequired, setJoinApprovalRequired] = useState(false);
   const [tribeName, setTribeName] = useState("");
   const [selectedTribe, setSelectedTribe] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -102,11 +103,14 @@ export default function CreateCommunity({ onCreated, user }: Props) {
         name,
         description,
         require_post_approval: requireApproval,
+        join_approval_required: joinApprovalRequired,
         tribe: selectedTribe,
       };
       if (coverUrl) payload.cover_image = coverUrl;
       if (videoUrl) payload.intro_video = videoUrl;
       if (selectedTribe) payload.tribe = selectedTribe;
+
+      console.log(payload);
 
       const createdCommunity = await apiRequest('api/communities/', {
         method: 'POST',
@@ -128,6 +132,7 @@ export default function CreateCommunity({ onCreated, user }: Props) {
       setVideoPreview(null);
       setVideoProgress(0);
       setRequireApproval(false);
+      setJoinApprovalRequired(false);
       setSelectedTribe(null);
       if (onCreated) onCreated();
     } catch (err) {
@@ -139,8 +144,8 @@ export default function CreateCommunity({ onCreated, user }: Props) {
   };
 
   return (
-    <div className="bg-white dark:bg-gray-900 p-4 rounded-2xl shadow-sm mb-6">
-      <h1 className="text-2xl text-center font-bold mb-4">
+    <div className="bg-white dark:bg-gray-900 p-4 mt-20 text-gray-600 rounded-2xl shadow-sm mb-6">
+      <h1 className="text-2xl text-gray-700 dark:text-gray-300 text-center font-bold mb-4">
         Create Community in {tribeName} Tribe
       </h1>
 
@@ -159,7 +164,7 @@ export default function CreateCommunity({ onCreated, user }: Props) {
         className="w-full mb-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100"
       />
 
-       {/* Require Approval */}
+      {/* Require Approval */}
       <label className="flex items-center mb-2">
         <input
           type="checkbox"
@@ -168,6 +173,17 @@ export default function CreateCommunity({ onCreated, user }: Props) {
           className="mr-2"
         />
         Require post approval
+      </label>
+      
+      {/* Require Approval */}
+      <label className="flex items-center mb-2">
+        <input
+          type="checkbox"
+          checked={joinApprovalRequired}
+          onChange={(e) => setJoinApprovalRequired(e.target.checked)}
+          className="mr-2"
+        />
+        Require join approval
       </label>
 
       {/* Modern Cover Upload */}
@@ -233,7 +249,7 @@ export default function CreateCommunity({ onCreated, user }: Props) {
       <button
         onClick={handleCreate}
         disabled={loading}
-        className="bg-indigo-600 text-white px-4 py-2 rounded-lg"
+        className="bg-indigo-600 text-white px-4 py-2 mt-3 rounded-lg"
       >
         {loading ? "Creating..." : "Create Community"}
       </button>

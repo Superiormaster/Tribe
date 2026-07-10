@@ -144,6 +144,7 @@ export default function CameraCaptureModal({
       );
 
     onCapture(file);
+    onClose(); 
   };
 
   return (

@@ -56,7 +56,7 @@ export default function CommunitySettingsPage({
   if (loading) return <Skeleton />;
 
 return (
-<div className="max-w-xl mx-auto p-4 space-y-4">
+<div className="max-w-xl text-gray-600 dark:text-gray-300 mx-auto my-20 p-4 space-y-4">
 
 <h1 className="text-2xl text-gray-700 dark:text-white font-bold">Community Settings</h1>  
 

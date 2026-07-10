@@ -3,6 +3,7 @@ from rest_framework import viewsets, permissions, status, generics
 from rest_framework.decorators import action
 from django.db.models import Count, F, Exists, OuterRef, Case, When, Q, Max, FloatField, Value, ExpressionWrapper
 from django.db.models.functions import Mod
+from django.db.models.functions import Random
 from django.db import transaction
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
@@ -19,7 +20,8 @@ from users.utils import redis_client
 from rest_framework.exceptions import PermissionDenied
 from notifications.services import create_notification
 from random import randint
-from users.models import Star
+from users.models import Star, BlockedUser
+from feedback.models import Report
 from .serializers import PostSerializer, LikeSerializer, CommentSerializer, RepostSerializer
 
 def should_count_view(last_view):
@@ -168,17 +170,13 @@ class PostViewSet(viewsets.ModelViewSet):
 
     # ✅ Create post with moderation
     def perform_create(self, serializer):
-        community = serializer.validated_data.get('community')
-        user = self.request.user
-        
-        # Determine if the post should be auto-approved
-        is_approved = True
-        if community:
-          has_moderators = CommunityMembership.objects.filter(
-              community=community,
-              role__in=["admin", "moderator"]
-          ).exists()
+      community = serializer.validated_data.get("community")
+      user = self.request.user
   
+      # default behavior: auto approve
+      is_approved = True
+  
+      if community and community.require_post_approval:
           is_staff = (
               user == community.owner or
               CommunityMembership.objects.filter(
@@ -188,25 +186,23 @@ class PostViewSet(viewsets.ModelViewSet):
               ).exists()
           )
   
-          if (
-              community.require_post_approval and
-              has_moderators and
-              not is_staff
-          ):
+          # only non-staff need approval
+          if not is_staff:
               is_approved = False
-    
-        # Save the post
-        post = serializer.save(user=self.request.user, is_approved=is_approved)
-    
-        # Attach media files if provided
-        media_files = self.request.data.get('media_files', [])
-        for media in media_files:
-            PostMedia.objects.create(
-                post=post,
-                file=media['url'],
-                media_type=media['type'],
-                thumbnail=media.get('thumbnail')
-            )
+  
+      post = serializer.save(
+          user=user,
+          is_approved=is_approved
+      )
+  
+      media_files = self.request.data.get("media_files", [])
+      for media in media_files:
+          PostMedia.objects.create(
+              post=post,
+              file=media["url"],
+              media_type=media["type"],
+              thumbnail=media.get("thumbnail")
+          )
 
     def perform_update(self, serializer):
       instance = self.get_object()
@@ -325,7 +321,7 @@ class PostViewSet(viewsets.ModelViewSet):
     
         recent_limit = timezone.now() - timedelta(minutes=30)
     
-        recent_view = PostView.objects.filter(
+        view = PostView.objects.filter(
             post=post,
             user=user,
             last_viewed_at__gte=recent_limit
@@ -337,7 +333,7 @@ class PostViewSet(viewsets.ModelViewSet):
         # -----------------------------
         # NEW VIEW
         # -----------------------------
-        if not recent_view:
+        if not view:
     
             view = PostView.objects.create(
                 post=post,
@@ -345,6 +341,7 @@ class PostViewSet(viewsets.ModelViewSet):
                 watch_time=watch_time,
                 completed=completed,
                 skipped=skipped,
+                last_viewed_at=timezone.now(),
                 replay_count=1 if is_replay else 0
             )
     
@@ -367,7 +364,7 @@ class PostViewSet(viewsets.ModelViewSet):
         else:
     
             if is_replay:
-                PostView.objects.filter(id=recent_view.id).update(
+                PostView.objects.filter(id=view.id).update(
                     replay_count=F("replay_count") + 1
                 )
     
@@ -380,48 +377,115 @@ class PostViewSet(viewsets.ModelViewSet):
                     skipped_views=F("skipped_views") + 1
                 )
     
-            recent_view.watch_time = max(
-                recent_view.watch_time,
+            view.watch_time = max(
+                view.watch_time,
                 watch_time
             )
     
-            recent_view.completed = (
-                completed or recent_view.completed
+            view.completed = (
+                completed or view.completed
             )
     
-            recent_view.skipped = skipped
+            view.skipped = (
+              skipped or view.skipped
+            )
     
-            recent_view.last_viewed_at = timezone.now()
+            view.last_viewed_at = timezone.now()
     
-            recent_view.save(update_fields=[
+            view.save(update_fields=[
                 "watch_time",
                 "completed",
                 "skipped",
                 "last_viewed_at",
             ])
     
+        post.refresh_from_db()
+
         return Response({
-            "status": "view recorded"
+            "status": "view recorded",
+            "views_count": post.views_count,
+            "replay_count": post.replay_count,
+            "skipped_views": post.skipped_views,
         })
 
     # ✅ Reels
     @action(detail=False, methods=['get'])
     def reels(self, request):
-        reels = Post.objects.filter(
-            content_type='short_video',
-            community__tribe__allow_reels=True,
-            is_deleted=False,
-            is_approved=True
-        ).select_related('community', 'user')\
-         .prefetch_related('media_files')\
-         .order_by('-created_at')
+        user = request.user
     
-        page = self.paginate_queryset(reels)
-        if page:
-            serializer = PostSerializer(page, many=True, context={'request': request})
+        qs = Post.objects.filter(
+            content_type='short_video',
+            is_deleted=False,
+            is_approved=True,
+            community__tribe__allow_reels=True
+        ).select_related(
+            'community',
+            'user'
+        ).prefetch_related(
+            'media_files'
+        )
+    
+        # 🔥 ENGAGEMENT ANNOTATIONS
+        qs = qs.annotate(
+            likes_count=Count('likes', distinct=True),
+            comments_count=Count('comments', distinct=True),
+            shares_count=Count('shares', distinct=True),
+    
+            is_liked=Exists(
+                Like.objects.filter(
+                    post=OuterRef('pk'),
+                    user=user
+                )
+            ),
+  
+            is_starred=Exists(
+                Star.objects.filter(
+                    star=user,
+                    starred_user=OuterRef("user_id")
+                )
+            )
+        )
+
+        muted_ids = user.muted_users.values_list(
+            "muted_user_id",
+            flat=True
+        )
+
+        blocked_ids = user.blocked_users.values_list(
+            "blocked_user_id",
+            flat=True
+        )
+        
+        blocked_me_ids = BlockedUser.objects.filter(
+            blocked_user=user
+        ).values_list(
+            "user_id",
+            flat=True
+        )
+        
+        qs = qs.exclude(
+            user_id__in=muted_ids
+        ).exclude(
+            user_id__in=blocked_ids
+        ).exclude(
+            user_id__in=blocked_me_ids
+        )
+    
+        # 🔥 REELS SCORING (IMPORTANT)
+        qs = annotate_reels_features(qs, request.user.interests)
+        qs = compute_reels_score(qs)
+    
+        # 🔥 ORDER BY SCORE (TikTok style)
+        qs = qs.order_by('-final_score', '-created_at')
+    
+        # pagination
+        page = self.paginate_queryset(qs)
+    
+        if page is not None:
+            serializer = self.get_serializer(page, many=True, context={'request': request})
             return self.get_paginated_response(serializer.data)
     
-        serializer = PostSerializer(reels, many=True, context={'request': request})
+        serializer = self.get_serializer(qs, many=True, context={'request': request})
         return Response(serializer.data)
 
     @action(detail=True, methods=["post"])
@@ -451,19 +515,31 @@ class PostViewSet(viewsets.ModelViewSet):
         })
 
     # ✅ Report post
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=["post"])
     def report(self, request, pk=None):
         post = self.get_object()
-        reason = request.data.get('reason')
     
-        Report.objects.create(
-            post=post,
-            user=request.user,
-            reason=reason
+        report, created = Report.objects.get_or_create(
+            reporter=request.user,
+            report_type="post",
+            target_post=post,
+            defaults={
+                "reason": request.data.get("reason"),
+                "details": request.data.get("details", "")
+            }
         )
     
-        return Response({'status': 'Reported'})
- 
+        if not created:
+            return Response(
+                {"message": "You already reported this post"},
+                status=400
+            )
+    
+        return Response({
+            "success": True,
+            "message": "Post reported successfully"
+        })
+
     @action(detail=True, methods=["post"])
     def toggle_profile_pin(self, request, pk=None):
         post = self.get_object()
@@ -842,83 +918,73 @@ class RepostViewSet(viewsets.ModelViewSet):
             })
     
         return paginator.get_paginated_response(results)
-
+  
 class FeedViewSet(viewsets.ModelViewSet):
     serializer_class = PostSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = FeedPagination
 
     def get_queryset(self):
-        user = self.request.user
-        now = timezone.now()
-        two_weeks_ago = now - timedelta(days=14)
-        tribe_id = self.request.query_params.get("tribe")
+        return Post.objects.none()
 
-        interests = user.interests or []
+    def list(self, request, *args, **kwargs):
+      user = request.user
+  
+      two_weeks_ago = (
+          timezone.now() -
+          timedelta(days=14)
+      )
+  
+      interests = user.interests or []
+      tribe_id = request.query_params.get("tribe")
+  
+      starred_ids = set(
+            Star.objects.filter(star=user).values_list("starred_user_id", flat=True)
+      )
+  
+      feed_items = build_global_feed(
+          user,
+          interests,
+          starred_ids,
+          two_weeks_ago,
+          tribe_id
+      )
+  
+      results = []
+  
+      for item in feed_items:
+  
+          if item["type"] == "post":
+  
+              results.append({
+                  "type": "post",
+                  "data": PostSerializer(
+                      item["data"],
+                      context={
+                          "request": request
+                      }
+                  ).data
+              })
+  
+          else:
+  
+              results.append({
+                  "type": "repost",
+                  "data": RepostSerializer(
+                      item["data"],
+                      context={
+                          "request": request
+                      }
+                  ).data
+              })
+  
+      page = self.paginate_queryset(results)
 
-        starred_ids = list(
-            Star.objects.filter(star=user)
-            .values_list("starred_user_id", flat=True)
-        )
+      response = self.get_paginated_response(page)
 
-        # BASE
-        qs = build_base_queryset(user)
-
-        # SEEN (Redis penalty NOT exclusion)
-        seen_ids = get_seen_posts(redis_client, user.id)
-
-        qs = qs.annotate(
-            is_seen=Case(
-                When(id__in=seen_ids, then=Value(1.0)),
-                default=Value(0.0),
-                output_field=FloatField()
-            )
-        )
-
-        # FEATURES
-        qs = annotate_features(qs, user, interests, starred_ids, two_weeks_ago)
-
-        # RANDOM SESSION BOOST (TikTok style)
-        seed = session_seed(user)
-
-        qs = qs.annotate(
-            shuffle_score=Mod(F("id") + Value(seed), Value(13))
-        )
-
-        if tribe_id:
-            qs = qs.filter(
-                community__tribe_id=tribe_id
-            )
-
-        # TIME DECAY
-        qs = qs.annotate(
-            decay=Case(
-                When(created_at__gte=now - timedelta(hours=24), then=Value(1.0)),
-                When(created_at__gte=now - timedelta(days=7), then=Value(0.7)),
-                When(created_at__gte=now - timedelta(days=14), then=Value(0.4)),
-                default=Value(0.2),
-                output_field=FloatField()
-            )
-        )
-
-        # SCORE
-        feed_type = self.request.query_params.get("feed", "main")
-
-        if feed_type == "reels":
-            qs = compute_reels_score(qs)
-        else:
-            qs = compute_main_feed_score(qs, get_user_weights(user))
-
-        qs = qs.annotate(
-            final_score=F("final_score")
-            + F("decay") * 2.0
-            - F("is_seen") * 2.5
-        )
-
-        # ORDER
-        qs = qs.order_by("-final_score", "shuffle_score", "-created_at", "-id")
-
-        return qs
+      response.data["starred_user_ids"] = starred_ids
+      
+      return response
 
     @action(detail=False, methods=["post"])
     def refresh(self, request):
@@ -1060,6 +1126,55 @@ class CommentViewSet(viewsets.ModelViewSet):
             post=comment.post,
             community=comment.post.community
         )
+
+    # ✅ Report comment
+    @action(detail=True, methods=["post"])
+    def report(self, request, pk=None):
+        comment = self.get_object()
+    
+        report, created = Report.objects.get_or_create(
+            reporter=request.user,
+            report_type="comment",
+            target_comment=comment,
+            defaults={
+                "reason": request.data.get("reason"),
+                "details": request.data.get("details", "")
+            }
+        )
+    
+        if not created:
+            return Response(
+                {
+                    "message": "You already reported this comment"
+                },
+                status=400
+            )
+    
+        return Response({
+            "success": True,
+            "message": "Comment reported successfully"
+        })
+
+    @action(detail=True, methods=["patch"])
+    def edit(self, request, pk=None):
+        comment = self.get_object()
+        user = request.user
+    
+        if comment.user != user:
+            raise PermissionDenied("You cannot edit this comment")
+    
+        text = request.data.get("text")
+    
+        if not text:
+            return Response({"message": "Text is required"}, status=400)
+    
+        comment.text = text
+        comment.save()
+    
+        return Response({
+            "success": True,
+            "text": comment.text
+        })
   
 class CommentLikeViewSet(viewsets.ViewSet):
     permission_classes = [permissions.IsAuthenticated]

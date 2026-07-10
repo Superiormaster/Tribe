@@ -4,7 +4,7 @@ type Props = {
   isOpen: boolean;
   onClose: () => void;
   canManage: boolean;
-  canSeeSettings: boolean;
+  isOwner: boolean;
   canLeave: boolean;
   onLeave: () => void;
   onSettings: () => void;
@@ -17,7 +17,7 @@ export default function CommunityMenuModal({
   isOpen,
   onClose,
   canManage,
-  canSeeSettings,
+  isOwner,
   onLeave,
   canLeave,
   onSettings,
@@ -39,7 +39,7 @@ export default function CommunityMenuModal({
           Close
         </button>
 
-        {canManage && (
+        {isOwner && (
           <button
             onClick={onSettings}
             className="w-full text-gray-700 dark:text-gray-200 text-left p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"

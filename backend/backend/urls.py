@@ -22,6 +22,7 @@ from django.conf.urls.static import static
 urlpatterns = [
     path('admin/', admin.site.urls),
 
+    path('api/admin/', include('admin_panel.urls')),
     # App routes
     path('api/users/', include('users.urls')),
     path('api/', include('post.urls')),
@@ -30,6 +31,7 @@ urlpatterns = [
     path("api/notifications/", include("notifications.urls")),
     path('api/comments/', include('post.urls')),
     path('api/search/', include('search.urls')),
+    path('api/feedback/', include('feedback.urls')),
 ]
 
 # Serve media files in development

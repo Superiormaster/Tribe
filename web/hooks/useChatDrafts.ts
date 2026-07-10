@@ -11,9 +11,8 @@ export function useChatDrafts(
   chatId: number | null
 ) {
   const [input, setInput] = useState('');
-  const [drafts, setDrafts] = useState<
-    Record<number, string>
-  >({});
+  const [drafts, setDrafts] =
+    useState<Record<number, any>>({});
 
   const draftTimeout = useRef<NodeJS.Timeout | null>(
     null
@@ -29,12 +28,12 @@ export function useChatDrafts(
       try {
         const draft = await getDraft(chatId);
 
-        if (draft?.text) {
-          setInput(draft.text);
-
+        if (draft) {
+          setInput(draft.text || "");
+        
           setDrafts(prev => ({
             ...prev,
-            [chatId]: draft.text,
+            [chatId]: draft.text || "",
           }));
         }
       } catch (err) {
@@ -51,38 +50,50 @@ export function useChatDrafts(
   // =========================
   // SAVE DRAFT
   // =========================
-  const saveDraftLocal = (
-    text: string
-  ) => {
-    if (!chatId) return;
-
+  const saveDraftLocal = (text: string) => {
+    if (chatId == null) return;
+  
+    const currentChatId = chatId;
+  
     setDrafts(prev => ({
       ...prev,
-      [chatId]: text,
+      [currentChatId]: text,
     }));
-
+  
+    window.dispatchEvent(
+      new CustomEvent("draft-updated", {
+        detail: {
+          chatId: currentChatId,
+          text,
+          updated_at: new Date().toISOString(),
+        },
+      })
+    );
+  
     if (draftTimeout.current) {
       clearTimeout(draftTimeout.current);
     }
-
-    draftTimeout.current = setTimeout(
-      async () => {
-        try {
-          if (!text.trim()) {
-            await deleteDraft(chatId);
-            return;
-          }
-
-          await saveDraft(chatId, text);
-        } catch (err) {
-          console.error(
-            'Failed to save draft',
-            err
-          );
+  
+    draftTimeout.current = setTimeout(async () => {
+      try {
+        if (!text.trim()) {
+          await deleteDraft(currentChatId);
+          return;
         }
-      },
-      400
-    );
+  
+        await saveDraft({
+          chatId: currentChatId,
+          text,
+          updated_at:
+            new Date().toISOString(),
+        });
+      } catch (err) {
+        console.error(
+          "Failed to save draft",
+          err
+        );
+      }
+    }, 400);
   };
 
   // =========================
@@ -90,14 +101,24 @@ export function useChatDrafts(
   // =========================
   const clearDraft = async () => {
     if (!chatId) return;
-
-    setInput('');
-
-    setDrafts(prev => ({
-      ...prev,
-      [chatId]: '',
-    }));
-
+  
+    setInput("");
+  
+    setDrafts(prev => {
+      const next = { ...prev };
+      delete next[chatId];
+      return next;
+    });
+  
+    window.dispatchEvent(
+      new CustomEvent("draft-updated", {
+        detail: {
+          chatId,
+          text: "",
+        },
+      })
+    );
+  
     await deleteDraft(chatId);
   };
 

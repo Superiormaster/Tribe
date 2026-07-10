@@ -23,8 +23,8 @@ export const useSmartPostView = ({
   // SHORT REELS
   if (type === "short_video") {
     return useReelView({
-      postId: post.id,
-      ref,
+      postId: post?.id,
+      videoRef: type === "short_video" ? ref : undefined,
       onViewed,
     });
   }
@@ -35,15 +35,15 @@ export const useSmartPostView = ({
     type === "long_video"
   ) {
     return useVideoView({
-      postId: post.id,
-      ref,
+      postId: post?.id,
+      ref: type !== "short_video" ? ref : undefined,
       onViewed,
     });
   }
 
   // TEXT + IMAGE POSTS
   return usePostView({
-    postId: post.id,
+    postId: post?.id,
     ref,
     onViewed,
   });

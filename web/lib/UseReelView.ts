@@ -1,103 +1,207 @@
 // useReelView.ts
-import { useEffect, useRef } from "react";
+'use client';
+
+import {
+  useEffect,
+  RefObject,
+  useRef,
+} from "react";
+
 import { apiRequest } from "@/utils/api";
 
 type ReelViewProps = {
   postId: number;
-  videoRef?: React.RefObject<HTMLVideoElement>;
-  onViewed?: () => void;
+  videoRef: RefObject<HTMLVideoElement>;
+  onViewed?: (views: number) => void;
 };
 
-export const useReelView = ({
+export function useReelView({
   postId,
   videoRef,
   onViewed,
-}: ReelViewProps) => {
-  const hasViewedRef = useRef(false);
+}: ReelViewProps) {
+
+  // already counted?
+  const viewedRef = useRef(false);
+
+  // avoid duplicate requests
+  const sendingRef = useRef(false);
+
+  // seconds watched
+  const watchTimeRef = useRef(0);
+
+  // last currentTime sampled
+  const lastTimeRef = useRef(0);
+
+  // currently visible?
+  const visibleRef = useRef(false);
 
   useEffect(() => {
-    const video = videoRef?.current;
+
+    const video = videoRef.current;
+
     if (!video) return;
 
-    let watchStart = 0;
-    let accumulatedWatch = 0;
+    //-----------------------------------
+    // Observe reel visibility
+    //-----------------------------------
 
-    const handlePlay = () => {
-      watchStart = Date.now();
-    };
+    const observer =
+      new IntersectionObserver(
+        ([entry]) => {
+          visibleRef.current =
+            entry.intersectionRatio >= 0.8;
+        },
+        {
+          threshold: 0.8,
+        }
+      );
 
-    const handlePause = () => {
-      if (watchStart) {
-        accumulatedWatch +=
-          (Date.now() - watchStart) / 1000;
-    
-        watchStart = 0;
-      }
-    };
+    observer.observe(video);
 
-    const handleEnded = async () => {
-      accumulatedWatch +=
-        (Date.now() - watchStart) / 1000;
+    //-----------------------------------
+    // Every 250ms measure watch time
+    //-----------------------------------
 
-      await sendView(true);
-    };
+    const interval =
+      setInterval(async () => {
 
-    const sendView = async (completed = false) => {
-      if (hasViewedRef.current) return;
+        if (!visibleRef.current) return;
 
-      // minimum 3 seconds watched
-      if (accumulatedWatch < 3) return;
+        if (video.paused) return;
 
-      hasViewedRef.current = true;
+        if (video.readyState < 2) return;
+
+        const current =
+          video.currentTime;
+  
+        if (current < lastTimeRef.current) {
+          lastTimeRef.current = current;
+          return;
+        }
+
+        const delta =
+          Math.max(
+            0,
+            current - lastTimeRef.current
+          );
+
+        lastTimeRef.current =
+          current;
+
+        watchTimeRef.current += delta;
+
+        if (viewedRef.current) return;
+
+        if (!video.duration) return;
+
+        const requiredWatch =
+          Math.min(
+            2,
+            video.duration * 0.5
+          );
+
+        if (
+          watchTimeRef.current <
+          requiredWatch
+        ) {
+          return;
+        }
+
+        viewedRef.current = true;
+
+        if (sendingRef.current) return;
+
+        sendingRef.current = true;
+
+        try {
+
+          const res =
+            await apiRequest(
+              `api/post/${postId}/view/`,
+              {
+                method: "POST",
+                data: {
+                  watch_time:
+                    watchTimeRef.current,
+                  completed: false,
+                  skipped: false,
+                },
+              }
+            );
+
+          onViewed?.(
+            res.views_count
+          );
+  
+          watchTimeRef.current = 0;
+          lastTimeRef.current = video.currentTime;
+
+        } catch (err) {
+
+          console.error(err);
+
+          viewedRef.current = false;
+
+        } finally {
+
+          sendingRef.current = false;
+
+        }
+
+      }, 250);
+
+    //-----------------------------------
+    // Flush watch time on exit
+    //-----------------------------------
+
+    const flush = async () => {
+
+      if (viewedRef.current) return;
+      if (watchTimeRef.current <= 0)
+        return;
 
       try {
+
         await apiRequest(
           `api/post/${postId}/view/`,
           {
             method: "POST",
             data: {
-              watch_time: accumulatedWatch,
-              completed,
-              skipped: !completed,
+              watch_time:
+                watchTimeRef.current,
+              completed:
+                video.ended,
+              skipped:
+                !video.ended,
             },
           }
         );
 
-        onViewed?.();
-      } catch (err) {
-        console.error(err);
-      }
-    };
+      } catch {}
 
-    const handleVisibility = async () => {
-      if (document.hidden) {
-        handlePause();
-        await sendView(false);
-      }
     };
-
-    video.addEventListener("play", handlePlay);
-    video.addEventListener("pause", handlePause);
-    video.addEventListener("ended", handleEnded);
 
     document.addEventListener(
       "visibilitychange",
-      handleVisibility
+      flush
     );
 
     return () => {
-      handlePause();
 
-      sendView(false);
+      clearInterval(interval);
 
-      video.removeEventListener("play", handlePlay);
-      video.removeEventListener("pause", handlePause);
-      video.removeEventListener("ended", handleEnded);
+      observer.disconnect();
 
       document.removeEventListener(
         "visibilitychange",
-        handleVisibility
+        flush
       );
+
+      flush();
+
     };
-  }, [postId, videoRef, onViewed]);
-};
+
+  }, [postId]);
+
+}

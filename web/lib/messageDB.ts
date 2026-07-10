@@ -1,12 +1,13 @@
 import { openDB } from "idb";
 
-const DB_VERSION = 4;
+const DB_VERSION = 8;
 const DB_NAME = "tribe-chat-db";
 
 const MESSAGE_STORE = "messages";
 const CHAT_STORE = "chats";
 const DRAFT_STORE = "drafts";
 const POST_DRAFT_STORE = "post_drafts";
+
 
 let dbPromise: any;
 
@@ -45,7 +46,7 @@ function getDB() {
               db.createObjectStore(
                 MESSAGE_STORE,
                 {
-                  keyPath: "localId",
+                  keyPath: "client_id",
                 }
               );
 
@@ -66,7 +67,15 @@ function getDB() {
 
             store.createIndex(
               "by_chat_owner",
-              ["chatId", "ownerId"],
+              ["chat", "ownerId"],
+              { unique: false }
+            );
+          }
+  
+          if (!store.indexNames.contains("by_chat_owner_id")) {
+            store.createIndex(
+              "by_chat_owner_id",
+              ["chat", "ownerId", "id"],
               { unique: false }
             );
           }
@@ -119,11 +128,25 @@ function getDB() {
               }
             );
           }
-
+        
           if (!db.objectStoreNames.contains(POST_DRAFT_STORE)) {
             db.createObjectStore(POST_DRAFT_STORE, {
               keyPath: "draftId",
             });
+          }
+        
+          // CHAT SCROLL STORE
+          if (
+            !db.objectStoreNames.contains(
+              "chat_scroll"
+            )
+          ) {
+            db.createObjectStore(
+              "chat_scroll",
+              {
+                keyPath: "id",
+              }
+            );
           }
         },
 
@@ -154,44 +177,68 @@ function getDB() {
 // --------------------
 // MESSAGES
 // --------------------
-export async function saveMessage(msg: any, ownerId?: number) {
+export async function saveMessage(msg: Message, ownerId?: number) {
   const db = await getDB();
   if (!db) return;
 
   const clean = {
-    localId: msg.localId,
-    id: msg.id,
-    chatId: msg.chatId,
+    ...msg,
+    client_id: msg.client_id ?? `server-${msg.id}`,
     ownerId: msg.ownerId || ownerId,
 
-    encrypted_text: msg.encrypted_text,
+    hidden_for: msg.hidden_for || [],
+    is_deleted: msg.is_deleted || false,
 
-    status: msg.status || "sending",
-    created_at: msg.created_at,
+    reactions: msg.reactions || [],
 
-    reply_to: msg.reply_to || null,
+    files: (msg.files || []).map((file: any) => ({
+      blob: file.blob ?? file,
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      media_url: file.media_url,
+      thumbnail: file.thumbnail,
+      duration: file.duration,
+    })),
   };
 
   await db.put(MESSAGE_STORE, clean);
 }
 
-export async function saveMessages(messages: any[], ownerId?: number) {
+export async function saveMessages(messages: Message[], ownerId?: number) {
+  if (!Array.isArray(messages)) {
+        console.error("saveMessages expected array:", messages);
+        return;
+    }
+
   const db = await getDB();
   if (!db) return;
 
   const tx = db.transaction(MESSAGE_STORE, "readwrite");
 
   for (const msg of messages) {
-    tx.store.put({
-      localId: msg.localId,
-      id: msg.id,
-      chatId: msg.chatId,
-      ownerId: msg.ownerId || ownerId,
-      encrypted_text: msg.encrypted_text,
-      status: msg.status || "sent",
-      created_at: msg.created_at,
-      reply_to: msg.reply_to ?? null,
-    });
+
+    const record = {
+      ...msg,
+      client_id: msg.client_id ?? `server-${msg.id}`,
+      ownerId: msg.ownerId ?? ownerId,
+      hidden_for: msg.hidden_for ?? [],
+      is_deleted: msg.is_deleted ?? false,
+  
+      files: (msg.files || []).map(file => ({
+        blob: file.blob ?? file,
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        media_url: file.media_url,
+        thumbnail: file.thumbnail,
+        duration: file.duration,
+      })),
+    };
+  
+    console.log(record);
+  
+    await tx.store.put(record);
   }
 
   await tx.done;
@@ -227,74 +274,245 @@ export async function resetDatabase() {
   });
 }
 
-export async function getMessagesByChat(
-  chatId: number,
-  ownerId: number
+export const isHiddenForUser = (
+  msg: any,
+  userId: number
+) => {
+  return (
+    Array.isArray(msg.hidden_for) &&
+    msg.hidden_for.includes(userId)
+  );
+};
+
+export async function getChatMeta(
+  chatId: number
 ) {
-  try {
+  const db = await getDB();
+  if (!db) return null;
+
+  return db.get(CHAT_STORE, chatId);
+}
+
+export async function getAllChatMeta() {
+  const db = await getDB();
+  if (!db) return [];
+
+  return db.getAll(CHAT_STORE);
+}
+
+export async function saveChatMeta(
+  chatId,
+  userId,
+  username,
+  avatar
+) {
+  const db = await getDB();
+  if (!db) return;
+
+  await db.put(CHAT_STORE, {
+    chatId,
+    userId,
+    username,
+    avatar,
+  });
+}
+
+export async function getMessagesByChat(chatId: number, ownerId: number) {
+  const db = await getDB();
+  if (!db) return [];
+
+  const messages = await db.getAllFromIndex(
+    MESSAGE_STORE,
+    "by_chat_owner",
+    [chatId, ownerId]
+  );
+
+  return messages.filter(m => !isHiddenForUser(m, ownerId));
+}
+
+export async function getMessage(
+    chatId: number,
+    ownerId: number,
+    messageId: number
+) {
+    const db = await getDB();
+
+    if (!db) return null;
+
+    const index = db
+        .transaction(MESSAGE_STORE)
+        .store.index("by_chat_owner_id");
+
+    return index.get([
+        chatId,
+        ownerId,
+        messageId,
+    ]);
+}
+
+export async function getLatestMessages(
+    chatId: number,
+    ownerId: number,
+    limit = 50
+) {
     const db = await getDB();
 
     if (!db) return [];
 
-    const messages = await db.getAllFromIndex(
-      MESSAGE_STORE,
-      "by_chat_owner",
-      [chatId, ownerId]
+    const index = db
+        .transaction(MESSAGE_STORE)
+        .store.index("by_chat_owner_id");
+
+    let cursor = await index.openCursor(
+        IDBKeyRange.bound(
+            [chatId, ownerId, 0],
+            [chatId, ownerId, Number.MAX_SAFE_INTEGER]
+        ),
+        "prev"
     );
 
-    console.log(
-      "READ FROM DB",
-      messages.map((m: any) => ({
-        id: m.id,
-        localId: m.localId,
-        text: m.text,
-        encrypted_text: m.encrypted_text,
-        status: m.status,
-      }))
-    );
+    const result = [];
 
-    return messages;
-
-  } catch (err) {
-    console.error("IndexedDB error:", err);
-
-    try {
-      const db = await getDB();
-      if (!db) return [];
-
-      const all = await db.getAll(MESSAGE_STORE);
-
-      const messages = all.filter(
-        (m: any) =>
-          m.chatId === chatId &&
-          m.ownerId === ownerId
-      );
-
-      console.log(
-        "READ FROM DB (FALLBACK)",
-        messages.map((m: any) => ({
-          id: m.id,
-          localId: m.localId,
-          text: m.text,
-          encrypted_text: m.encrypted_text,
-          status: m.status,
-        }))
-      );
-
-      return messages;
-
-    } catch (e) {
-      console.error("Fallback also failed", e);
-      await resetDatabase();
-
-      window.location.reload();
-      return [];
+    while (cursor && result.length < limit) {
+        result.push(cursor.value);
+        cursor = await cursor.continue();
     }
-  }
+
+    return result.reverse();
+}
+
+export async function getMessagesBefore(
+    chatId: number,
+    ownerId: number,
+    anchorId: number,
+    limit = 25
+) {
+    const db = await getDB();
+
+    if (!db) return [];
+
+    const index = db
+        .transaction(MESSAGE_STORE)
+        .store.index("by_chat_owner_id");
+
+    let cursor = await index.openCursor(
+        IDBKeyRange.bound(
+            [chatId, ownerId, 0],
+            [chatId, ownerId, anchorId],
+            false,
+            true
+        ),
+        "prev"
+    );
+
+    const result = [];
+
+    while (cursor && result.length < limit) {
+        result.push(cursor.value);
+        cursor = await cursor.continue();
+    }
+
+    return result.reverse();
+}
+
+export async function getMessagesAfter(
+    chatId: number,
+    ownerId: number,
+    anchorId: number,
+    limit = 25
+) {
+    const db = await getDB();
+
+    if (!db) return [];
+
+    const index = db
+        .transaction(MESSAGE_STORE)
+        .store.index("by_chat_owner_id");
+
+    let cursor = await index.openCursor(
+        IDBKeyRange.lowerBound(
+            [chatId, ownerId, anchorId],
+            true
+        )
+    );
+
+    const result = [];
+
+    while (cursor && result.length < limit) {
+        result.push(cursor.value);
+        cursor = await cursor.continue();
+    }
+
+    return result;
+}
+
+export async function getMessagesWindow(
+    chatId: number,
+    ownerId: number,
+    anchorId: number,
+    before = 25,
+    after = 25
+) {
+    const [
+        older,
+        newer,
+        anchor,
+    ] = await Promise.all([
+        getMessagesBefore(
+            chatId,
+            ownerId,
+            anchorId,
+            before
+        ),
+        getMessagesAfter(
+            chatId,
+            ownerId,
+            anchorId,
+            after
+        ),
+        getMessage(
+            chatId,
+            ownerId,
+            anchorId
+        ),
+    ]);
+
+    return [
+        ...older,
+        ...(anchor ? [anchor] : []),
+        ...newer,
+    ];
+}
+
+export function deleteMessagesOutsideWindow(
+    messages: Message[],
+    anchorId: number,
+    keepBefore = 40,
+    keepAfter = 40
+) {
+    const anchorIndex = messages.findIndex(
+        m => m.id === anchorId
+    );
+
+    if (anchorIndex === -1) {
+        return messages;
+    }
+
+    const start = Math.max(
+        0,
+        anchorIndex - keepBefore
+    );
+
+    const end = Math.min(
+        messages.length,
+        anchorIndex + keepAfter + 1
+    );
+
+    return messages.slice(start, end);
 }
 
 export async function updateMessage(
-  localId: string,
+  client_id: string,
   ownerId: number,
   patch: any
 ) {
@@ -303,7 +521,7 @@ export async function updateMessage(
 
   const msg = await db.get(
     MESSAGE_STORE,
-    localId
+    client_id
   );
 
   if (!msg) return;
@@ -312,99 +530,180 @@ export async function updateMessage(
   if (msg.ownerId !== ownerId) {
     return;
   }
-
-  await db.put(MESSAGE_STORE, {
-    ...msg,
+  
+  const normalizedPatch = {
     ...patch,
-  });
-}
-
-export async function replaceOptimisticMessage(
-  tempId: string,
-  serverMsg: any,
-  ownerId: number
-) {
-  const db = await getDB();
-  if (!db) return;
-
-  const old = await db.get(MESSAGE_STORE, tempId);
-  if (!old) return;
-
-  if (old.ownerId !== ownerId) return;
-
-  const final = {
-    ...old,
-
-    // ONLY SAFE SERVER UPDATES
-    id: serverMsg.id,
-    reply_to: old.reply_to, 
-    status: "sent",
-
-    // NEVER overwrite encrypted_text
-    encrypted_text: old.encrypted_text,
-
-    created_at: serverMsg.created_at || old.created_at,
-    chatId: serverMsg.chatId || old.chatId,
-    ownerId,
-    localId: tempId,
+  
+    ...(patch.media_url !== undefined && {
+      media_url: Array.isArray(patch.media_url)
+        ? patch.media_url
+        : patch.media_url
+          ? [patch.media_url]
+          : [],
+    }),
+  
+    hidden_for:
+      patch.hidden_for ??
+      msg.hidden_for ??
+      [],
+  
+    is_deleted:
+      patch.is_deleted ??
+      msg.is_deleted ??
+      false,
+  
+    ...(patch.thumbnail !== undefined && {
+      thumbnail: Array.isArray(patch.thumbnail)
+        ? patch.thumbnail
+        : patch.thumbnail
+          ? [patch.thumbnail]
+          : [],
+    }),
+  
+    ...(patch.duration !== undefined && {
+      duration: Array.isArray(patch.duration)
+        ? patch.duration
+        : patch.duration != null
+          ? [patch.duration]
+          : [],
+    }),
   };
   
-  console.log(
-    "REPLACING",
-    tempId,
-    serverMsg.id
-  );
-
-  await db.put(MESSAGE_STORE, final);
-}
-
-export async function savePendingMessage(msg: any) {
-  const db = await getDB();
-  if (!db) return;
-  console.log(
-    "SAVING PENDING:",
-    JSON.stringify(msg.reply_to, null, 2)
-  );  
-
   await db.put(MESSAGE_STORE, {
     ...msg,
-    status: "pending",
+    ...normalizedPatch,
   });
+}
+
+export async function syncServerMessage(
+    client_id:string,
+    ownerId:number,
+    server:Partial<Message>
+){
+
+    const db=await getDB();
+
+    const local=await db.get(
+        MESSAGE_STORE,
+        client_id
+    );
+
+    if(!local) return;
+    if(local.ownerId!==ownerId) return;
+
+    await db.put(MESSAGE_STORE,{
+      ...local,
+      ...server,
+      client_id,
+      status:"sent",
+      upload_progress:100
+    });
 }
 
 export async function getPendingMessages(
-    ownerId: number
-  ) {
+  ownerId: number
+) {
   const db = await getDB();
   if (!db) return [];
 
   const all = await db.getAll(MESSAGE_STORE);
 
-  return all.filter(
-    (m: any) =>
-      m.ownerId === ownerId &&
-      (
-        m.status === "pending" ||
-        m.status === "sending" ||
-        m.status === "failed"
-      )
+  const pending = all.filter(
+      (m) =>
+          m.ownerId === ownerId &&
+          !m.server_id &&
+          !m.is_deleted &&
+          !isHiddenForUser(m, ownerId) &&
+          (
+              m.status === "pending" ||
+              m.status === "failed" ||
+              m.status === "uploading" ||
+              m.status === "sending"
+          )
   );
+  
+  console.log(
+    "[getPendingMessages]",
+    pending.map((m: any) => ({
+      client_id: m.client_id,
+      status: m.status,
+      media_type: m.media_type,
+      media_url: m.media_url,
+      files:
+        m.files?.map((f: any) => ({
+          name: f.name,
+          type: f.type,
+          hasBlob: !!f.blob,
+          blobType: f.blob?.type,
+          thumbnail: f.thumbnail,
+          duration: f.duration,
+          media_url: f.media_url,
+        })) || [],
+    }))
+  );
+  
+  return pending;
+}
+
+export async function deleteChatData(
+  chatId: number,
+  ownerId: number
+) {
+  const db = await getDB();
+  if (!db) return;
+
+  const tx = db.transaction(
+    ["messages", "drafts"],
+    "readwrite"
+  );
+
+  const messageStore =
+    tx.objectStore("messages");
+
+  const draftStore =
+    tx.objectStore("drafts");
+
+  const messages =
+    await messageStore
+      .index("by_chat_owner")
+      .getAll([chatId, ownerId]);
+
+  for (const msg of messages) {
+    await messageStore.delete(msg.client_id);
+  }
+
+  await draftStore.delete(chatId);
+
+  await tx.done;
 }
 
 // SAVE DRAFT
-export const saveDraft = async (
-  chatId: number,
-  text: string
-) => {
+export const saveDraft = async ({
+  chatId,
+  text,
+  updated_at,
+}) => {
+  if (
+    chatId === undefined ||
+    chatId === null ||
+    Number.isNaN(chatId)
+  ) {
+    console.error(
+      "Invalid chatId",
+      chatId
+    );
+    return;
+  }
 
   const db = await getDB();
-
   if (!db) return;
 
   await db.put(DRAFT_STORE, {
     chatId,
     text,
-    updated_at: Date.now(),
+    updated_at:
+      updated_at ||
+      new Date().toISOString(),
   });
 };
 
@@ -449,20 +748,31 @@ export const getAllDrafts = async () => {
 };
 
 export async function savePostDraft(draft: {
-  draftId: string;
-  content: string;
-  imageFiles: string[]; // we store URLs or base64, NOT File
-  imageUrls: string[];
-  video: string | null;
-  selectedCommunity: number | null;
+    draftId: string;
+    content: string;
+    imageFiles: File[];
+    video: File | string | null;
+    imageUrls: string[];
+    selectedCommunity: number | null;
 }) {
-  const db = await getDB();
-  if (!db) return;
+  try {
+    const db = await getDB();
+    if (!db) return;
 
-  await db.put(POST_DRAFT_STORE, {
-    ...draft,
-    updated_at: Date.now(),
-  });
+    await db.put(POST_DRAFT_STORE, {
+      ...draft,
+      updated_at: Date.now(),
+    });
+
+  } catch (err) {
+    console.error("savePostDraft failed", err);
+
+    await resetDatabase();
+
+    if (typeof window !== "undefined") {
+      window.location.reload();
+    }
+  }
 }
 
 export async function getPostDraft(draftId: string) {
@@ -472,9 +782,103 @@ export async function getPostDraft(draftId: string) {
   return db.get(POST_DRAFT_STORE, draftId);
 }
 
+export async function saveManualPostDraft(data) {
+
+    const db = await getDB();
+
+    if (!db) return;
+
+    await db.put(POST_DRAFT_STORE, {
+
+        ...data,
+
+        draftId: crypto.randomUUID(),
+
+        type: "manual",
+
+        created_at: Date.now(),
+
+        updated_at: Date.now(),
+    });
+}
+
+export async function getAllPostDrafts() {
+    const db = await getDB();
+    if (!db) return [];
+
+    const drafts = await db.getAll(POST_DRAFT_STORE);
+
+    return drafts
+        .filter(d => d.type === "manual")
+        .sort(
+            (a, b) =>
+                b.updated_at - a.updated_at
+        );
+}
+
+export async function saveAutoPostDraft(data){
+
+    const db = await getDB();
+
+    if(!db) return;
+
+    await db.put(POST_DRAFT_STORE,{
+
+        ...data,
+
+        draftId:data.draftId,
+
+        type:"auto",
+
+        updated_at:Date.now()
+
+    });
+
+}
+
 export async function deletePostDraft(draftId: string) {
   const db = await getDB();
   if (!db) return;
 
   return db.delete(POST_DRAFT_STORE, draftId);
+}
+
+export async function saveChatScroll({
+  chatId,
+  userId,
+  messageId,
+  clientId,
+  offset,
+}: {
+  chatId: number;
+  userId: number;
+  messageId?: number | string;
+  clientId?: number | string;
+  offset: number;
+}) {
+  const db = await getDB();
+  if (!db) return;
+
+  return db.put("chat_scroll", {
+    id: `${userId}-${chatId}`,
+    chatId,
+    userId,
+    messageId,
+    clientId,
+    offset,
+    updatedAt: Date.now(),
+  });
+}
+
+export async function getChatScroll(
+  chatId: number,
+  userId: number
+) {
+  const db = await getDB();
+  if (!db) return null;
+
+  return db.get(
+    "chat_scroll",
+    `${userId}-${chatId}`
+  );
 }

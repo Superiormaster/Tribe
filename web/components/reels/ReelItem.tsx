@@ -1,0 +1,311 @@
+'use client';
+
+import { useRef, useState } from "react";
+import { Heart } from "lucide-react";
+import ReelSpinner from "@/components/Spinner";
+import { useSmartPostView } from "@/lib/useSmartPostView";
+import ReelActions from "./ReelActions";
+import ReelControls from "./ReelControls";
+import ReelSkeleton from "./ReelSkeleton";
+import ReelCaption from "./ReelCaption";
+import ReelMenu from "./ReelMenu";
+import ReelReportModal from "./ReelReportModal";
+import { useNavigation } from "@/utils/useNavigation"
+import { useDoubleTapLike } from '@/reelsHook/useDoubleTapLike';
+import { useReelBuffer } from '@/reelsHook/useReelBuffer';
+
+interface ReelItemProps {
+  reel: any;
+  player: any;
+  reelsState: any;
+  index: number;
+  reels: any[];
+}
+
+export default function ReelItem({
+  reel,
+  player,
+  reelsState,
+  index,
+  reels,
+}: ReelItemProps) {
+  const [progress, setProgress] = useState(0);
+  const { back } = useNavigation();
+  const loaded = player.loadedVideos.current.has(reel.id);
+  const {
+    showHeart,
+    handleDoubleTap,
+  } = useDoubleTapLike({
+    handleLike: reelsState.handleLike,
+  });
+  
+  const {
+    buffering,
+    setBuffering,
+    showSpinner,
+  } = useReelBuffer();
+  
+  const reelVideoRef=
+    useRef<HTMLVideoElement>(null);
+  
+  useSmartPostView({
+    post: reel,
+    ref: reelVideoRef,
+    onViewed: (views) => {
+
+        reelsState.setReels(prev =>
+            prev.map(r =>
+                r.id === reel.id
+                    ? {
+                          ...r,
+                          views_count: views,
+                      }
+                    : r
+            )
+        );
+    },
+  });
+  
+  const [playing,setPlaying]=useState(true);
+  
+  const [showControls,setShowControls]=useState(false);
+  
+  const [menuOpen,setMenuOpen]=useState(false);
+  
+  const [reportOpen,setReportOpen]=useState(false);
+  
+  const isOwner=
+    reel.user.id===reelsState.currentUser?.id;
+
+  const currentIndex =
+    reels.findIndex(r => r.id === player.activeId);
+
+  const reelIndex =
+    reels.findIndex(r => r.id === reel.id);
+
+  const preload =
+      reelIndex === currentIndex
+        ? "auto"
+        : reelIndex === currentIndex + 1
+        ? "metadata"
+        : "none";
+
+  return (
+    <div
+      id={`reel-${reel.id}`}
+      className="
+            relative
+            h-dvh
+            w-full
+            snap-start
+            overflow-hidden
+            bg-black
+            flex-shrink-0
+        "
+      onClick={() => {
+        handleDoubleTap(reel);
+    
+        setShowControls(true);
+    
+        clearTimeout(
+          (window as any).__reelControlsTimeout
+        );
+    
+        (window as any).__reelControlsTimeout =
+          setTimeout(() => {
+            setShowControls(false);
+          }, 2500);
+      }}
+    >
+      <video
+        className="absolute inset-0 w-full h-full object-cover"
+        ref={(el)=>{
+            if(!el) return;
+      
+            reelVideoRef.current=el;
+      
+            player.videoRefs.current.set(
+                reel.id,
+                el
+            );
+      
+            el.muted=player.muted;
+        }}
+      
+        data-id={reel.id}
+        src={reel.media_files?.[0]?.file_url}
+        loop
+        playsInline
+        preload={preload}
+      
+        onPlay={()=>setPlaying(true)}
+        onWaiting={() => setBuffering(true)}
+        onPlaying={() => setBuffering(false)}
+        onCanPlay={(e) => {
+          player.loadedVideos.current.add(reel.id);
+          setBuffering(false);
+          e.currentTarget.play().catch(() => {});
+        }}
+        onStalled={() => setBuffering(true)}
+        onSuspend={() => setBuffering(true)}
+        onPause={()=>setPlaying(false)}
+      
+        onTimeUpdate={(e) => {
+          const video = e.currentTarget;
+        
+          const value =
+              video.duration > 0
+                  ? (video.currentTime / video.duration) * 100
+                  : 0;
+        
+          player.progressRefs.current.set(
+              reel.id,
+              value
+          );
+        
+          setProgress(value);
+        }}
+      />
+
+      {!loaded && (
+        <ReelSkeleton/>
+      )}
+
+      <ReelActions
+        reel={reel}
+        muted={player.muted}
+        videoRefs={player.videoRefs}
+        handleLike={reelsState.handleLike}
+        setOpenCommentsPostId={
+            reelsState.setOpenCommentsPostId
+        }
+      />
+      <ReelControls
+        show={showControls}
+        video={
+            player.videoRefs.current.get(
+                reel.id
+            )
+        }
+        playing={playing}
+        setPlaying={setPlaying}
+      />
+      <ReelReportModal
+        open={reportOpen}
+        onClose={()=>
+            setReportOpen(false)
+        }
+        onSubmit={(reason,details)=>
+            reelsState.handleReport(
+                reel.id,
+                reason,
+                details
+            )
+        }
+      />
+    
+      <ReelCaption
+        reel={reel}
+        currentUser={
+            reelsState.currentUser
+        }
+        starredUsers={
+            reelsState.starredUsers
+        }
+        toggleStar={
+            reelsState.toggleStar
+        }
+        onMenuClick={()=>
+            setMenuOpen(true)
+        }
+      />
+      <ReelMenu
+        open={menuOpen}
+        isOwner={isOwner}
+        reelId={reel.id}
+        username={reel.user.username}
+        onClose={()=>setMenuOpen(false)}
+        onReport={()=>{
+            setMenuOpen(false);
+            setReportOpen(true);
+        }}
+        onMute={()=>
+            reelsState.handleMute(
+                reel.user.id
+            )
+        }
+        onBlock={()=> {
+            reelsState.handleBlock(
+                reel.user.id,
+                reel.user.username
+            );
+        }}
+        onCopyLink={()=>
+            reelsState.handleCopyLink(
+                reel.id
+            )
+        }
+        onDelete={()=>
+            reelsState.handleDelete(
+                reel.id
+            )
+        }
+        onEdit={()=>
+            reelsState.handleEdit(
+                reel.id
+            )
+        }
+      />
+    
+      {/* PROGRESS BAR */}
+      <div className="absolute bottom-0 left-0 w-full h-1 bg-white/30 z-40">
+        <div
+            className="h-full bg-white transition-all duration-75"
+            style={{ width: `${progress}%` }}
+        />
+      </div>
+  
+      <button
+        onClick={(e) => {
+            e.stopPropagation();
+            back("/main/home");
+        }}
+        className="
+            fixed
+            top-4
+            left-3
+            z-50
+            flex
+            items-center
+            gap-2
+            text-white
+            bg-black/40
+            backdrop-blur-md
+            rounded-full
+            px-3
+            py-2
+        "
+      >
+        <span className="text-2xl">←</span>
+    
+        <span className="text-sm font-medium">
+            Entertainment Reels
+        </span>
+      </button>
+    
+      {showHeart[reel.id] && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <Heart
+            className="w-20 h-20 text-red-500 fill-red-500 animate-[heartPop_0.7s_ease-out]"
+          />
+        </div>
+      )}
+      
+      {!loaded && showSpinner && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <ReelSpinner show={showSpinner} />
+        </div>
+      )}
+    </div>
+  );
+}

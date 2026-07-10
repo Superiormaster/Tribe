@@ -318,7 +318,7 @@ export default function CommunityChat({ communityId }: Props) {
             <Video size={18} />
           </button>
       
-          {isModerator() && (
+          {isModerator && (
             <button
               onClick={toggleChatLock}
               className="p-2 rounded-full bg-gray-700 text-white"

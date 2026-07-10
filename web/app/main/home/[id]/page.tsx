@@ -215,7 +215,7 @@ export default function PostPage() {
         <span className="text-gray-400 ml-auto flex items-center">
           <ChartNoAxesColumn className="mr-2" />
           {post.views_count > 0 && (
-            <span>{post.views_count} views</span>
+            <span>{post.views_count} </span>
           )}
         </span>
       )}

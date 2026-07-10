@@ -1,10 +1,6 @@
 # communities/models.py
 from django.db import models
 from django.conf import settings
-from django.contrib.auth import get_user_model
-
-User = get_user_model()
-
 
 class Tribe(models.Model):
     name = models.CharField(max_length=255, unique=True)
@@ -16,11 +12,54 @@ class Tribe(models.Model):
         return self.name
 
 class TribeRequest(models.Model):
-    creator = models.ForeignKey(User, on_delete=models.CASCADE)
+    STATUS_CHOICES = (
+        ("pending", "Pending"),
+        ("approved", "Approved"),
+        ("rejected", "Rejected"),
+    )
+
+    creator = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="tribe_requests"
+    )
+
     name = models.CharField(max_length=100)
     description = models.TextField()
-    status = models.CharField(default='pending', max_length=20)  # pending, approved, rejected
+
+    # Why the user wants this tribe
+    request_reason = models.TextField(
+        blank=True,
+        default=""
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="pending"
+    )
+
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="reviewed_tribe_requests"
+    )
+
+    rejection_reason = models.TextField(
+        blank=True,
+        default=""
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(
+        null=True,
+        blank=True
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
 
 class Community(models.Model):
     name = models.CharField(max_length=255, unique=True)
@@ -49,7 +88,7 @@ class CommunityMembership(models.Model):
         (ROLE_ADMIN, "Admin"),
     )
 
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     community = models.ForeignKey(Community, on_delete=models.CASCADE, related_name="memberships")
 
     role = models.CharField(
@@ -74,7 +113,7 @@ class CommunityJoinRequest(models.Model):
     )
 
     user = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE
     )
 
@@ -88,13 +127,13 @@ class CommunityJoinRequest(models.Model):
 class CommunityInvite(models.Model):
 
     sender = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="sent_community_invites"
     )
 
     receiver = models.ForeignKey(
-        User,
+        settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="received_community_invites"
     )

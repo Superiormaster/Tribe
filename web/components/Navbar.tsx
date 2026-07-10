@@ -3,6 +3,7 @@
 import { useState } from "react"
 import AppLink from '@/components/AppLink';
 import { Home, MessageSquare, PlusCircle, Search, Bell, Menu } from "lucide-react";
+import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import Image from "next/image";
 import { tribe2 } from "@/assets";
 import { usePathname } from "next/navigation";
@@ -12,6 +13,9 @@ export default function Navbar() {
 
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
+  const {
+    latency,
+  } = useNetwork();
 
   const navItems = [
     { name: "Home", path: "/main/home", icon: Home },
@@ -51,6 +55,11 @@ export default function Navbar() {
               </AppLink>
             );
           })}
+
+          {/* Connection Status */}
+          <div className="rounded-lg bg-green-50 dark:bg-green-900/20 px-3 py-2 text-gray-700 dark:text-gray-200 text-sm">
+            🟢 {Math.round(latency ?? 0)} ms
+          </div>
         </ul>
 
         {/* RIGHT — Menu Button */}
@@ -70,6 +79,7 @@ export default function Navbar() {
           >
             <Search size={24} />
           </AppLink>
+  
           <button
             onClick={() => setMenuOpen(true)}
             className="p-2 rounded-lg hover:bg-gray-200 bg-indigo-500 dark:hover:bg-zinc-800"

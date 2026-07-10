@@ -4,6 +4,7 @@ import { useContext, useState, useEffect } from "react";
 import { useNavigation } from "@/utils/useNavigation"
 import AppLink from '@/components/AppLink';
 import { usePathname } from "next/navigation";
+import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import { apiRequest } from '@/utils/api';
 import { useTheme } from "next-themes";
 import Image from "next/image";
@@ -19,6 +20,7 @@ import {
   X,
   Users,
   Search,
+  Plus,
   Repeat,
   Handshake,
   ChevronDown,
@@ -35,6 +37,10 @@ interface SidebarProps {
 
 export default function Sidebar({ closeMenu }: SidebarProps) {
 
+  const {
+    isOnline,
+    latency,
+  } = useNetwork();
   const { push, replace } = useNavigation();
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
@@ -98,6 +104,17 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
 
       </div>
 
+      {/* Connection Status */}
+      {!isOnline ? (
+        <div className="mx-4 mt-4 mb-2 rounded-lg text-white bg-red-400 dark:bg-red-900/20 px-3 py-2 text-sm">
+          ⚫ Offline
+        </div>
+      ) : (
+        <div className="mx-4 mt-4 mb-2 rounded-lg bg-green-50 dark:bg-green-900/20 px-3 py-2 text-sm">
+          🟢 Online {Math.round(latency ?? 0)} ms
+        </div>
+      )}
+
       {/* Navigation */}
       <nav className="overflow-y-auto space-y-6 flex-1 p-4">
 
@@ -147,11 +164,9 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
             );
           })}*/}
 
-            <AppLink href="/settings" prefetch={false} onClick={closeMenu}>
-            <li className={`${navItem} ${pathname === "/settings" ? "bg-indigo-600 text-white" : ""}`}>
+            <AppLink href="/main/settings" prefetch={false} onClick={closeMenu} className={navItem}>
               <Settings size={20} />
               Settings
-            </li>
           </AppLink>
 
           {/* Tribe Dropdown */}
@@ -162,16 +177,35 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
 
           {tribeOpen && (
             <ul className="ml-6 space-y-1 max-h-64 overflow-y-auto">
-              {tribes?.map((tribe: any) => (
-                <li key={tribe.id} className="flex justify-between items-center px-4 py-2 rounded-lg hover:bg-gray-200 dark:hover:bg-zinc-800">
-                  <AppLink prefetch={false} href={`/main/tribe/${tribe.id}`} onClick={closeMenu} className="flex-1">
-                    {tribe.name}
-                  </AppLink>
+          
+              <li className="px-4 py-2 rounded-lg hover:bg-gray-200 dark:hover:bg-zinc-800">
+                <AppLink
+                  className="flex"
+                  href="/main/tribe_request"
+                  prefetch={false}
+                  onClick={closeMenu}
+                >
+                  <Plus className="mr-1" /> Request a Tribe
+                </AppLink>
+              </li>
+          
+              <hr className="my-2 border-gray-300 dark:border-zinc-700" />
+          
+              {tribes.map((tribe) => (
+                <li
+                  key={tribe.id}
+                  onClick={() => {
+                    closeMenu();
+                    push(`/main/tribe/${tribe.id}`);
+                  }}
+                  className="px-4 py-2 rounded-lg hover:bg-gray-200 dark:hover:bg-zinc-800 cursor-pointer"
+                >
+                  {tribe.name}
                 </li>
               ))}
             </ul>
           )}
-
+  
           <AppLink
             prefetch={false}
             className={navItem}

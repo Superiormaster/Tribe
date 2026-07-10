@@ -1,15 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useContext } from 'react';
 import { useParams } from 'next/navigation';
 import PostCard from '@/components/PostCard';
 import ReelCard from '@/components/ReelCard';
 import { apiRequest } from '@/utils/api';
+import { UserContext } from "@/components/UserContext";
 
 export default function ApprovedPostsPage() {
 
   const params = useParams();
   const communityId = params.id;
+  const { user: currentUser } = useContext(UserContext);
 
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -28,7 +30,16 @@ export default function ApprovedPostsPage() {
     isAdmin ||
     isModerator;
 
+  const fetchCommunity = async () => {
+    const data = await apiRequest(
+      `api/communities/${communityId}/`
+    );
+  
+    setCommunity(data);
+  };
+  
   useEffect(() => {
+    fetchCommunity();
     fetchApprovedPosts();
   }, []);
 
@@ -36,7 +47,7 @@ export default function ApprovedPostsPage() {
     try {
 
       const data = await apiRequest(
-        `api/post/approved/?community=${communityId}`
+        `api/communities/${communityId}/approved_posts/`
       );
 
       setPosts(data.results || data);
@@ -93,10 +104,10 @@ export default function ApprovedPostsPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto py-4">
+    <div className="max-w-3xl my-20 mx-auto py-4">
 
       <div className="sticky top-0 z-20 bg-white dark:bg-black border-b p-4">
-        <h1 className="text-2xl font-bold">
+        <h1 className="text-2xl text-gray-700 dark:text-gray-200 font-bold">
           Approved Posts
         </h1>
 
@@ -160,11 +171,23 @@ export default function ApprovedPostsPage() {
       
               hideCommunityName
       
-              showManageButtons={canModerate}
+              showManageButtons={true}
       
-              canDelete={canModerate}
-              canEdit={false}
-              canRepost={false}
+              canDelete={
+                canModerate ||
+                post.user?.id === currentUser?.id
+              }
+              
+              canEdit={
+                canModerate ||
+                post.user?.id === currentUser?.id
+              }
+              
+              canRepost={
+                canModerate ||
+                post.user?.id === currentUser?.id
+              }
+              hideStarButton={true}
       
               canBulkSelect={selectMode}
               isSelected={selectedPosts.includes(post.id)}

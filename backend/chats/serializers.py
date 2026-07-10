@@ -12,6 +12,8 @@ from .models import (
     AnnouncementPost,
     MessageThread,
     ThreadReply,
+    ChatReadState,
+    ChatParticipant,
 )
 
 class MessageReactionSerializer(serializers.ModelSerializer):
@@ -79,6 +81,33 @@ class MessageSerializer(serializers.ModelSerializer):
         write_only=True,
         required=False
     )
+  
+    media_url = serializers.ListField(
+        child=serializers.CharField(),
+        required=False
+    )
+  
+    thumbnail = serializers.ListField(
+        child=serializers.CharField(
+            allow_null=True,
+            allow_blank=True
+        ),
+        required=False
+    )
+  
+    duration = serializers.ListField(
+        child=serializers.IntegerField(
+            allow_null=True
+        ),
+        required=False
+    )
+  
+    waveform = serializers.ListField(
+      child=serializers.FloatField(),
+      required=False
+    )
+  
+    status = serializers.SerializerMethodField()
 
     class Meta:
         model = Message
@@ -91,17 +120,22 @@ class MessageSerializer(serializers.ModelSerializer):
             "sender_avatar",
             "sender_role",
             "encrypted_text",
+            "caption",
             "media_url",
             "media_type",
             "thumbnail",
+            "duration",
+            "waveform",
             "reactions",
             "is_pinned",
+            "client_id",
             'reply_to',
             'reply_to_id',
             'is_deleted',
             'deleted_by_admin',
             "created_at",
             "seen_by",
+            "status",
         ]
 
         read_only_fields = [
@@ -199,6 +233,60 @@ class MessageSerializer(serializers.ModelSerializer):
       validated_data['reply_to'] = reply_message
   
       return super().create(validated_data)
+  
+    def get_status(self, obj):
+      request = self.context.get("request")
+  
+      if not request:
+          return "sent"
+  
+      user = request.user
+  
+      if obj.sender_id != user.id:
+          return None
+  
+      other_user = (
+          obj.chat.members
+          .exclude(id=user.id)
+          .first()
+      )
+  
+      if not other_user:
+          return "sent"
+  
+      read_state = (
+          ChatReadState.objects
+          .filter(
+              user=other_user,
+              chat=obj.chat,
+          )
+          .first()
+      )
+  
+      if (
+          read_state and
+          read_state.last_seen_message_id and
+          read_state.last_seen_message_id >= obj.id
+      ):
+          return "seen"
+  
+      participant = (
+          ChatParticipant.objects
+          .filter(
+              chat=obj.chat,
+              user=other_user,
+          )
+          .first()
+      )
+  
+      if (
+          participant and
+          participant.last_delivered_message_id and
+          participant.last_delivered_message_id >= obj.id
+      ):
+          return "delivered"
+  
+      return "sent"
 
 class ChatSerializer(serializers.ModelSerializer):
     last_message = serializers.SerializerMethodField()

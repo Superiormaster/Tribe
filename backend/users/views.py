@@ -1,6 +1,8 @@
 from rest_framework import generics, status, permissions, viewsets, serializers
 from rest_framework.decorators import api_view, permission_classes, action
 from rest_framework.response import Response
+from rest_framework.exceptions import PermissionDenied
+from django.db.models import Q
 from django.http import JsonResponse
 from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
 from django.http import JsonResponse
@@ -15,10 +17,8 @@ from notifications.services import create_notification
 from notifications.serializers import NotificationSerializer
 from django.core.cache import cache
 from django.contrib.auth import get_user_model
-from .status import set_user_online, set_user_offline
+from .status import set_user_online, set_user_offline, get_presence_receivers, get_user_status
 from rest_framework.exceptions import AuthenticationFailed
-from channels.layers import get_channel_layer
-from asgiref.sync import async_to_sync
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.utils.http import (
     urlsafe_base64_encode,
@@ -38,6 +38,7 @@ from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 import requests, uuid
 from post.models import Post, Like
+from feedback.models import Report
 from post.serializers import PostSerializer
 from django.utils.encoding import force_bytes
 from django_ratelimit.decorators import ratelimit
@@ -46,16 +47,41 @@ from sib_api_v3_sdk import ApiClient, Configuration
 from sib_api_v3_sdk.api import transactional_emails_api
 from sib_api_v3_sdk.models import SendSmtpEmail
 from users.email import send_brevo_email
-from .models import Star, ConnectionRequest, UserDevice, SavedLoginDevice
+from .models import Star, ConnectionRequest, UserDevice, SavedLoginDevice, PrivacySettings, BlockedUser, MutedUser
 from .utils import redis_client
 from django.db.models import Count, Exists, OuterRef, F
 from django.conf import settings
 from math import radians, sin, cos, sqrt, atan2
 
-from .serializers import RegisterSerializer, ProfileSerializer, GoogleAuthSerializer, CustomTokenObtainPairSerializer, PublicProfileSerializer, MiniUserSerializer
+from .serializers import RegisterSerializer, ProfileSerializer, GoogleAuthSerializer, CustomTokenObtainPairSerializer, PublicProfileSerializer, MiniUserSerializer, PrivacySettingsSerializer, MutedUserSerializer, BlockedUserSerializer, ChangePasswordSerializer
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
+
+class ConnectedUsersPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = "page_size"
+    max_page_size = 50
+
+def get_block_filters(user):
+    muted_ids = user.muted_users.values_list(
+        "muted_user_id",
+        flat=True
+    )
+
+    blocked_ids = user.blocked_users.values_list(
+        "blocked_user_id",
+        flat=True
+    )
+
+    blocked_me_ids = BlockedUser.objects.filter(
+        blocked_user=user
+    ).values_list(
+        "user_id",
+        flat=True
+    )
+
+    return muted_ids, blocked_ids, blocked_me_ids
 
 def distance(lat1, lon1, lat2, lon2):
     R = 6371  # km
@@ -183,6 +209,41 @@ def get_client_ip(request):
         ip = request.META.get("REMOTE_ADDR")
     return ip
 
+def can_view_profile(viewer, profile_user):
+
+    settings, _ = PrivacySettings.objects.get_or_create(
+        user=profile_user
+    )
+
+    if viewer == profile_user:
+        return True
+
+    if settings.profile_visibility == "public":
+        return True
+
+    if settings.profile_visibility == "members":
+        return viewer.is_authenticated
+
+    if settings.profile_visibility == "private":
+        return ConnectionRequest.objects.filter(
+            from_user=viewer,
+            to_user=profile_user,
+            status="accepted"
+        ).exists()
+
+    return False
+
+def enforce_profile_visibility(viewer, profile_user):
+    if not can_view_profile(viewer, profile_user):
+        return Response(
+            {
+                "detail": "Profile is private",
+                "code": "private_profile"
+            },
+            status=403
+        )
+    return None
+
 def create_session(user, request, refresh_token):
     fingerprint = request.headers.get("X-Device-Fingerprint")
     device_id = request.META.get("HTTP_USER_AGENT", "") + str(request.META.get("REMOTE_ADDR"))
@@ -273,6 +334,28 @@ class NormalLoginView(generics.GenericAPIView):
         
         response.data = data
         return response
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def change_password(request):
+    serializer = ChangePasswordSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+
+    user = request.user
+    old_password = serializer.validated_data["old_password"]
+    new_password = serializer.validated_data["new_password"]
+
+    # check old password
+    if not user.check_password(old_password):
+        return Response(
+            {"error": "Old password is incorrect"},
+            status=400
+        )
+
+    user.set_password(new_password)
+    user.save()
+
+    return Response({"message": "Password changed successfully"})
 
 class RefreshView(APIView):
     permission_classes = [AllowAny]
@@ -513,7 +596,24 @@ def profile_view(request, username):
     except User.DoesNotExist:
         return Response({"error": "User not found"}, status=404)
 
-    cache_key = f"profile:{username}:stats"
+    muted_ids, blocked_ids, blocked_me_ids = get_block_filters(request.user)
+
+    if user.id in blocked_ids:
+        return Response(
+            {"error": "User not found"},
+            status=404
+        )
+  
+    if user.id in blocked_me_ids:
+        return Response(
+            {"error": "User not found"},
+            status=404
+        )
+
+    cache_key = (
+        f"profile:{username}:stats:"
+        f"{request.user.id}"
+    )
     cached = redis_client.get(cache_key)
 
     relationship = get_relationship(request.user, user)
@@ -536,13 +636,24 @@ def profile_view(request, username):
 
     total_posts = posts_count + reposts_count
 
+    privacy_settings = PrivacySettings.objects.filter(user=user).first()
+
+    is_private = (
+        privacy_settings.profile_visibility == "private"
+        if privacy_settings else False
+    )
+  
+    if request.user == user:
+        is_private = False
+
     cache_payload = {
         "profile": ProfileSerializer(user).data,
         "stats": {
             "posts": total_posts,
             "reposts": reposts_count,
             "stars": user.starred_count if hasattr(user, "starred_count") else 0,
-        }
+        },
+        "is_private": is_private,
     }
 
     redis_client.setex(
@@ -561,7 +672,10 @@ def profile_view(request, username):
 def profile_posts(request, username):
 
     page = int(request.query_params.get("page", 1))
-    cache_key = f"profile:{username}:feed:{page}"
+    cache_key = (
+        f"profile:{username}:feed:"
+        f"{request.user.id}:{page}"
+    )
 
     cached = redis_client.get(cache_key)
     if cached:
@@ -571,6 +685,28 @@ def profile_posts(request, username):
         user = User.objects.get(username=username)
     except User.DoesNotExist:
         return Response({"error": "User not found"}, status=404)
+
+    muted_ids, blocked_ids, blocked_me_ids = get_block_filters(request.user)
+
+    if user.id in blocked_ids:
+        return Response(
+            {"error": "User not found"},
+            status=404
+        )
+  
+    if user.id in blocked_me_ids:
+        return Response(
+            {"error": "User not found"},
+            status=404
+        )
+  
+    privacy_response = enforce_profile_visibility(
+        request.user,
+        user
+    )
+    
+    if privacy_response:
+        return privacy_response
 
     posts_qs = Post.objects.filter(
         user=user,
@@ -660,7 +796,7 @@ def profile_posts(request, username):
 
     response = {
         "results": results,
-        "next": page + 1 if len(combined) > end else None,
+        "next": f"?page={page + 1}" if len(combined) > end else None,
         "previous": page - 1 if page > 1 else None
     }
 
@@ -748,19 +884,35 @@ def get_connected_users(user):
 def connected_users(request):
     user = request.user
 
-    connections = get_connected_users(user)
+    muted_ids, blocked_ids, blocked_me_ids = get_block_filters(user)
+
+    connections = (
+        get_connected_users(user)
+        .exclude(id__in=muted_ids)
+        .exclude(id__in=blocked_ids)
+        .exclude(id__in=blocked_me_ids)
+        .order_by("username")
+    )
+
+    paginator = ConnectedUsersPagination()
+    page = paginator.paginate_queryset(
+        connections,
+        request
+    )
 
     data = [
         {
             "id": u.id,
             "username": u.username,
             "avatar": u.avatar if u.avatar else None,
-            "bio": u.bio
+            "bio": u.bio,
         }
-        for u in connections
+        for u in page
     ]
 
-    return Response(data)
+    return paginator.get_paginated_response(
+        data
+    )
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -771,12 +923,19 @@ def discover_people(request):
     # EXCLUSIONS
     # =========================
     excluded_ids = [user.id]
+    muted_ids, blocked_ids, blocked_me_ids = get_block_filters(user)
 
     # =========================
     # BASE QUERYSET
     # =========================
     users = User.objects.exclude(
         id__in=excluded_ids
+    ).exclude(
+        id__in=muted_ids
+    ).exclude(
+        id__in=blocked_ids
+    ).exclude(
+        id__in=blocked_me_ids
     ).annotate(
 
         # popularity
@@ -924,6 +1083,8 @@ def discover_connect(request):
     # =========================
     # EXCLUSIONS
     # =========================
+    muted_ids, blocked_ids, blocked_me_ids = get_block_filters(user)
+
     connected_ids = ConnectionRequest.objects.filter(
         from_user=user,
         status="accepted"
@@ -949,7 +1110,17 @@ def discover_connect(request):
     # =========================
     # FILTER USERS ON DB LEVEL
     # =========================
-    users = User.objects.exclude(id__in=excluded_ids).exclude(latitude=None)
+    users = User.objects.exclude(
+        id__in=excluded_ids
+    ).exclude(
+        id__in=muted_ids
+    ).exclude(
+        id__in=blocked_ids
+    ).exclude(
+        id__in=blocked_me_ids
+    ).exclude(
+        latitude=None
+    )
 
     # Convert once → avoid queryset surprises
     users = list(users)
@@ -1022,15 +1193,37 @@ def discover_connect(request):
     
     return paginator.get_paginated_response(page)
 
+class RequestsPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = "page_size"
+    max_page_size = 50
+
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def sent_requests(request):
     user = request.user
 
-    requests = ConnectionRequest.objects.filter(
-        from_user=user,
-        status="pending"
-    ).select_related("to_user")
+    requests = (
+        ConnectionRequest.objects.filter(
+            from_user=user,
+            status="pending"
+        )
+        .select_related("to_user")
+    )
+
+    muted_ids, blocked_ids, blocked_me_ids = get_block_filters(user)
+
+    requests = requests.exclude(
+        to_user_id__in=blocked_ids
+    ).exclude(
+        to_user_id__in=blocked_me_ids
+    )
+
+    paginator = RequestsPagination()
+    page = paginator.paginate_queryset(
+        requests,
+        request
+    )
 
     data = [
         {
@@ -1043,36 +1236,57 @@ def sent_requests(request):
             ) if r.to_user.avatar else None,
             "bio": r.to_user.bio,
         }
-        for r in requests
+        for r in page
     ]
 
-    return Response(data)
+    return paginator.get_paginated_response(
+        data
+    )
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def pending_requests(request):
     user = request.user
 
-    requests = ConnectionRequest.objects.filter(
-        to_user=user,
-        status="pending"
-    ).select_related("from_user")
+    requests = (
+        ConnectionRequest.objects.filter(
+            to_user=user,
+            status="pending"
+        )
+        .select_related("from_user")
+    )
+
+    muted_ids, blocked_ids, blocked_me_ids = get_block_filters(user)
+
+    requests = requests.exclude(
+        from_user_id__in=blocked_ids
+    ).exclude(
+        from_user_id__in=blocked_me_ids
+    )
+
+    paginator = RequestsPagination()
+    page = paginator.paginate_queryset(
+        requests,
+        request
+    )
 
     data = [
         {
             "id": r.from_user.id,
             "username": r.from_user.username,
             "avatar": (
-                r.to_user.avatar.url
-                if hasattr(r.to_user.avatar, "url")
-                else r.to_user.avatar
-            ) if r.to_user.avatar else None,
+                r.from_user.avatar.url
+                if hasattr(r.from_user.avatar, "url")
+                else r.from_user.avatar
+            ) if r.from_user.avatar else None,
             "bio": r.from_user.bio,
         }
-        for r in requests
+        for r in page
     ]
 
-    return Response(data)
+    return paginator.get_paginated_response(
+        data
+    )
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -1148,9 +1362,20 @@ def onboarding_status(request):
 def discover_creators(request):
     user = request.user
     interests = user.interests or []
+    muted_ids, blocked_ids, blocked_me_ids = get_block_filters(user)
 
     # Base queryset: all creators except current user
-    creators_qs = User.objects.filter(is_creator=True).exclude(id=user.id)
+    creators_qs = User.objects.filter(
+      is_creator=True
+    ).exclude(
+        id=user.id
+    ).exclude(
+        id__in=muted_ids
+    ).exclude(
+        id__in=blocked_ids
+    ).exclude(
+        id__in=blocked_me_ids
+    )
 
     # Creators matching user's interests
     interest_creators = creators_qs.filter(interests__overlap=interests)
@@ -1213,33 +1438,44 @@ class StarViewSet(viewsets.ViewSet):
     @action(detail=True, methods=["post"])
     def toggle(self, request, pk=None):
         user = request.user
-
+    
         try:
             target_user = User.objects.get(pk=pk)
         except User.DoesNotExist:
             return Response({"error": "User not found"}, status=404)
-
+    
         if target_user == user:
             return Response({"error": "You cannot star yourself"}, status=400)
-
+    
         star, created = Star.objects.get_or_create(
             star=user,
             starred_user=target_user
         )
-
+    
+        # IF ALREADY EXISTS → UNSTAR
         if not created:
             star.delete()
-        
+    
             cache.delete(f"starred:{user.id}")
-        
+    
             return Response({"starred": False})
-        
+    
+        # NEW STAR → CREATE NOTIFICATION
+        create_notification(
+            type="star",
+            recipient=star.starred_user,
+            actors=[star.star]
+        )
+    
         cache.delete(f"starred:{user.id}")
-
+    
         user.onboarding_step = max(user.onboarding_step, 3)
         user.save(update_fields=["onboarding_step"])
     
-        return Response({"starred": True})
+        return Response({
+          "starred": True,
+          "target_user_id": target_user.id
+      })
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -1276,20 +1512,26 @@ class ProfileView(generics.RetrieveUpdateAPIView):
     queryset = User.objects.all()
     permission_classes = [IsAuthenticated]
 
-    def get_object(self):
-        return self.request.user
+    def get(self, request):
+        user = request.user
+
+        if not can_view_profile(request.user, user):
+            return Response(
+                {"detail": "This profile is private"},
+                status=403
+            )
+
+        serializer = ProfileSerializer(user)
+        return Response(serializer.data)
 
     def patch(self, request, *args, **kwargs):
-        user = self.get_object()
-
-        serializer = self.get_serializer(
-            user,
-            data=request.data,
-            partial=True
-        )
-
+        user = request.user   # ✅ FIX
+    
+        serializer = self.get_serializer(user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
+    
+        return Response(serializer.data)
 
         # STEP 1 COMPLETED
         user.onboarding_step = max(user.onboarding_step, 1)
@@ -1355,16 +1597,35 @@ def get_presence(request, user_id):
     data = get_user_status(user_id)
     return Response(data)
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def presence_receivers(request):
+    return Response(
+        get_presence_receivers(
+            request.user
+        )
+    )
+
 @api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def set_online(request):
     set_user_online(request.user.id)
-    return Response({"status": "ok"})
+
+    return Response({
+        "status": "online"
+    })
 
 @api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def set_offline(request):
     set_user_offline(request.user.id)
-    return Response({"status": "ok"})
 
+    return Response(
+        get_user_status(
+            request.user.id
+        )
+    )
+  
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def heartbeat(request):
@@ -1376,9 +1637,6 @@ def heartbeat(request):
         "online",
         ex=30
     )
-
-    user.last_seen = timezone.now()
-    user.save(update_fields=["last_seen"])
 
     return Response({"status": "alive"})
 
@@ -1452,3 +1710,154 @@ class RevokeSessionView(APIView):
         ).update(is_active=False)
 
         return Response({"success": True})
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def report_user(request, username):
+    try:
+        user = User.objects.get(username=username)
+
+    except User.DoesNotExist:
+        return Response(
+            {"error": "User not found"},
+            status=404
+        )
+
+    report, created = Report.objects.get_or_create(
+        reporter=request.user,
+        report_type="user",
+        target_user=user,
+        defaults={
+            "reason": request.data.get("reason"),
+            "details": request.data.get("details", "")
+        }
+    )
+
+    if not created:
+        return Response(
+            {"message": "You already reported this user"},
+            status=400
+        )
+
+    return Response({
+        "success": True,
+        "message": "User reported successfully"
+    })
+
+class PrivacySettingsView(generics.RetrieveUpdateAPIView):
+    serializer_class = PrivacySettingsSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        obj, _ = PrivacySettings.objects.get_or_create(
+            user=self.request.user
+        )
+        return obj
+
+class SmallPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = "page_size"
+    max_page_size = 50
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def block_user(request, user_id):
+    try:
+        target = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response({"error": "User not found"}, status=404)
+
+    if target == request.user:
+        return Response({"error": "You cannot block yourself"}, status=400)
+
+    obj, created = BlockedUser.objects.get_or_create(
+        user=request.user,
+        blocked_user=target
+    )
+
+    return Response({"success": True, "blocked": True})
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def unblock_user(request, user_id):
+    BlockedUser.objects.filter(
+        user=request.user,
+        blocked_user_id=user_id
+    ).delete()
+
+    return Response({"success": True, "blocked": False})
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def blocked_users_list(request):
+    search = request.query_params.get("search", "").strip()
+
+    qs = BlockedUser.objects.filter(user=request.user).select_related("blocked_user")
+
+    if search:
+        qs = qs.filter(
+            Q(blocked_user__username__icontains=search) |
+            Q(blocked_user__full_name__icontains=search)
+        )
+
+    paginator = SmallPagination()
+    page = paginator.paginate_queryset(qs, request)
+
+    serializer = BlockedUserSerializer(page, many=True)
+
+    return paginator.get_paginated_response(serializer.data)
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def mute_user(request, user_id):
+    try:
+        target = User.objects.get(id=user_id)
+    except User.DoesNotExist:
+        return Response({"error": "User not found"}, status=404)
+
+    if target == request.user:
+        return Response({"error": "You cannot mute yourself"}, status=400)
+
+    obj, created = MutedUser.objects.get_or_create(
+        user=request.user,
+        muted_user=target
+    )
+
+    return Response({"success": True, "muted": True})
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def unmute_user(request, user_id):
+    MutedUser.objects.filter(
+        user=request.user,
+        muted_user_id=user_id
+    ).delete()
+
+    return Response({"success": True, "muted": False})
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def muted_users_list(request):
+    search = request.query_params.get("search", "").strip()
+
+    qs = MutedUser.objects.filter(user=request.user).select_related("muted_user")
+
+    if search:
+        qs = qs.filter(
+            Q(muted_user__username__icontains=search) |
+            Q(muted_user__full_name__icontains=search)
+        )
+
+    paginator = SmallPagination()
+    page = paginator.paginate_queryset(qs, request)
+
+    serializer = MutedUserSerializer(page, many=True)
+
+    return paginator.get_paginated_response(serializer.data)
+
+@api_view(["GET"])
+@permission_classes([AllowAny])
+def ping(request):
+    return JsonResponse({
+        "status": "ok"
+    })

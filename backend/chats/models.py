@@ -103,9 +103,13 @@ class Message(models.Model):
         blank=True,
         null=True
     )
+    caption = models.TextField(blank=True, null=True)
 
     # MEDIA (Cloudinary URL)
-    media_url = models.URLField(blank=True, null=True)
+    media_url = models.JSONField(
+        default=list,
+        blank=True,
+    )
     media_type = models.CharField(
         max_length=10,
         choices=[
@@ -113,15 +117,42 @@ class Message(models.Model):
             ("image", "Image"),
             ("video", "Video"),
             ("audio", "Audio"),
-            ("file", "File"),
+            ("gallery", "Gallery"),
+            ('gif', 'GIF'),
+            ('sticker', 'Sticker'),
         ],
         blank=True,
         default="text",
         null=True,
     )
+    media_source = models.CharField(
+        max_length=20,
+        choices=[
+            ('upload', 'Upload'),
+            ('external', 'External'),
+            ('forward', 'Forward'),
+        ],
+        null=True,
+        blank=True
+    )
+    client_id = models.CharField(
+      max_length=100,
+      null=True,
+      blank=True,
+      db_index=True,
+    )
 
     # OPTIONAL (for videos)
-    thumbnail = models.URLField(blank=True, null=True)
+    thumbnail = models.JSONField(
+        default=list,
+        blank=True,
+    )
+  
+    duration = models.JSONField(
+        default=list,
+        blank=True,
+    )
+    waveform = models.JSONField(default=list, blank=True)
 
     # FEATURES
     is_pinned = models.BooleanField(default=False)
@@ -771,3 +802,83 @@ class StickerPackItem(models.Model):
     added_at = models.DateTimeField(
         auto_now_add=True
     )
+
+class ChatParticipant(models.Model):
+    chat = models.ForeignKey(
+        Chat,
+        on_delete=models.CASCADE,
+        related_name="participants"
+    )
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="chat_participations"
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    last_delivered_message = models.ForeignKey(
+        "Message",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+    )
+
+    deleted = models.BooleanField(default=False)
+    deleted_at = models.DateTimeField(
+        null=True,
+        blank=True
+    )
+
+    pinned = models.BooleanField(default=False)
+    archived = models.BooleanField(default=False)
+
+    pinned_at = models.DateTimeField(
+        null=True,
+        blank=True
+    )
+
+    archived_at = models.DateTimeField(
+        null=True,
+        blank=True
+    )
+
+    is_muted = models.BooleanField(
+        default=False
+    )
+
+    muted_until = models.DateTimeField(
+        null=True,
+        blank=True
+    )
+
+    class Meta:
+        unique_together = ("chat", "user")
+
+    def __str__(self):
+        return f"{self.user.username} in {self.chat_id}"
+
+class MessageBlockedUser(models.Model):
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="message_blocks"
+    )
+    blocked_user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="message_blocked_by"
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    class Meta:
+        unique_together = (
+            "user",
+            "blocked_user",
+        )

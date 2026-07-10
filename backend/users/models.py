@@ -6,7 +6,6 @@ from PIL import Image
 import os
 from django.utils import timezone
 
-
 class User(AbstractUser):
 
     email = models.EmailField(unique=True)
@@ -26,6 +25,15 @@ class User(AbstractUser):
     city = models.CharField(max_length=120, blank=True)
 
     website = models.URLField(blank=True)
+    role = models.CharField(
+        max_length=20,
+        default="user",
+        choices=[
+            ("user", "User"),
+            ("admin", "Admin"),
+            ("superadmin", "Super Admin"),
+        ],
+    )
 
     creator_type = models.CharField(
         max_length=50,
@@ -57,6 +65,9 @@ class User(AbstractUser):
     verified = models.BooleanField(default=False)
 
     credibility_score = models.IntegerField(default=0)
+    is_deactivated = models.BooleanField(
+        default=False
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -79,8 +90,6 @@ class User(AbstractUser):
     longitude = models.FloatField(null=True, blank=True)
     last_login_ip = models.GenericIPAddressField(null=True, blank=True)
 
-    is_online = models.BooleanField(default=False)
-
     last_seen = models.DateTimeField(null=True, blank=True)
 
     stars_count = models.IntegerField(default=0)
@@ -96,6 +105,71 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.username
+
+class BlockedUser(models.Model):
+    user = models.ForeignKey(
+        User,
+        related_name="blocked_users",
+        on_delete=models.CASCADE
+    )
+
+    blocked_user = models.ForeignKey(
+        User,
+        related_name="blocked_by",
+        on_delete=models.CASCADE
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+class MutedUser(models.Model):
+    user = models.ForeignKey(
+        User,
+        related_name="muted_users",
+        on_delete=models.CASCADE
+    )
+
+    muted_user = models.ForeignKey(
+        User,
+        related_name="muted_by",
+        on_delete=models.CASCADE
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+class PrivacySettings(models.Model):
+    PROFILE_VISIBILITY = (
+        ("public", "Public"),
+        ("members", "Members Only"),
+        ("private", "Private"),
+    )
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="privacy_settings"
+    )
+
+    profile_visibility = models.CharField(
+        max_length=20,
+        choices=PROFILE_VISIBILITY,
+        default="public"
+    )
+
+    location_visible = models.BooleanField(
+        default=True
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True
+    )
 
 class ConnectionRequest(models.Model):
     from_user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="sent_requests")

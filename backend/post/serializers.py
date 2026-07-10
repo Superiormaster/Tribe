@@ -62,6 +62,7 @@ class PostSerializer(serializers.ModelSerializer):
     views_count = serializers.IntegerField(read_only=True)
     shares_count = serializers.IntegerField(read_only=True)
     is_starred_by_user = serializers.SerializerMethodField()
+    is_starred = serializers.BooleanField(read_only=True)
     community_joined = serializers.SerializerMethodField()
 
     class Meta:
@@ -75,6 +76,7 @@ class PostSerializer(serializers.ModelSerializer):
             'caption',
             'is_liked',
             'is_starred_by_user',
+            'is_starred',
             'community',
             'community_name',
             'community_id',
@@ -117,14 +119,21 @@ class PostSerializer(serializers.ModelSerializer):
     def get_is_starred_by_user(self, obj):
       user = self.context["request"].user
   
-      if not user.is_authenticated:
-          return False
-  
       return Star.objects.filter(
           star=user,
           starred_user=obj.user
       ).exists()
+
+    def get_is_starred(self, obj):
+      request = self.context.get("request")
+      if not request or not request.user.is_authenticated:
+          return False
   
+      return Star.objects.filter(
+          star=request.user,
+          starred_user=obj.user
+      ).exists()
+
     def get_community_joined(self, obj):
 
       user = self.context["request"].user
@@ -209,14 +218,12 @@ class FeedSerializer(serializers.ModelSerializer):
 class RepostSerializer(serializers.ModelSerializer):
 
     user = UserSerializer(read_only=True)
-
     post = PostSerializer(read_only=True)
-
+    is_starred_by_user = serializers.SerializerMethodField()
     type = serializers.SerializerMethodField()
 
     class Meta:
         model = Repost
-
         fields = [
             "id",
             "type",
@@ -225,7 +232,42 @@ class RepostSerializer(serializers.ModelSerializer):
             "repost_type",
             "quote_text",
             "created_at",
+            "is_starred_by_user",
         ]
 
     def get_type(self, obj):
         return "repost"
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+
+        if data.get("post"):
+            data["post"]["likes_count"] = getattr(
+                instance,
+                "likes_count",
+                0
+            )
+
+            data["post"]["comments_count"] = getattr(
+                instance,
+                "comments_count",
+                0
+            )
+
+            data["post"]["shares_count"] = getattr(
+                instance,
+                "shares_count",
+                0
+            )
+
+            data["post"]["repost_count"] = getattr(
+                instance,
+                "repost_count",
+                0
+            )
+
+        return data
+  
+    def get_is_starred_by_user(self, obj):
+        starred_ids = self.context.get("starred_ids", set())
+        return obj.user.id in starred_ids

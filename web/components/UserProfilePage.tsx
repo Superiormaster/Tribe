@@ -75,6 +75,7 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
   const { user: currentUser } = useContext(UserContext) || {};
   const username = Array.isArray(params.username) ? params.username[0] : params.username || '';
   const [profileUserId, setProfileUserId] = useState<number | null>(null);
+  const [isPrivate, setIsPrivate] = useState(false);
   const [nextPage, setNextPage] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
 
@@ -90,8 +91,16 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
   })
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'images' | 'videos'>('all');
+  const [mounted, setMounted] =
+    useState(false);
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
-  const isMyProfile = currentUser?.username === username;
+  const isMyProfile =
+    mounted &&
+    currentUser?.username === username;
   
   const orderedPosts = useMemo(() => {
 
@@ -134,27 +143,27 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
   }, [posts])
   
   const filteredPosts = useMemo(() => {
-  
     return orderedPosts.filter(post => {
+      const media =
+        post.type === "repost"
+          ? post.post?.media_files || []
+          : post.media_files || [];
   
       if (filter === "images") {
-  
-        return post.media_files.some(
+        return media.some(
           m => m.media_type === "image"
-        )
+        );
       }
   
       if (filter === "videos") {
-  
-        return post.media_files.some(
+        return media.some(
           m => m.media_type === "video"
-        )
+        );
       }
   
-      return true
-    })
-  
-  }, [orderedPosts, filter])
+      return true;
+    });
+  }, [orderedPosts, filter]);
   
   const pinnedPosts = filteredPosts
     .filter(p => 
@@ -328,6 +337,18 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
     );
   }, [posts]);
 
+  const mapMediaFiles = (media: any[] = []) => {
+    if (!Array.isArray(media)) return [];
+  
+    return media.map((m: any) => ({
+      file_url: m?.file_url || m?.url || "",
+      thumbnail_url: m?.thumbnail_url || "",
+      media_type:
+        m?.media_type ||
+        (m?.file_url?.endsWith(".mp4") ? "video" : "image"),
+    }));
+  };
+  
   const mapPost = (p: any): any => {
 
     if (!p) return null;
@@ -378,25 +399,9 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
           updated_at:
             p.data.post?.updated_at || null,
     
-          media_files: Array.isArray(
+          media_files: mapMediaFiles(
             p.data.post?.media_files
-          )
-            ? p.data.post.media_files.map((m: any) => ({
-                file_url:
-                  m.file_url || m.url || "",
-    
-                thumbnail_url:
-                  m.thumbnail_url || "",
-    
-                media_type:
-                  m.media_type ||
-                  (
-                    m.file_url?.endsWith(".mp4")
-                      ? "video"
-                      : "image"
-                  ),
-              }))
-            : [],
+          ),
         },
       };
     }
@@ -451,25 +456,9 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
       updated_at:
         p.data?.updated_at || null,
   
-      media_files: Array.isArray(
+      media_files: mapMediaFiles(
         p.data?.media_files
-      )
-        ? p.data.media_files.map((m: any) => ({
-            file_url:
-              m.file_url || m.url || "",
-  
-            thumbnail_url:
-              m.thumbnail_url || "",
-  
-            media_type:
-              m.media_type ||
-              (
-                m.file_url?.endsWith(".mp4")
-                  ? "video"
-                  : "image"
-              ),
-          }))
-        : [],
+      ),
   
       community_name:
         p.data?.community_name || "",
@@ -477,126 +466,117 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
   };
   
   const fetchProfile = async () => {
-  
     try {
-  
       const data = await apiRequest(
         `api/users/profile/${username}/`
-      )
+      );
+  
       console.log("PROFILE API RESPONSE:", data);
-
+  
+      setIsPrivate(data?.is_private || false);
+  
       const profileData = data?.profile || data;
   
       if (!profileData) {
         console.error("Profile data missing:", data);
-        return;
+        return {
+          is_private: false,
+          profile: null,
+        };
       }
   
       setProfile({
         avatar: profileData.avatar || "",
-        cover_photo:
-          profileData.cover_photo || "",
-        full_name:
-          profileData.full_name || "",
+        cover_photo: profileData.cover_photo || "",
+        full_name: profileData.full_name || "",
         bio: profileData.bio || "",
         city: profileData.city || "",
-        country:
-          profileData.country || "",
-        website:
-          profileData.website || "",
-        creatorType:
-          profileData.creator_type || "",
-        stars:
-          profileData.starred_count || 0,
-        posts:
-          data.stats?.posts || 0,
-        starredBy:
-          profileData.stars_count || 0,
-      })
+        country: profileData.country || "",
+        website: profileData.website || "",
+        creatorType: profileData.creator_type || "",
+        stars: profileData.starred_count || 0,
+        posts: data.stats?.posts || 0,
+        starredBy: profileData.stars_count || 0,
+      });
   
-      setProfileUserId(profileData.id)
+      setProfileUserId(profileData.id);
   
       setRelationship({
-        is_me:
-          data.relationship?.is_me || false,
+        is_me: data.relationship?.is_me || false,
+        is_star: data.relationship?.is_star || false,
+        is_connected: data.relationship?.is_connected || false,
+        request_sent: data.relationship?.request_sent || false,
+        request_received: data.relationship?.request_received || false,
+      });
   
-        is_star:
-          data.relationship?.is_star || false,
-  
-        is_connected:
-          data.relationship?.is_connected ||
-          false,
-  
-        request_sent:
-          data.relationship?.request_sent ||
-          false,
-  
-        request_received:
-          data.relationship
-            ?.request_received || false,
-      })
+      return {
+        is_private: false,
+        profile: profileData,
+      };
   
     } catch (err) {
+      console.error(err);
   
-      console.error(err)
-  
+      return {
+        is_private: false,
+        profile: null,
+      };
     }
-  }
-  
-  const fetchPosts = async (
-    url?: string
-  ) => {
-  
-    if (loadingMore) return
+  };
+
+  const fetchPosts = async (page?: number | string) => {
+    if (loadingMore) return;
   
     try {
+      setLoadingMore(true);
   
-      setLoadingMore(true)
+      const endpoint = page
+        ? `api/users/profile/${username}/posts/?page=${page}`
+        : `api/users/profile/${username}/posts/`;
   
-      const endpoint =
-        url ||
-        `api/users/profile/${username}/posts/`
+      const data = await apiRequest(endpoint);
   
-      const data = await apiRequest(
-        endpoint
-      )
+      // 🔒 HANDLE PRIVATE PROFILE
+      if (
+        data?.code === "private_profile" &&
+        !isMyProfile
+      ) {
+        setIsPrivate(true);
+        setPosts([]);
+        return;
+      }
   
-      const newPosts = (
-        data.results || []
-      ).map(mapPost)
+      const newPosts = (data.results || []).map(mapPost);
   
       setPosts(prev => {
+        if (!page) return newPosts;
   
-        if (!url) return newPosts
+        const merged = [...prev, ...newPosts];
   
-        const merged = [
-          ...prev,
-          ...newPosts
-        ]
-  
-        // remove duplicates
-        const unique = merged.filter(
+        return merged.filter(
           (post, index, self) =>
-            index ===
-            self.findIndex(
-              x => x.id === post.id
-            )
-        )
+            index === self.findIndex(x => x.id === post.id)
+        );
+      });
   
-        return unique
-      })
+      setNextPage(data.next);
   
-      setNextPage(data.next || null)
-  
-    } catch (err) {
-  
-      console.error(err)
-  
+    } catch (err: any) {
+      if (
+        err.status === 403 &&
+        err.data?.code === "private_profile" &&
+        !isMyProfile
+      ) {
+        setIsPrivate(true);
+        setPosts([]);
+        return;
+      }
+    
+      console.error(err);
     } finally {
-  
-      setLoadingMore(false)
+      setLoadingMore(false);
     }
-  }
+  };
   
   useEffect(() => {
 
@@ -608,10 +588,8 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
   
         setLoading(true)
   
-        await Promise.all([
-          fetchProfile(),
-          fetchPosts()
-        ])
+        await fetchProfile();
+        await fetchPosts();
   
       } finally {
   
@@ -770,20 +748,13 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
         push(`/main/repost/${postId}`);
   
         break;
-  
+
       case 'delete_repost':
-        try {
-          await apiRequest(
-            `api/post/${postId}/delete_repost/`,
-            {
-              method: 'POST',
-            }
-          );
-      
-          alert("Repost deleted");
-        } catch (err) {
-          console.error(err);
-        }
+        setPosts(prev =>
+          prev.filter(
+            p => p.id !== postId
+          )
+        );
         break;
 
       default:
@@ -791,15 +762,20 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
     }
   };
 
-  if (loading || !profile) return <div className="flex items-center justify-center h-screen"><Skeleton /></div>;
+  if (loading && !mounted)
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <Skeleton />
+      </div>
+    );
 
   return (
-    <div className="max-w-3xl mt-6 space-y-4">
+    <div className="max-w-3xl mt-24 space-y-4">
 
       {/* Cover Photo */}
       <div className="relative h-40 overflow-hidden rounded-lg border border-gray-300 dark:border-gray-600 flex items-center justify-center hover:border-indigo-500 transition">
-        {profile.cover_photo
-          ? <img src={profile.cover_photo} alt="Cover" className="w-full h-full object-cover" />
+        {profile?.cover_photo
+          ? <img src={profile?.cover_photo} alt="Cover" className="w-full h-full object-cover" />
           : <span className="text-gray-400 dark:text-gray-500 text-sm">Tribe Cover Photo</span>
         }
         {isMyProfile && (
@@ -813,8 +789,8 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
       <div className="flex flex-col gap-3 p-4 bg-white dark:bg-gray-900 rounded-2xl shadow-sm">
         <div className="flex flex-row gap-4 items-center">
           <div className="relative w-24 h-24">
-            {profile.avatar ? (
-              <img src={profile.avatar} alt={username} className="w-24 h-24 rounded-full object-cover" />
+            {profile?.avatar ? (
+              <img src={profile?.avatar} alt={username} className="w-24 h-24 rounded-full object-cover" />
             ) : (
               <div className="w-24 h-24 rounded-full bg-gray-400 text-white flex items-center justify-center text-xl font-bold">
                 {username.slice(0,2).toUpperCase()}
@@ -830,20 +806,20 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
             )}
           </div>
           <div className="flex-1 flex flex-col gap-1 text-gray-800 dark:text-gray-200">
-            <h1 className="text-xl font-medium">{profile.full_name}</h1>
+            <h1 className="text-xl font-medium">{profile?.full_name}</h1>
             <p className="text-xs font-bold">@{username}</p>
-            {profile.bio && <p className="text-gray-500 dark:text-gray-400 text-sm">{profile.bio}</p>}
+            {profile?.bio && <p className="text-gray-500 dark:text-gray-400 text-sm">{profile?.bio}</p>}
             <div className="grid grid-cols-3 gap-2 mt-2 text-sm text-gray-500 dark:text-gray-400">
-              <div><span className="font-semibold">{profile.posts}</span> Posts</div>
-              <AppLink prefetch={false} href={`/main/stars/received`} className="flex items-center gap-1"><Star className="w-4 h-4 text-yellow-400"/><span className="font-semibold">{profile.stars}</span> Stars</AppLink>
-              <AppLink prefetch={false} href={`/main/stars/sent`}><span className="font-semibold">{profile.starredBy}</span> Starred</AppLink>
+              <div><span className="font-semibold">{profile?.posts}</span> Posts</div>
+              <AppLink prefetch={false} href={`/main/stars/received`} className="flex items-center gap-1"><Star className="w-4 h-4 text-yellow-400"/><span className="font-semibold">{profile?.stars}</span> Stars</AppLink>
+              <AppLink prefetch={false} href={`/main/stars/sent`}><span className="font-semibold">{profile?.starredBy}</span> Starred</AppLink>
             </div>
           </div>
         </div>
 
-        {profile.website && (
-          <a href={profile.website} target="_blank" rel="noopener noreferrer" className="text-indigo-600">
-            {new URL(profile.website).hostname}
+        {profile?.website && (
+          <a href={profile?.website} target="_blank" rel="noopener noreferrer" className="text-indigo-600">
+            {new URL(profile?.website).hostname}
           </a>
         )}
 
@@ -910,7 +886,20 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
         <button className={`p-2 rounded-lg ${filter==='videos' ? 'bg-indigo-600 text-white' : 'text-gray-500 dark:text-gray-400'}`} onClick={()=>setFilter('videos')}><Video className="w-5 h-5"/></button>
       </div>
 
-      {/* Posts */}
+    {/* Posts */}
+    {isPrivate && !isMyProfile ? (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="text-5xl">🔒</div>
+    
+        <h2 className="text-xl font-bold mt-4">
+          This profile is private
+        </h2>
+    
+        <p className="text-gray-500 mt-2">
+          You need permission to view this user's posts.
+        </p>
+      </div>
+    ) : (
       <DndContext
         collisionDetection={closestCenter}
         onDragEnd={handleDragEnd}
@@ -969,115 +958,122 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
         </SortableContext>
       
         {/* ---------------- NORMAL POSTS ---------------- */}
-        {normalPosts.length === 0 ? (
-          <p className="text-center text-gray-500 dark:text-gray-400 mt-4">
-            No posts yet.
-          </p>
-        ) : (
-          normalPosts.map((item) => {
-
-            if (!item) return null;
-
-            // REPOST
-            if (item.type === "repost") {
-              return (
-                <RepostCard
-                  key={`repost-${item.id}`}
-                  repost={item}
-                  handlePostAction={handlePostAction}
-                  starredUserIds={starredUserIds}
-                  hideStarButton={true}
-                />
-              );
-            }
-          
-            // SHORT VIDEO
-            if (item.content_type === "short_video") {
-              return (
-                <ReelCard
-                  key={item.id}
-                  post={item}
-                />
-              );
-            }
-          
-            // NORMAL POST
-            return (
-              <PostCard
-                key={item.id}
-          
-                post={item}
-          
-                videoRef={videoRef}
-          
-                currentUser={currentUser}
-          
-                isMyProfile={isMyProfile}
-          
-                handlePostAction={
-                  handlePostAction
+        {(
+          <>
+            {/* Posts section */}
+            {normalPosts.length === 0 ? (
+              <p className="text-center text-gray-500 dark:text-gray-400 mt-4">
+                No posts yet.
+              </p>
+            ) : (
+              normalPosts.map((item) => {
+    
+                if (!item) return null;
+    
+                // REPOST
+                if (item.type === "repost") {
+                  return (
+                    <RepostCard
+                      key={`repost-${item.id}`}
+                      repost={item}
+                      currentUser={currentUser}
+                      handlePostAction={handlePostAction}
+                      starredUserIds={starredUserIds}
+                      hideStarButton={true}
+                    />
+                  );
                 }
-          
-                showManageButtons={
-                  isMyProfile
+              
+                // SHORT VIDEO
+                if (item.content_type === "short_video") {
+                  return (
+                    <ReelCard
+                      key={item.id}
+                      post={item}
+                    />
+                  );
                 }
-          
-                canEdit={true}
-          
-                canRepost={true}
-          
-                canDelete={true}
-          
-                hideStarButton={true}
-          
-                showJoinButton={false}
-          
-                showPinnedLabel={false}
-          
-                isPinnedDraggable={false}
-          
-                onToggleProfilePin={
-                  handleTogglePin
-                }
-          
-                onDelete={(id: number) => {
-          
-                  setPosts(prev =>
-                    prev.filter(
-                      p => p.id !== id
-                    )
-                  )
-          
-                }}
-          
-                onViewed={() => {
-          
-                  setPosts(prev =>
-                    prev.map(p =>
-                      p.id === item.id
-                        ? {
-                            ...p,
-          
-                            views_count:
-                              (
-                                p.views_count || 0
-                              ) + 1
-                          }
-                        : p
-                    )
-                  )
-          
-                }}
-              />
-            );
-          })
+              
+                // NORMAL POST
+                return (
+                  <PostCard
+                    key={item.id}
+              
+                    post={item}
+              
+                    videoRef={videoRef}
+              
+                    currentUser={currentUser}
+              
+                    isMyProfile={isMyProfile}
+              
+                    handlePostAction={
+                      handlePostAction
+                    }
+              
+                    showManageButtons={
+                      isMyProfile
+                    }
+              
+                    canEdit={true}
+              
+                    canRepost={true}
+              
+                    canDelete={true}
+              
+                    hideStarButton={true}
+              
+                    showJoinButton={false}
+              
+                    showPinnedLabel={false}
+              
+                    isPinnedDraggable={false}
+              
+                    onToggleProfilePin={
+                      handleTogglePin
+                    }
+              
+                    onDelete={(id: number) => {
+              
+                      setPosts(prev =>
+                        prev.filter(
+                          p => p.id !== id
+                        )
+                      )
+              
+                    }}
+              
+                    onViewed={() => {
+              
+                      setPosts(prev =>
+                        prev.map(p =>
+                          p.id === item.id
+                            ? {
+                                ...p,
+              
+                                views_count:
+                                  (
+                                    p.views_count || 0
+                                  ) + 1
+                              }
+                            : p
+                        )
+                      )
+              
+                    }}
+                  />
+                );
+              })
+            )}
+          </>
         )}
       </DndContext>
+    )}
 
     {showUnstarModal && (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div className="bg-indigo-700 p-6 rounded-xl w-80 text-center">
-          <h2 className="text-lg font-semibold mb-4">
+        <div className="bg-indigo-200 dark:bg-indigo-700 p-6 rounded-xl w-80 text-center">
+          <h2 className="text-lg text-gray-700 dark:text-gray-300 font-semibold mb-4">
             Unstar this user?
           </h2>
     
@@ -1103,17 +1099,19 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
       </div>
     )}
 
-    {nextPage && (
       <div className="flex justify-center py-4">
-        <button
-          onClick={() => fetchData(nextPage)}
-          disabled={loadingMore}
-          className="px-4 py-2 bg-indigo-600 text-white rounded-lg"
-        >
-          {loadingMore ? "Loading..." : "Load More"}
-        </button>
+        {nextPage !== null ? (
+          <button
+            onClick={() => fetchPosts(nextPage)}
+            disabled={loadingMore}
+            className="px-4 py-2 bg-indigo-600 text-white rounded-lg disabled:opacity-50"
+          >
+            {loadingMore ? "Loading..." : "Load More"}
+          </button>
+        ) : (
+          <span className="text-gray-500">No more posts</span>
+        )}
       </div>
-    )}
     </div>
   );
 }

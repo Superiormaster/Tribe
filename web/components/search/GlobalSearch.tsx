@@ -27,7 +27,7 @@ export default function GlobalSearch() {
   } = useSearch();
 
   return (
-    <div className="space-y-4 w-full overflow-x-hidden">
+    <div className="space-y-4 mt-20 px-2 w-full overflow-x-hidden">
 
       <SearchInput
         value={query}

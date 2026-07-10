@@ -1,7 +1,9 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { uploadToCloudinary } from '@/utils/cloudinary';
+import { useNetwork } from '@/components/networkConnection/NetworkContext';
+import { updateMessage } from "@/lib/messageDB";
+import { sendChatMessage } from "@/utils/chat/sendChatMessage";
 
 export function useVoiceRecorder(
   socketRef: any,
@@ -9,6 +11,9 @@ export function useVoiceRecorder(
   currentUser: any,
   setMessages: any
 ) {
+  const {
+    canCommunicate,
+  } = useNetwork();
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<any>(null);
@@ -20,95 +25,80 @@ export function useVoiceRecorder(
   const analyserRef = useRef<AnalyserNode | null>(null);
   const dataArrayRef = useRef<Uint8Array | null>(null);
   const animationRef = useRef<any>(null);
-  const chunksRef = useRef<BlobPart[]>([]);
+  const audioChunksRef = useRef<BlobPart[]>([]);
+  const waveformRef = useRef<number[]>([]);
+  const isRecordingRef = useRef(false);
   const [isPaused, setIsPaused] = useState(false);
+  const isPausedRef = useRef(false);
+  const cancellingRef = useRef(false);
   
   const [waveform, setWaveform] = useState<number[]>([]);
   const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
   const [duration, setDuration] = useState(0);
   const elapsedRef = useRef(0);
   const startTimeRef = useRef<number>(0);
+  const sendAfterStopRef = useRef(false);
 
   // ========================
   // SEND AUDIO (OPTIMISTIC + ACK)
   // ========================
-  const sendAudioOptimistic = async (blob: Blob) => {
-    if (!socketRef.current || !chatIdNum) return;
-
-    const clientId = crypto.randomUUID();
-
-    const tempMessage = {
-      id: clientId,
-      clientId,
-      text: "",
-      media_url: URL.createObjectURL(blob),
-      waveform,
-      media_type: "audio",
-      sender: currentUser.id,
-      status: "sending",
-      createdAt: new Date().toISOString(),
-      retries: 0,
-    };
-
-    setMessages((prev) => [...prev, tempMessage]);
-
-    try {
-      const url = await uploadToCloudinary({
-        file: new File([blob], "voice.webm"),
-        folder: "Tribe/Audio",
-      });
-
-      const emitWithRetry = (retry = 0) => {
-        socketRef.current.emit(
-          "send_message",
-          {
-            clientId,
-            chatId: chatIdNum,
-            text: "",
-            waveform,
-            media_url: url,
-            media_type: "audio",
-          },
-          (ack: any) => {
-            if (ack?.ok) {
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.clientId === clientId
-                    ? {
-                        ...msg,
-                        status: "sent",
-                        id: ack.id,
-                        media_url: url,
-                      }
-                    : msg
-                )
-              );
-            } else if (retry < 3) {
-              setTimeout(() => emitWithRetry(retry + 1), 1000 * (retry + 1));
-            } else {
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.clientId === clientId
-                    ? { ...msg, status: "failed" }
-                    : msg
-                )
-              );
-            }
-          }
-        );
-      };
-
-      emitWithRetry();
-
-    } catch (err) {
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.clientId === clientId
-            ? { ...msg, status: "failed" }
-            : msg
-        )
-      );
+  const sendAudioOptimistic = async (
+    blob: Blob,
+    existingClientId?: string,
+    finalDuration?: number,
+  ) => {
+    if (!chatIdNum) {
+      return;
     }
+
+    const client_id =
+      existingClientId ??
+      crypto.randomUUID();
+    
+    const file = new File(
+      [blob],
+      "voice.webm",
+      {
+        type: "audio/webm",
+      }
+    );
+  
+    await sendChatMessage({
+      message: {
+        client_id,
+        chat: chatIdNum,
+        sender: currentUser.id,
+    
+        media_type: "audio",
+        encrypted_text: "",
+        caption: "",
+    
+        media_url: [],
+        thumbnail: [],
+        duration: [finalDuration ?? duration],
+        waveform: [...waveformRef.current],
+    
+        files: [file],
+      },
+    
+      currentUser,
+      socketRef,
+      setMessages,
+      canCommunicate,
+    });
+  };
+  
+  const cleanupAudio = () => {
+    audioContextRef.current?.close();
+  
+    audioContextRef.current =
+      null;
+  
+    analyserRef.current =
+      null;
+  
+    dataArrayRef.current =
+      null;
   };
 
   // ========================
@@ -117,108 +107,257 @@ export function useVoiceRecorder(
   const startRecording = async () => {
     if (recorderRef.current?.state === "recording") return;
   
-    chunksRef.current = [];
+    setDuration(0);
+    setPreviewBlob(null);
+    setIsPaused(false);
+    isPausedRef.current = false;
+    elapsedRef.current = 0;
+    pausedTimeRef.current = 0;
+    pauseStartRef.current = null;
   
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: true,
+    });
+  
     mediaStreamRef.current = stream;
   
-    // 🎧 AUDIO ANALYZER
     const audioContext = new AudioContext();
-    const source = audioContext.createMediaStreamSource(stream);
-    const analyser = audioContext.createAnalyser();
   
-    analyser.fftSize = 64;
+    const source =
+      audioContext.createMediaStreamSource(stream);
   
-    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    const analyser =
+      audioContext.createAnalyser();
+  
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.8;
   
     source.connect(analyser);
+  
+    const dataArray = new Uint8Array(
+      analyser.frequencyBinCount
+    );
   
     audioContextRef.current = audioContext;
     analyserRef.current = analyser;
     dataArrayRef.current = dataArray;
   
+    audioChunksRef.current = [];
+    waveformRef.current = [];
+    setWaveform([]);
+  
+    isRecordingRef.current = true;
+  
     const draw = () => {
-      analyser.getByteTimeDomainData(dataArray);
-      setWaveform([...dataArray.slice(0, 30)]);
-      animationRef.current = requestAnimationFrame(draw);
+      if (!isRecordingRef.current) return;
+  
+      analyser.getByteFrequencyData(dataArray);
+  
+      let sum = 0;
+  
+      for (let i = 0; i < dataArray.length; i++) {
+        sum += dataArray[i];
+      }
+  
+      const avg =
+        sum / dataArray.length / 255;
+  
+      const amplified =
+        Math.min(1, avg * 3);
+  
+      waveformRef.current.push(amplified);
+  
+      if (waveformRef.current.length > 60) {
+        waveformRef.current.shift();
+      }
+  
+      setWaveform([
+        ...waveformRef.current,
+      ]);
+  
+      animationRef.current =
+        requestAnimationFrame(draw);
     };
   
     draw();
   
-    // 🎙️ MEDIA RECORDER (CREATE FIRST)
-    const recorder = new MediaRecorder(stream);
+    const recorder =
+      new MediaRecorder(stream);
+  
     recorderRef.current = recorder;
   
-    // ✅ NOW safe to attach handlers
     recorder.ondataavailable = (e) => {
       if (e.data.size > 0) {
-        chunksRef.current.push(e.data);
+        audioChunksRef.current.push(e.data);
       }
     };
   
     recorder.onstart = () => {
       startTimeRef.current = Date.now();
-      pausedTimeRef.current = 0;
-      elapsedRef.current = 0;
-  
-      timerRef.current = setInterval(() => {
-        if (!pauseStartRef.current) {
-          setDuration(
-            elapsedRef.current +
-              Math.floor(
-                (Date.now() - startTimeRef.current - pausedTimeRef.current) / 1000
-              )
-          );
-        }
-      }, 1000);
-    };
-  
-    recorder.onstop = async () => {
-      cancelAnimationFrame(animationRef.current);
-  
-      const blob = new Blob(chunksRef.current, {
-        type: "audio/webm",
-      });
-  
-      setPreviewBlob(blob);
-      chunksRef.current = [];
   
       clearInterval(timerRef.current);
+  
+      timerRef.current = setInterval(() => {
+          if (isPausedRef.current) return;
+  
+          const elapsed =
+              Math.floor(
+                  (Date.now() - startTimeRef.current) / 1000
+              );
+  
+          setDuration(elapsed);
+      }, 200);
+    };
+
+        recorder.onstop = async () => {
+        if (cancellingRef.current) {
+            cancellingRef.current = false;
+    
+            audioChunksRef.current = [];
+    
+            cleanupAudio();
+            stopStream();
+    
+            setPreviewBlob(null);
+            setWaveform([]);
+            setDuration(0);
+    
+            return;
+        }
+    
+        const blob = new Blob(audioChunksRef.current, {
+            type: "audio/webm",
+        });
+    
+        if (sendAfterStopRef.current) {
+            sendAfterStopRef.current = false;
+    
+            const finalDuration = Math.max(
+              1,
+              Math.floor((Date.now() - startTimeRef.current) / 1000)
+            );
+          
+            await sendAudioOptimistic(blob, undefined, finalDuration);
+    
+            cleanupAudio();
+            stopStream();
+    
+            setWaveform([]);
+            waveformRef.current = [];
+            audioChunksRef.current = [];
+            setDuration(0);
+    
+            return;
+        }
+    
+        // Only used if you ever want a preview
+        setPreviewBlob(blob);
+    
+        cleanupAudio();
+        stopStream();
     };
   
-    recorder.start();
+    recorder.start(200);
+  
     setIsRecording(true);
   };
-
-  const sendRecording = async () => {
-    if (!previewBlob) return;
   
-    await sendAudioOptimistic(previewBlob);
+  const sendRecording = () => {
+    sendAfterStopRef.current = true;
+    stopRecording();
   
-    setPreviewBlob(null);
-    setDuration(0);
+    isPausedRef.current = false;
+    setIsPaused(false);
   };
 
   // ========================
   // RESEND FAILED AUDIO
   // ========================
-  const resendMessage = async (msg: any) => {
-    if (msg.media_type !== "audio") return;
-
+  const resendMessage = async (
+    msg
+  ) => {
+    if (
+      msg.media_type !== "audio"
+    ) {
+      return;
+    }
+  
     try {
-      const blob = await fetch(msg.media_url).then((r) => r.blob());
-      sendAudioOptimistic(blob);
-    } catch (err) {
-      console.error("Resend failed:", err);
+      let blob;
+  
+      if (msg.files?.length) {
+        blob =
+          msg.files[0] instanceof Blob
+            ? msg.files[0]
+            : new Blob([msg.files[0]]);
+      } else {
+        blob =
+          await fetch(
+            msg.media_url
+          ).then(r => r.blob());
+      }
+  
+      setMessages(prev =>
+        prev.map(m =>
+          m.client_id === msg.client_id
+            ? {
+                ...m,
+                status: "sending",
+                upload_progress: 0,
+              }
+            : m
+        )
+      );
+  
+      await updateMessage(
+        msg.client_id,
+        currentUser.id,
+        {
+          status: "sending",
+          upload_progress: 0,
+        }
+      );
+  
+      await sendAudioOptimistic(
+        blob,
+        msg.client_id
+      );
+    } catch {
+      setMessages(prev =>
+        prev.map(m =>
+          m.client_id === msg.client_id
+            ? {
+                ...m,
+                status: "failed",
+              }
+            : m
+        )
+      );
     }
   };
-
+  
   // ========================
   // STOP RECORDING
   // ========================
   const stopRecording = () => {
-    recorderRef.current?.stop();
+    isRecordingRef.current = false;
+  
+    cancelAnimationFrame(
+      animationRef.current
+    );
+  
+    if (
+      recorderRef.current &&
+      recorderRef.current.state !==
+        "inactive"
+    ) {
+      recorderRef.current.stop();
+    }
+  
     setIsRecording(false);
+    setIsPaused(false);
+    isPausedRef.current = false;
+  
     clearInterval(timerRef.current);
   };
 
@@ -230,9 +369,19 @@ export function useVoiceRecorder(
   };
   
   const cancelRecording = () => {
-    recorderRef.current?.stop();
+    cancellingRef.current = true;
+
+    if (
+      recorderRef.current &&
+      recorderRef.current.state !==
+        "inactive"
+    ) {
+      recorderRef.current?.stop();
+    }
+
+    cleanupAudio();
     stopStream();
-    chunksRef.current = [];
+    audioChunksRef.current = [];
     setIsRecording(false);
     setDuration(0);
     setPreviewBlob(null);
@@ -240,18 +389,85 @@ export function useVoiceRecorder(
   };
   
   const pauseRecording = () => {
-    if (recorderRef.current && recorderRef.current.state === "recording") {
+    if (
+      recorderRef.current?.state ===
+      "recording"
+    ) {
       recorderRef.current.pause();
-      elapsedRef.current = duration;
+  
+      isPausedRef.current = true;
       setIsPaused(true);
+  
+      isRecordingRef.current = false;
+  
+      cancelAnimationFrame(
+        animationRef.current
+      );
     }
   };
   
   const resumeRecording = () => {
-    if (recorderRef.current && recorderRef.current.state === "paused") {
+    if (
+      recorderRef.current?.state ===
+      "paused"
+    ) {
       recorderRef.current.resume();
-      startTimeRef.current = Date.now();
+  
+      isPausedRef.current = false;
       setIsPaused(false);
+  
+      isRecordingRef.current = true;
+  
+      const analyser =
+        analyserRef.current;
+  
+      const dataArray =
+        dataArrayRef.current;
+  
+      if (!analyser || !dataArray) return;
+  
+      const draw = () => {
+        if (!isRecordingRef.current) return;
+  
+        analyser.getByteFrequencyData(
+          dataArray
+        );
+  
+        let sum = 0;
+  
+        for (
+          let i = 0;
+          i < dataArray.length;
+          i++
+        ) {
+          sum += dataArray[i];
+        }
+  
+        const avg =
+          sum / dataArray.length / 255;
+  
+        const amplified =
+          Math.min(1, avg * 3);
+  
+        waveformRef.current.push(
+          amplified
+        );
+  
+        if (
+          waveformRef.current.length > 60
+        ) {
+          waveformRef.current.shift();
+        }
+  
+        setWaveform([
+          ...waveformRef.current,
+        ]);
+  
+        animationRef.current =
+          requestAnimationFrame(draw);
+      };
+  
+      draw();
     }
   };
   

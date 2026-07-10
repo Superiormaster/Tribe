@@ -111,32 +111,26 @@ export default function useSearch() {
         `api/search/?q=${q}&page=${pageNumber}`
       );
 
-      const hasResults =
-        data.users?.length ||
-        data.posts?.length ||
-        data.communities?.length ||
-        data.tribes?.length;
-      
-      setHasMore(Boolean(hasResults));
+      setHasMore(Boolean(data.next));
 
       setResults(prev => {
         if (!append) return data;
-    
+      
+        const mergeUnique = (oldArr: any[], newArr: any[]) => {
+          const map = new Map();
+      
+          [...oldArr, ...newArr].forEach(item => {
+            map.set(item.id, item);
+          });
+      
+          return Array.from(map.values());
+        };
+      
         return {
-          users: [...prev.users, ...data.users],
-          communities: [...prev.communities, ...data.communities],
-          tribes: [...prev.tribes, ...data.tribes],
-          posts: [
-            ...prev.posts,
-            ...data.posts.filter(
-              (newPost: any) =>
-                !prev.posts.some(
-                  (oldPost: any) =>
-                    oldPost.id === newPost.id &&
-                    oldPost.feed_type === newPost.feed_type
-                )
-            )
-          ],
+          users: mergeUnique(prev.users, data.users || []),
+          communities: mergeUnique(prev.communities, data.communities || []),
+          tribes: mergeUnique(prev.tribes, data.tribes || []),
+          posts: mergeUnique(prev.posts, data.posts || []),
         };
       });
     

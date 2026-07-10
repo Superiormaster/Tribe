@@ -156,7 +156,7 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="max-w-2xl text-gray-700 dark:text-gray-200 mx-auto p-4">
+    <div className="max-w-2xl text-gray-700 dark:text-gray-200 mt-20 mx-auto p-4">
 
       <div className="flex justify-between items-center mb-6">
         <div className="relative text-2xl font-bold flex gap-2">

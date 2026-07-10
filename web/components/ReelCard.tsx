@@ -1,12 +1,15 @@
 'use client';
 
 import { useNavigation } from "@/utils/useNavigation"
+import React from "react";
+import { useInView } from '@/components/UseInView'
 
-export default function ReelCard({
+function ReelCard({
   post,
   showEntertainment = false,
 }: any) {
   const { push } = useNavigation();
+  const { ref, isVisible } = useInView();
 
   const goToReel = (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -30,10 +33,10 @@ export default function ReelCard({
         </h2>
       )}
 
-      <div className="relative w-full h-[500px] overflow-hidden rounded-xl bg-black">
+      <div ref={ref} className="relative w-full h-[500px] overflow-hidden rounded-xl bg-black">
         
         <video
-          src={post.media_files?.[0]?.file_url}
+          src={isVisible ? post.media_files?.[0]?.file_url : undefined}
           poster={poster}
           preload="metadata"
           onError={() => {}}
@@ -62,3 +65,5 @@ export default function ReelCard({
     </div>
   );
 }
+
+export default React.memo(ReelCard);

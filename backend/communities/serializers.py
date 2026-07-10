@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Community, Tribe, CommunityMembership, CommunityInvite
+from .models import Community, Tribe, CommunityMembership, TribeRequest, CommunityJoinRequest, CommunityInvite
 from users.models import User
 
 class TribeSerializer(serializers.ModelSerializer):
@@ -11,10 +11,12 @@ class CommunityNestedSerializer(serializers.ModelSerializer):
     owner = serializers.SerializerMethodField()
     members_count = serializers.SerializerMethodField()
     joined = serializers.SerializerMethodField()
+    requested = serializers.SerializerMethodField()
+    invited = serializers.SerializerMethodField()
 
     class Meta:
         model = Community
-        fields = ['id', 'name', 'members_count', 'owner', "intro_video", "require_post_approval", 'cover_image', 'joined', 'description']
+        fields = ['id', 'name', 'members_count', 'owner', "intro_video", "requested", "require_post_approval", 'cover_image', 'joined', 'invited', 'description']
 
     def get_owner(self, obj):
         return {
@@ -23,10 +25,20 @@ class CommunityNestedSerializer(serializers.ModelSerializer):
         }
 
     def get_members_count(self, obj):
-        return CommunityMembership.objects.filter(
-            community=obj,
-            banned=False
-        ).count()
+      count = CommunityMembership.objects.filter(
+          community=obj,
+          banned=False
+      ).count()
+  
+      owner_exists = CommunityMembership.objects.filter(
+          community=obj,
+          user=obj.owner
+      ).exists()
+  
+      if not owner_exists:
+          count += 1
+  
+      return count
 
     def get_joined(self, obj):
         request = self.context.get("request")
@@ -39,14 +51,43 @@ class CommunityNestedSerializer(serializers.ModelSerializer):
             user=request.user,
             banned=False
         ).exists()
+  
+    def get_invited(self, obj):
+      request = self.context.get("request")
+  
+      if not request or not request.user.is_authenticated:
+          return False
+  
+      return CommunityInvite.objects.filter(
+          community=obj,
+          receiver=request.user
+      ).exists()
+
+    def get_requested(self, obj):
+        request = self.context.get("request")
+
+        if not request or not request.user.is_authenticated:
+            return False
+
+        return CommunityJoinRequest.objects.filter(
+            user=request.user,
+            community=obj
+        ).exists()
 
 
 class TribeDetailSerializer(serializers.ModelSerializer):
-    communities = CommunityNestedSerializer(many=True, read_only=True)
+    communities = serializers.SerializerMethodField()
 
     class Meta:
         model = Tribe
         fields = ['id', 'name', 'description', 'communities']
+
+    def get_communities(self, obj):
+        return CommunityNestedSerializer(
+            obj.communities.all(),
+            many=True,
+            context=self.context,
+        ).data
 
 class CommunitySerializer(serializers.ModelSerializer):
     owner = serializers.ReadOnlyField(source="owner.username")
@@ -54,6 +95,8 @@ class CommunitySerializer(serializers.ModelSerializer):
     joined = serializers.SerializerMethodField()
     my_role = serializers.SerializerMethodField()
     tribe = TribeSerializer(read_only=True)
+    requested = serializers.SerializerMethodField()
+    invited = serializers.SerializerMethodField()
 
     class Meta:
         model = Community
@@ -64,11 +107,14 @@ class CommunitySerializer(serializers.ModelSerializer):
             'cover_image',
             'intro_video',
             'require_post_approval',
+            'join_approval_required',
             'tribe',
             'owner',
             'members_count',
             'joined',
-            'my_role'
+            'my_role',
+            'invited',
+            'requested'
         ]
 
         read_only_fields = [
@@ -78,11 +124,21 @@ class CommunitySerializer(serializers.ModelSerializer):
         ]
 
     def get_members_count(self, obj):
-        return CommunityMembership.objects.filter(
-            community=obj,
-            banned=False
-        ).count()
-
+      count = CommunityMembership.objects.filter(
+          community=obj,
+          banned=False
+      ).count()
+  
+      owner_exists = CommunityMembership.objects.filter(
+          community=obj,
+          user=obj.owner
+      ).exists()
+  
+      if not owner_exists:
+          count += 1
+  
+      return count
+  
     def get_my_role(self, obj):
       request = self.context.get("request")
   
@@ -99,6 +155,17 @@ class CommunitySerializer(serializers.ModelSerializer):
   
       return membership.role if membership else "member"
 
+    def get_invited(self, obj):
+        request = self.context.get("request")
+    
+        if not request or not request.user.is_authenticated:
+            return False
+    
+        return CommunityInvite.objects.filter(
+            community=obj,
+            receiver=request.user
+        ).exists()
+
     def get_joined(self, obj):
         request = self.context.get("request")
 
@@ -109,6 +176,17 @@ class CommunitySerializer(serializers.ModelSerializer):
             community=obj,
             user=request.user,
             banned=False
+        ).exists()
+
+    def get_requested(self, obj):
+        user = self.context["request"].user
+
+        if not user.is_authenticated:
+            return False
+
+        return CommunityJoinRequest.objects.filter(
+            user=user,
+            community=obj
         ).exists()
 
 class InviteUserSerializer(serializers.ModelSerializer):
@@ -168,3 +246,61 @@ class CommunityInviteSerializer(serializers.ModelSerializer):
             "id": obj.community.id,
             "name": obj.community.name
         }
+
+class TribeRequestSerializer(serializers.ModelSerializer):
+    creator_name = serializers.CharField(
+        source="creator.username",
+        read_only=True
+    )
+
+    creator_avatar = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TribeRequest
+        fields = (
+            "id",
+            "name",
+            "description",
+            "request_reason",
+            "status",
+            "creator",
+            "creator_name",
+            "creator_avatar",
+            "created_at",
+        )
+        read_only_fields = (
+            "id",
+            "status",
+            "creator",
+            "created_at",
+        )
+
+    def get_creator_avatar(self, obj):
+      if obj.creator.avatar:
+          return obj.creator.avatar
+      return None
+
+    def validate_name(self, value):
+        value = value.strip()
+
+        if len(value) < 3:
+            raise serializers.ValidationError(
+                "Tribe name is too short."
+            )
+
+        if TribeRequest.objects.filter(
+            name__iexact=value,
+            status="pending"
+        ).exists():
+            raise serializers.ValidationError(
+                "A request for this tribe already exists."
+            )
+
+        return value
+
+    def create(self, validated_data):
+        validated_data["creator"] = self.context[
+            "request"
+        ].user
+
+        return super().create(validated_data)

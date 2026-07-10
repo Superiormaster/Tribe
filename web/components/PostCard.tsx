@@ -1,6 +1,7 @@
 'use client'  
   
-import { useState, useRef, useEffect } from 'react'  
+import { useState, useRef, useEffect } from 'react'
+import React from "react";
 import { useNavigation } from "@/utils/useNavigation"
 import AppLink from '@/components/AppLink';
 import { apiRequest } from '@/utils/api';  
@@ -38,6 +39,10 @@ type PostCardProps = {
     created_at: string  
     is_starred_by_user: boolean
   }  
+  starredUserIds?: Set<number>
+  setStarredUsers?: React.Dispatch<
+    React.SetStateAction<Set<number>>
+  >;
   user?: any
   community?: any
   onViewed?: () => void
@@ -52,6 +57,8 @@ type PostCardProps = {
   canDelete?: boolean;
   canRepost?: boolean;
   canReport?: boolean;
+  onApprove?: (id: number) => void;
+  onReject?: (id: number) => void;
   
   isRepostContext?: boolean;
   repostId?: number;
@@ -80,17 +87,18 @@ type PostCardProps = {
   showPinnedLabel?: boolean
 }  
   
-export default function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyProfile, canPin, setSelectMode, isPinnedDraggable, onToggleProfilePin, onLongPress, onToggleCommunityPin, canBulkSelect, canEdit, canRepost, canReport, canDelete, onSelect, isSelected, isEmbedded, isRepostContext,
+function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyProfile, canPin, setSelectMode, isPinnedDraggable, onToggleProfilePin, onLongPress, onToggleCommunityPin, canBulkSelect, canEdit, canRepost, canReport, onApprove, onReject, canDelete, onSelect, isSelected, isEmbedded, isRepostContext, starredUserIds, setStarredUsers,
   handlePostAction, hideCommunityName = false, hideStarButton = false, showJoinButton = false, showManageButtons = false, showPinnedLabel=true }: PostCardProps) {
   const [liked, setLiked] = useState(!!post.is_liked || !!post.liked_by_user)
   const [likes, setLikes] = useState(post.likes_count || 0)
-  const [isStarred, setIsStarred] = useState(post.is_starred_by_user)
+  const isStarred = starredUserIds?.has(post.user.id);
   const [menuOpen, setMenuOpen] = useState(false);
   const { user: currentUser } = useContext(UserContext)  
   const { push } = useNavigation()
   const menuRef = useRef<HTMLDivElement>(null);
   const [reportOpen, setReportOpen] = useState(false)
-  const [reportText, setReportText] = useState("")
+  const [reportReason, setReportReason] = useState("");
+  const [reportDetails, setReportDetails] = useState("");
   const [joined, setJoined] = useState(false);
   const alreadyJoined = post.community_joined;
   const hasValidCommunity =
@@ -100,14 +108,21 @@ export default function PostCard({ post, user, onViewed, community, videoRef, on
     post?.community_name;
   const isLikedByUser = liked;
   const postRef = useRef<HTMLDivElement | null>(null);
+  const isPostOwner =
+    Number(currentUser?.id) === Number(post?.user?.id);
+  
+  const canManagePost =
+    canDelete ||
+    canEdit ||
+    canRepost;
 
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
-
+  
   const handlePlay = (index: number, e: React.MouseEvent) => {
     e.stopPropagation();
     videoRefs.current[index]?.play();
   };
-  
+ 
   useEffect(() => {
     setLiked(!!post.is_liked || !!post.liked_by_user)
     setLikes(post.likes_count || 0)
@@ -159,23 +174,42 @@ export default function PostCard({ post, user, onViewed, community, videoRef, on
   const handleStar = async () => {
     const creatorId = post?.user?.id;
   
-    if (!creatorId) {
-      console.warn("Missing creatorId");
-      return;
-    }
+    if (!creatorId || !setStarredUsers) return;
   
-    const previous = isStarred;
-    setIsStarred(!previous);
+    const previous = new Set(starredUserIds);
+  
+    // Optimistic update
+    setStarredUsers(prev => {
+      const next = new Set(prev);
+  
+      if (next.has(creatorId)) {
+        next.delete(creatorId);
+      } else {
+        next.add(creatorId);
+      }
+  
+      return next;
+    });
   
     try {
       const res = await starCreator(creatorId);
   
-      if (res?.starred !== undefined) {
-        setIsStarred(res.starred);
-      }
+      setStarredUsers(prev => {
+        const next = new Set(prev);
+  
+        if (res.starred) {
+          next.add(creatorId);
+        } else {
+          next.delete(creatorId);
+        }
+  
+        return next;
+      });
     } catch (err) {
       console.error(err);
-      setIsStarred(previous);
+  
+      // rollback
+      setStarredUsers(previous);
     }
   };
   
@@ -225,19 +259,51 @@ export default function PostCard({ post, user, onViewed, community, videoRef, on
     }
   };
   
+  const handleMute = async () => {
+    await apiRequest(`api/users/mute/${post.user.id}/`, {
+      method: "POST"
+    });
+    setMenuOpen(false);
+  };
+  
+  const handleBlock = async () => {
+    await apiRequest(`api/users/block/${post.user.id}/`, {
+      method: "POST"
+    });
+    setMenuOpen(false);
+  };
+  
   const handleReport = async () => {
-    if (!reportText.trim()) return;
+    if (!reportReason) {
+      alert("Please select a reason");
+      return;
+    }
   
     try {
-      await apiRequest(`api/posts/${post.id}/report/`, {
-        method: "POST",
-        data: { reason: reportText },
-      });
+      const res = await apiRequest(
+        `api/post/${post.id}/report/`,
+        {
+          method: "POST",
+          data: {
+            reason: reportReason,
+            details: reportDetails,
+          },
+        }
+      );
+  
+      alert(res.message);
   
       setReportOpen(false);
-      setReportText("");
-      alert("Reported successfully");
-    } catch (err) {
+      setReportReason("");
+      setReportDetails("");
+  
+    } catch (err: any) {
+  
+      alert(
+        err?.data?.message ||
+        "Failed to submit report"
+      );
+  
       console.error(err);
     }
   };
@@ -245,7 +311,8 @@ export default function PostCard({ post, user, onViewed, community, videoRef, on
   const shouldHideStar =
     hideStarButton ||
     isMyProfile ||
-    isRepostContext;
+    isRepostContext ||
+    isPostOwner;
   
   const handleMediaClick = () => {
     push(`/main/home/${post.id}`);
@@ -267,7 +334,7 @@ export default function PostCard({ post, user, onViewed, community, videoRef, on
       onTouchEnd={clearLongPress}
       onTouchMove={clearLongPress}
       onTouchCancel={clearLongPress}
-      className={`bg-white dark:bg-gray-900 p-4 relative border-gray-600 border-b-4 space-y-4 shadow-sm transition-colors bg-white dark:bg-gray-900 ${
+      className={`bg-white dark:bg-gray-900 p-4 relative border-gray-600 border-b-4 overflow-visible space-y-4 shadow-sm transition-colors bg-white dark:bg-gray-900 ${
         isEmbedded ? '' : 'border-b-4 border-gray-600 p-4'
       }`}>
 
@@ -299,7 +366,7 @@ export default function PostCard({ post, user, onViewed, community, videoRef, on
       )}
 
       {/* User info */}  
-      <div className="flex items-center gap-3 mb-3">  
+      <div className="flex items-center gap-3 mb-3 min-w-0">
         <AppLink href={`/main/profile/${post.user.username}`}
         prefetch={false}
         className="flex-shrink-0">  
@@ -314,14 +381,14 @@ export default function PostCard({ post, user, onViewed, community, videoRef, on
               {post.user.username.slice(0,2).toUpperCase()}  
             </div>  
           )}  
-        </AppLink>  
+        </AppLink>
   
-        <div className="flex flex-col">
-          <div className="flex items-center gap-2">
+        <div className="flex flex-col min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
             <AppLink
               href={`/main/profile/${post.user.username}`}
               prefetch={false}
-              className="font-bold text-gray-900 dark:text-gray-100 hover:underline"
+              className="font-bold text-gray-900 truncate dark:text-gray-100 hover:underline overflow-hidden whitespace-nowrap max-w-[100px]"
             >
               {post.user.username}
             </AppLink>
@@ -348,6 +415,7 @@ export default function PostCard({ post, user, onViewed, community, videoRef, on
               )
             )}
           </div>
+  
           <div className="flex items-center gap-2">
             {!hideCommunityName && (
               <AppLink href={`/main/community/${post.community_id}`}
@@ -384,7 +452,7 @@ export default function PostCard({ post, user, onViewed, community, videoRef, on
           </div>
         </div>
 
-        <span className="ml-2 flex flex-1 items-center text-gray-500 text-sm">
+        <span className="ml-2 flex flex-1 items-center flex-shrink-0 text-gray-500 text-sm">
           <AlarmClock className="text-sm mr-1" />
         
           {post.is_edited ? (
@@ -397,12 +465,14 @@ export default function PostCard({ post, user, onViewed, community, videoRef, on
         </span>
 
       <div className="flex items-center gap-2 relative" ref={menuRef}>
-        <button
-          onClick={() => setMenuOpen(!menuOpen)}
-          className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800"
-        >
-          <MoreHorizontal className="w-5 text-gray-700 dark:text-gray-300 h-5" />
-        </button>
+        {showManageButtons && (
+          <button
+            onClick={() => setMenuOpen(!menuOpen)}
+            className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800"
+          >
+            <MoreHorizontal className="w-5 text-gray-700 dark:text-gray-300 h-5" />
+          </button>
+        )}
 
         {menuOpen && (
           <div className="absolute right-0 top-full mt-2 w-40 bg-white max-h-64 overflow-y-auto dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-lg z-50 flex flex-col">
@@ -414,10 +484,28 @@ export default function PostCard({ post, user, onViewed, community, videoRef, on
                 Report
               </button>
             )}
+  
+            {!isPostOwner && (
+              <>
+                <button
+                  className="text-left px-3 py-2 text-gray-700 dark:text-gray-400 hover:bg-gray-100 hover:rounded-lg dark:hover:bg-gray-700"
+                  onClick={handleMute}
+                >
+                  Mute User
+                </button>
+            
+                <button
+                  onClick={handleBlock}
+                  className="text-left px-3 py-2 text-gray-700 dark:text-gray-400 hover:bg-gray-100 hover:rounded-lg dark:hover:bg-gray-700"
+                >
+                  Block User
+                </button>
+              </>
+            )}
 
             {showManageButtons && (canDelete || canEdit || canRepost || canReport) && (
-              <div className="flex flex-col px-3 space-y-4 py-2">
-                {onToggleCommunityPin && (
+              <div className="flex flex-col z-50 px-3 space-y-4 py-2">
+                {onToggleCommunityPin && canPin && (
                   <button
                     className="flex gap-1 text-gray-700 dark:text-gray-400 hover:bg-gray-100 hover:rounded-lg dark:hover:bg-gray-700 items-center"
                     onClick={() => onToggleCommunityPin?.(post.id)}
@@ -446,7 +534,31 @@ export default function PostCard({ post, user, onViewed, community, videoRef, on
                     <Edit className="w-5 h-5 text-gray-500 hover:text-indigo-600"/> Edit
                   </button>
                 )}
-              
+  
+                {onApprove && (
+                  <button
+                    onClick={() => {
+                      onApprove(post.id);
+                      setMenuOpen(false);
+                    }}
+                    className="flex gap-1 text-gray-700 dark:text-gray-400 hover:bg-gray-100 hover:rounded-lg dark:hover:bg-gray-700 items-center"
+                  >
+                    👍 Approve
+                  </button>
+                )}
+                
+                {onReject && (
+                  <button
+                    onClick={() => {
+                      onReject(post.id);
+                      setMenuOpen(false);
+                    }}
+                    className="flex gap-1 text-gray-700 dark:text-gray-400 hover:bg-gray-100 hover:rounded-lg dark:hover:bg-gray-700 items-center"
+                  >
+                    👎 Reject
+                  </button>
+                )}
+  
                 {canDelete && (
                   <button
                     className="flex gap-1 text-gray-700 dark:text-gray-400 hover:bg-gray-100 hover:rounded-lg dark:hover:bg-gray-700 items-center"
@@ -555,12 +667,28 @@ export default function PostCard({ post, user, onViewed, community, videoRef, on
             
             <h2 className="font-bold text-gray-800 dark:text-gray-200 mb-2">Report Post</h2>
       
+            <select
+              value={reportReason}
+              onChange={(e) => setReportReason(e.target.value)}
+              className="w-full border p-2 rounded-md text-gray-700 dark:text-gray-200 dark:bg-gray-800 mb-3 bg-gray-100"
+            >
+              <option value="">Select reason</option>
+              <option value="spam">Spam</option>
+              <option value="harassment">Harassment</option>
+              <option value="hate_speech">Hate Speech</option>
+              <option value="violence">Violence</option>
+              <option value="nudity">Nudity</option>
+              <option value="misinformation">Misinformation</option>
+              <option value="copyright">Copyright</option>
+              <option value="other">Other</option>
+            </select>
+            
             <textarea
-              value={reportText}
-              onChange={(e) => setReportText(e.target.value)}
-              className="w-full border p-2 rounded-md text-gray-700 dark:text-gray-200 dark:bg-gray-800"
+              value={reportDetails}
+              onChange={(e) => setReportDetails(e.target.value)}
+              className="w-full border p-2 rounded-md dark:bg-gray-800 text-gray-700 dark:text-gray-200"
               rows={4}
-              placeholder="Why are you reporting this?"
+              placeholder="Additional details (optional)"
             />
       
             <div className="flex justify-end text-gray-900 dark:text-gray-200 gap-2 mt-3">
@@ -590,7 +718,8 @@ const MediaItem = ({ media, index, videoRefs, handlePlay, handleDoubleClick }) =
       <img
         key={index}
         src={media.file_url}
-        loading="lazy"
+        loading={index < 6 ? "eager" : "lazy"}
+        fetchPriority={index < 6 ? "high" : "auto"}
         className="rounded-xl w-full aspect-square max-h-96 object-cover"
       />
     );
@@ -625,3 +754,5 @@ const MediaItem = ({ media, index, videoRefs, handlePlay, handleDoubleClick }) =
     </div>
   );
 };
+
+export default React.memo(PostCard);

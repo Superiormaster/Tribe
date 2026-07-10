@@ -3,17 +3,22 @@ import { useState, useRef, useMemo, useEffect } from 'react';
 import { useNavigation } from "@/utils/useNavigation"
 import PostCard from '@/components/PostCard';
 import ReelCard from '@/components/ReelCard';
+import RepostCard from '@/components/repost/RepostCard';
 import Skeleton from '@/components/Skeleton';
 import { useContext } from "react";
 import { UserContext } from "@/components/UserContext";
+import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import { apiRequest } from '@/utils/api';
 import AppLink from '@/components/AppLink';
 
 export default function HomePage() {
   const [posts, setPosts] = useState<any[]>([]);
+  const pagesCache = useRef<Record<number, any[]>>({});
+  const [feedResponse, setFeedResponse] = useState<any>(null);
   const [reels, setReels] = useState([]);
   const [reachedLimit, setReachedLimit] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [starredUsers, setStarredUsers] = useState<Set<number>>(new Set());
   const loadingRef = useRef(false);
   const loadingMoreRef = useRef(false);
   const hasMoreRef = useRef(true);
@@ -27,8 +32,24 @@ export default function HomePage() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const MAX_PAGES = 5;
+  const {
+    isOnline,
+    reconnecting,
+    finishReconnect,
+  } = useNetwork();
   const [loadingMore, setLoadingMore] = useState(false);
+  const postsRequestIdRef =
+    useRef(0);
+  const reelsRequestIdRef =
+    useRef(0);
   const currentTribe = tribes.find(t => t.id === selectedTribe);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const [refreshingFeed, setRefreshingFeed] =
+    useState(false);
+  const showLoading =
+    (loading || reconnecting || refreshingFeed) &&
+    isOnline &&
+    posts.length === 0;
 
   const isEntertainment =
   currentTribe?.name?.toLowerCase() === "entertainment";
@@ -36,6 +57,60 @@ export default function HomePage() {
     (post) => post.content_type !== "short_video"
   );
   
+  useEffect(() => {
+    (async () => {
+      const res = await apiRequest("api/users/starred/");
+      setStarredUsers(new Set(res.starred_users));
+    })();
+  }, []);
+  
+  useEffect(() => {
+    if (
+      !isOnline ||
+      !reconnecting
+    ) {
+      return;
+    }
+  
+    let cancelled = false;
+  
+    const reconnectFeed = async () => {
+      try {
+        setRefreshingFeed(true);
+    
+        await fetchPosts(1, true);
+    
+        if (
+          cancelled ||
+          !navigator.onLine
+        ) {
+          return;
+        }
+    
+        if (filter === "all") {
+          await fetchReels();
+        }
+    
+        finishReconnect();
+      } finally {
+        if (!cancelled) {
+          setRefreshingFeed(false);
+        }
+      }
+    };
+  
+    reconnectFeed();
+  
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isOnline,
+    reconnecting,
+    filter,
+    selectedTribe,
+  ]);
+
   useEffect(() => {
     const check = async () => {
       const status = await apiRequest("api/users/onboarding-status/");
@@ -59,145 +134,255 @@ export default function HomePage() {
   useEffect(() => {
     hasMoreRef.current = hasMore;
   }, [hasMore]);
+  
+  useEffect(() => {
+    reels.slice(0, 3).forEach((reel) => {
+      const media = reel.media_files?.[0];
+  
+      if (!media?.thumbnail) return;
+  
+      const img = new Image();
+      img.loading = "eager";
+      img.decoding = "async";
+      img.src = media.thumbnail;
+    });
+  }, [reels]);
+  
+  useEffect(() => {
+    posts.slice(0, 10).forEach(post => {
+      // preload avatar
+      if (post.user?.avatar) {
+        const avatar = new Image();
+        avatar.loading = "eager";
+        avatar.decoding = "async";
+        avatar.src = post.user.avatar;
+      }
+  
+      // preload media
+      post.media_files?.forEach(file => {
+        const url = file.thumbnail_url ?? file.file_url;
+  
+        if (!url) return;
+  
+        const img = new Image();
+        img.loading = "eager";
+        img.decoding = "async";
+        img.src = url;
+      });
+    });
+  }, [posts]);
 
   const fetchReels = async () => {
-    try {
-      let url = 'api/post/?content_type=short_video';
+    if (!isOnline) return;
   
-      // If inside tribes and it's entertainment → filter by tribe
-      if (filter === "tribes" && isEntertainment && selectedTribe) {
+    const requestId =
+      ++reelsRequestIdRef.current;
+  
+    try {
+      let url =
+        "api/post/?content_type=short_video";
+  
+      if (
+        filter === "tribes" &&
+        isEntertainment &&
+        selectedTribe
+      ) {
         url += `&tribe=${selectedTribe}`;
       }
   
-      const data = await apiRequest(url);
-      const results = data.results ?? data;
+      const data =
+        await apiRequest(url);
   
-      // 🔥 remove empty/broken reels
-      const validReels = results.filter((reel: any) =>
-        reel?.media_files?.some((m: any) => m?.file_url)
-      );
-      
-      setReels(validReels.slice(0, 1));
+      if (
+        !navigator.onLine 
+      ) {
+        return;
+      }
+  
+      if (
+        requestId !==
+        reelsRequestIdRef.current
+      ) {
+        return;
+      }
+  
+      const results =
+        data.results ?? data;
+  
+      const validReels =
+        results.filter(
+          (reel: any) =>
+            reel?.media_files?.some(
+              (m: any) => m?.file_url
+            )
+        );
+  
+      const shuffled =
+        [...validReels].sort(
+          () => Math.random() - 0.5
+        );
+  
+      setReels(shuffled);
     } catch (err) {
-      console.error('Failed to fetch reels', err);
+      console.error(
+        "Failed to fetch reels",
+        err
+      );
     }
   };
   
   const starredUserIds = useMemo(() => {
-    return new Set(
-      posts
-        .filter(p => p.user.is_starred_by_user)
-        .map(p => p.user.id)
-    );
-  }, [posts]);
+    return new Set(feedResponse?.starred_user_ids || []);
+  }, [feedResponse]);
   
   useEffect(() => {
-
-    let ticking = false
+    const target = loadMoreRef.current;
   
-    const handleScroll = () => {
+    if (!target) return;
   
-      if (ticking) return
-  
-      ticking = true
-  
-      requestAnimationFrame(() => {
-  
-        const scrollPosition =
-          window.innerHeight + window.scrollY
-  
-        const threshold =
-          document.body.offsetHeight - 1000
-  
-        if (scrollPosition >= threshold) {
-          loadMore()
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          loadMore();
         }
+      },
+      {
+        rootMargin: "500px",
+      }
+    );
   
-        ticking = false
+    observer.observe(target);
   
-      })
-    }
-  
-    window.addEventListener(
-      "scroll",
-      handleScroll
-    )
-  
-    return () =>
-      window.removeEventListener(
-        "scroll",
-        handleScroll
-      )
-  
-  }, [
-    page,
-    loading,
-    loadingMore,
-    hasMore,
-    reachedLimit
-  ])
+    return () => observer.disconnect();
+  }, [page, hasMore, loading, loadingMore]);
   
   // --- Fetch posts ---
-  const fetchPosts = async (pageNumber = 1, replace = false) => {
-    if (loadingMore || !hasMore || loadingMoreRef.current) return;
-
+  const fetchPosts = async (
+    pageNumber = 1,
+    replace = false
+  ) => {
+    if (
+      loadingMore ||
+      !hasMore ||
+      loadingMoreRef.current
+    ) {
+      return;
+    }
+  
+    const requestId =
+      ++postsRequestIdRef.current;
+  
     try {
       if (pageNumber === 1) {
         setLoading(true);
       } else {
         setLoadingMore(true);
       }
-
+  
       loadingMoreRef.current = true;
-
+  
       let url = `api/feed/?page=${pageNumber}`;
-      if (filter === "tribes" && !selectedTribe) {
+  
+      if (
+        filter === "tribes" &&
+        !selectedTribe
+      ) {
         return;
       }
-
-      if (filter === "tribes" && selectedTribe) {
+  
+      if (
+        filter === "tribes" &&
+        selectedTribe
+      ) {
         url += `&tribe=${selectedTribe}`;
-      } else if (filter === "tribes") {
-        // no tribe selected
-        setPosts([]);
-        setLoading(false);
+      }
+  
+      const data =
+        await apiRequest(url);
+  
+      /*
+        User went offline while request
+        was running.
+      */
+      if (
+        !navigator.onLine 
+      ) {
         return;
       }
-
-      const data = await apiRequest(url);
-
-      if (!data || data.detail === "Not found.") {
+  
+      /*
+        Another request started after
+        this one.
+      */
+      if (
+        requestId !==
+        postsRequestIdRef.current
+      ) {
+        return;
+      }
+  
+      if (
+        !data ||
+        data.detail === "Not found."
+      ) {
         setHasMore(false);
         return;
       }
-
-      const newPosts = data.results || [];
-
-      if (newPosts.length === 0) {
-        setHasMore(false);
-        return;
-      }
+  
+      setFeedResponse(data);
   
       setPosts(prev => {
-        if (replace || pageNumber === 1) {
-          return newPosts;
+        const results =
+          Array.isArray(data.results)
+            ? data.results
+            : [];
+  
+        const newItems =
+          results.map(item => ({
+            id:
+              item.type === "repost"
+                ? `repost-${item.data.id}`
+                : item.data.id,
+  
+            ...item.data,
+            feed_type: item.type,
+  
+            is_starred_by_user:
+              starredUserIds.has(
+                item.data.user?.id
+              ),
+          }));
+
+        pagesCache.current[pageNumber] = newItems;
+  
+        if (
+          replace ||
+          pageNumber === 1
+        ) {
+          return newItems;
         }
-
+  
         const map = new Map();
-
-        [...prev, ...newPosts].forEach(post => {
-          map.set(post.id, post);
-        });
-
-        return Array.from(map.values());
+  
+        [...prev, ...newItems]
+          .forEach(item => {
+            map.set(item.id, item);
+          });
+  
+        return Array.from(
+          map.values()
+        );
       });
   
-      setPage(pageNumber)
+      setPage(pageNumber);
     } catch (err) {
-      console.error('Failed to fetch posts', err);
+      console.error(
+        "Failed to fetch posts",
+        err
+      );
     } finally {
       loadingMoreRef.current = false;
-
+  
       setLoading(false);
       setLoadingMore(false);
     }
@@ -283,8 +468,11 @@ export default function HomePage() {
   }, [filter]);
   
   useEffect(() => {
+    if (!isOnline) return;
 
-    setPosts([])
+    if (pagesCache.current[1]) {
+      setPosts(pagesCache.current[1]);
+    }
   
     setPage(1)
   
@@ -293,7 +481,7 @@ export default function HomePage() {
   
     fetchPosts(1, true)
   
-  }, [filter, selectedTribe])
+  }, [filter, selectedTribe, isOnline])
   
   const handlePostAction = async (
     action: string,
@@ -349,16 +537,40 @@ export default function HomePage() {
         break;
     }
   };
+  
+  const normalizePost = (item: any) => {
+    if (item.feed_type === "repost") {
+      return item.post || item.data?.post;
+    }
+    return item;
+  };
+  
+  const getPostStats = (item: any) => {
+    const post = normalizePost(item);
+  
+    return {
+      likes: post?.likes_count ?? 0,
+      comments: post?.comments_count ?? 0,
+      shares: post?.shares_count ?? 0,
+    };
+  };
+
+  console.log(posts);
+  
+  console.log(posts.map(p => ({
+    user: p?.user?.username,
+    starred: p?.user?.is_starred_by_user
+  })));
 
   return (
-    <div className="mt-3 w-full space-y-4">
+    <div className="mt-24 mb-14 w-full space-y-4">
 
       {/* Create Post / Profile */}
       {user && (
         <div className="flex items-center gap-3 px-3 pt-2">
           <AppLink href={`/main/profile/${user.username}`}
-          prefetch={false}
-          className="flex items-center gap-2">
+            prefetch={false}
+            className="flex items-center gap-2">
             {user.avatar ? (
               <img src={user.avatar} className="w-10 h-10 rounded-full border-2 border-gray-400 dark:border-white object-cover" />
             ) : (
@@ -450,25 +662,33 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Skeleton */}
-      {loading && <><Skeleton /><Skeleton /><Skeleton /></>}
-
       {/* Posts Feed */}
-      {posts.length === 0 && !loading ? (
+      {showLoading ? (
+        <>
+          <Skeleton />
+          <Skeleton />
+          <Skeleton />
+        </>
+      ) : !isOnline ? (
+        <NoInternetCard />
+      ) : posts.length === 0 && !loading ? (
         <div className="text-center text-gray-500 dark:text-gray-400 mt-10">
           No posts yet.
         </div>
       ) : (
         <>
         {filteredPosts.map((post, index) => {
+          const stats = getPostStats(post);
           if (post.content_type === "short_video") return null;
           return (
             <div key={post.id}>
               {/* REPOST */}
-              {post.is_repost ? (
+              {post.feed_type === "repost" ? (
               
                 <RepostCard
                   repost={post}
+                  currentUser={user}
+                  stats={stats}
                   handlePostAction={handlePostAction}
                   starredUserIds={starredUserIds}
                 />
@@ -477,6 +697,8 @@ export default function HomePage() {
               
                 <PostCard
                   post={post}
+                  starredUserIds={starredUserIds}
+                  setStarredUsers={setStarredUsers}
               
                   showJoinButton={
                     !!post.community_id &&
@@ -509,18 +731,38 @@ export default function HomePage() {
               {/* 🔥 Inject reels after 3rd post */}
               {filter === 'all' &&
                reels.length > 0 &&
-               (index + 1) % 5 === 0 && (
-                <ReelCard
-                  post={reels[0]}
-                  showEntertainment
-                />
-              )}
+               (index + 1) % 5 === 0 && (() => {
+              
+                 const reelIndex =
+                   Math.floor((index + 1) / 5) - 1;
+              
+                 const reel =
+                   reels[reelIndex % reels.length];
+              
+                 if (!reel) return null;
+              
+                 return (
+                   <ReelCard
+                     post={reel}
+                     showEntertainment
+                   />
+                 );
+              
+               })()}
             </div>
           )
         })}
         </>
       )}
-      {hasMore && !reachedLimit ? (
+
+      <div ref={loadMoreRef} className="h-1" />
+
+      {isOnline &&
+       !reconnecting &&
+       !refreshingFeed &&
+       hasMore &&
+       !reachedLimit && 
+       posts.length > 0 && (
         <div className="flex justify-center py-6">
           <button
             onClick={loadMore}
@@ -530,7 +772,9 @@ export default function HomePage() {
             {loadingMore ? "Loading..." : "Load More"}
           </button>
         </div>
-      ) : (
+      )}
+  
+      {(!hasMore || reachedLimit) && (
         <div className="flex flex-col items-center gap-3 py-8">
           <p className="text-gray-500 dark:text-gray-400 text-sm">
             {reachedLimit
@@ -546,6 +790,25 @@ export default function HomePage() {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+function NoInternetCard() {
+  return (
+    <div className="mx-3 mt-4 rounded-2xl border border-red-300 bg-red-50 dark:bg-red-950 dark:border-red-800 p-6 text-center">
+      <div className="text-4xl mb-3">
+        📡
+      </div>
+
+      <h3 className="font-semibold text-gray-700 dark:text-gray-200 text-lg">
+        No Internet Connection
+      </h3>
+
+      <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+        Please check your internet and
+        try again.
+      </p>
     </div>
   );
 }
