@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { connectSocket } from '@/lib/socket';
+import { getSocket } from '@/lib/socket';
 import { apiRequest } from '@/utils/api';
 
 export function useCommunitySocket(
