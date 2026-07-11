@@ -72,9 +72,9 @@ export default function TribeRequestDetailPage() {
 
       await apiRequest('api/admin/tribe-requests/approve/', {
         method: 'POST',
-        body: JSON.stringify({
+        data: {
           request_id: requestId,
-        }),
+        },
       });
 
       await fetchRequest();
@@ -95,10 +95,10 @@ export default function TribeRequestDetailPage() {
 
       await apiRequest('api/admin/tribe-requests/reject/', {
         method: 'POST',
-        body: JSON.stringify({
+        data: {
           request_id: requestId,
           reason: reason.trim(),
-        }),
+        },
       });
 
       await fetchRequest();
