@@ -15,6 +15,7 @@ import {
   Calendar,
   Shield,
   FileText,
+  SquareArrowOutUpRight,
 } from 'lucide-react';
 
 type TribeRequestStatus = 'pending' | 'approved' | 'rejected';
@@ -326,7 +327,7 @@ export default function TribeRequestDetailPage() {
                 }
                 className="inline-flex items-center gap-2 rounded-lg bg-black px-4 py-2 text-white transition hover:bg-gray-800"
               >
-                <ExternalLink className="h-4 w-4" />
+                <SquareArrowOutUpRight className="h-4 w-4" />
                 Open Tribe
               </button>
 
