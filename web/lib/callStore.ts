@@ -1,4 +1,4 @@
-type callState =
+export type CallState =
   | "idle"
   | "calling"
   | "ringing"
@@ -6,5 +6,5 @@ type callState =
   | "connected"
   | "reconnecting"
   | "ended"
-  | "rejected";
+  | "rejected"
   | "failed";

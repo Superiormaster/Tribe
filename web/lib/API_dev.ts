@@ -43,7 +43,9 @@ export async function joinCommunity(communityId: string) {
 }
 
 export async function leaveCommunity(communityId: string) {
-  return apiRequest(`api/communities/${communityId}/leave/`, 'POST');
+  return apiRequest(`api/communities/${communityId}/leave/`, {
+    method: "POST",
+  });
 }
 
 // ------------------- TRIBES -------------------

@@ -26,6 +26,16 @@ export interface MessageMedia {
   height?: number;
 }
 
+export interface LocalFile {
+  blob?: Blob;
+  name: string;
+  type: string;
+  size: number;
+  media_url?: string;
+  thumbnail?: string;
+  duration?: number;
+}
+
 export type MediaSource =
   | "upload"
   | "forward"

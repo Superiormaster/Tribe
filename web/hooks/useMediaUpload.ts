@@ -2,13 +2,29 @@ import { useState, useEffect } from 'react';
 import { sendChatMessage } from "@/utils/chat/sendChatMessage";
 import { getVideoDuration } from "@/utils/chat/videoThumbnail";
 import { restoreFiles } from "@/utils/chat/restoreFiles";
-import { Message } from "@/utils/chat/messageContract";
+import type {
+  Message,
+  MessageType,
+} from "@/utils/chat/messageContract";
 import { useNetwork } from '@/components/networkConnection/NetworkContext';
 
 type UploadFile = File & {
   preview?: string;
   thumbnail?: string;
   duration?: number;
+};
+
+type SendMediaPayload = {
+  chat?: number;
+  files?: UploadFile[];
+  caption?: string;
+  encrypted_text?: string;
+  media_source?: "upload" | "forward" | "external";
+  reply_to?: Message | null;
+};
+
+type SendMediaArgs = {
+  message?: SendMediaPayload;
 };
 
 export function useMediaUpload({
@@ -112,7 +128,7 @@ export function useMediaUpload({
   };
   
   const sendMedia = async (
-    { message }: { message?: Message } = {}
+    { message }: SendMediaArgs = {}
   ) => {
     const mediaFiles =
       message?.files ?? files;
@@ -140,10 +156,11 @@ export function useMediaUpload({
             file.preview ||
             URL.createObjectURL(file),
     
-          type:
+          type: (
             file.type.startsWith("video/")
               ? "video"
-              : "image",
+              : "image"
+          ) as MessageType,
     
           thumbnail:
             file.thumbnail || null,
@@ -170,7 +187,7 @@ export function useMediaUpload({
           .map((x: any) => x.duration)
           .filter(Boolean),
       waveform: [],
-      reply_to: replyTo?.id ?? null,
+      reply_to: replyTo,
       status: "pending",
       upload_progress: 0,
       created_at: new Date().toISOString(),

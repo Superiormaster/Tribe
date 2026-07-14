@@ -1,10 +1,4 @@
-export type CallState =
-  | "idle"
-  | "ringing"
-  | "connecting"
-  | "connected"
-  | "reconnecting"
-  | "ended";
+import type { CallState } from "@/lib/callStore"
 
 interface CallUIProps {
   callState: CallState;

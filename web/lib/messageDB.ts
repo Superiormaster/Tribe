@@ -1,4 +1,5 @@
 import { openDB } from "idb";
+import type { Message, LocalFile } from "@/utils/chat/messageContract";
 
 const DB_VERSION = 8;
 const DB_NAME = "tribe-chat-db";

@@ -8,7 +8,7 @@ export const startCall = async (roomId: string, type: "audio" | "video") => {
   // 1. create call first
   const call = await apiRequest("api/chats/calls/create/", {
     method: "POST",
-    body: {
+    data: {
       room_id: roomId,
       type,
     },
