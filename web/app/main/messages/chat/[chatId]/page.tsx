@@ -521,7 +521,7 @@ export default function ChatPage() {
       if (hasMedia) {
         await handleSendMedia({
           message: {
-            chatId: chatIdNum,
+            chat: chatIdNum,
             files: mediaFiles,
             caption: mediaCaption,
             encrypted_text: mediaCaption,

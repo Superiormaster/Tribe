@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { sendChatMessage } from "@/utils/chat/sendChatMessage";
 import { getVideoDuration } from "@/utils/chat/videoThumbnail";
 import { restoreFiles } from "@/utils/chat/restoreFiles";
+import { Message } from "@/utils/chat/messageContract";
 import { useNetwork } from '@/components/networkConnection/NetworkContext';
 
 type UploadFile = File & {
@@ -66,11 +67,11 @@ export function useMediaUpload({
     }
   };
   
-  const resendMedia = async (msg) => {
+  const resendMedia = async (msg: any) => {
     console.log("RESEND MEDIA FUNCTION", msg);
     // STEP 1: mark UI uploading
-    setMessages(prev =>
-      prev.map(m =>
+    setMessages((prev: any) =>
+      prev.map((m: any) =>
         m.client_id === msg.client_id
           ? { ...m, status: "uploading", upload_progress: 0 }
           : m
@@ -110,9 +111,9 @@ export function useMediaUpload({
     });
   };
   
-  const sendMedia = async ({
-    message,
-  } = {}) => {
+  const sendMedia = async (
+    { message }: { message?: Message } = {}
+  ) => {
     const mediaFiles =
       message?.files ?? files;
   
@@ -123,7 +124,7 @@ export function useMediaUpload({
       message?.reply_to ?? null;
   
     const mediaChatId =
-      message?.chatId ?? chatId;
+      message?.chat ?? chatId;
   
     if (
       !mediaChatId ||
@@ -134,7 +135,7 @@ export function useMediaUpload({
   
     const optimisticMedia =
       await Promise.all(
-        mediaFiles.map(async (file) => ({
+        mediaFiles.map(async (file: UploadFile) => ({
           url:
             file.preview ||
             URL.createObjectURL(file),
@@ -153,46 +154,29 @@ export function useMediaUpload({
       );
   
     const optimistic: Message = {
-
       client_id: crypto.randomUUID(),
-  
       chat: mediaChatId,
-  
       sender: currentUser.id,
-  
       encrypted_text: mediaCaption,
       caption: mediaCaption,
-  
       media_type: optimisticMedia.length > 1
           ? "gallery"
           : optimisticMedia[0].type,
-  
-      media_url: optimisticMedia.map(x => x.url),
-  
+      media_url: optimisticMedia.map((x: any) => x.url),
       thumbnail: optimisticMedia
-          .map(x => x.thumbnail)
+          .map((x: any) => x.thumbnail)
           .filter(Boolean),
-  
       duration: optimisticMedia
-          .map(x => x.duration)
+          .map((x: any) => x.duration)
           .filter(Boolean),
-  
       waveform: [],
-  
       reply_to: replyTo?.id ?? null,
-  
       status: "pending",
-  
       upload_progress: 0,
-  
       created_at: new Date().toISOString(),
-  
       reactions: [],
-  
       hidden_for: [],
-  
       is_deleted: false,
-  
       files: mediaFiles,
     };
   

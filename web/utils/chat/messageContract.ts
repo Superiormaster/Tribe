@@ -26,6 +26,11 @@ export interface MessageMedia {
   height?: number;
 }
 
+export type MediaSource =
+  | "upload"
+  | "forward"
+  | "external";
+
 export interface Message {
 
   // ids
@@ -41,6 +46,7 @@ export interface Message {
 
   media_url?: string[];
   media_type?: MessageType;
+  media_source?: MediaSource;
 
   thumbnail?: string[];
   duration?: number[];
