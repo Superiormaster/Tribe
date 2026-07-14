@@ -181,7 +181,7 @@ export default function SettingsPage() {
       <AccountSwitcherModal
         open={showSwitcher}
         onClose={() => setShowSwitcher(false)}
-        onSwitch={(account) => {
+        onSwitch={(account: any) => {
           setCurrentAccount(account);
           setShowSwitcher(false);
         }}

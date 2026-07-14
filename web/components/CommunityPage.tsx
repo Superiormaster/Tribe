@@ -28,6 +28,7 @@ export default function CommunityPage({
   const { push, replace } = useNavigation();
 
   const [community, setCommunity] = useState<any>({});
+  const [actionType, setActionType] = useState<"approve" | "reject" | null>(null);
   const [posts, setPosts] = useState<any[]>([]);
   const [pendingPosts, setPendingPosts] = useState<any[]>([]);
   const [members, setMembers] = useState<any[]>([]);
@@ -46,7 +47,7 @@ export default function CommunityPage({
     useState<Set<number>>(new Set());
 
   const [loading, setLoading] = useState(false);
-  const [suggestedCommunities, setSuggestedCommunities] = useState([]);
+  const [suggestedCommunities, setSuggestedCommunities] = useState<any[]>([]);
   
   const isOwner =
   Number(user?.id) === Number(community?.owner?.id) ||
@@ -119,7 +120,6 @@ export default function CommunityPage({
     setLoading(true);
   
     try {
-  
       // COMMUNITY FEED
       const data = await apiRequest(
         `api/communities/${communityId}/feed/`
@@ -128,38 +128,27 @@ export default function CommunityPage({
       const results = data.results || data;
 
       const mapped = results.map((item: any) => {
-  
         // -------------------------
         // REPOST
         // -------------------------
         if (item.type === "repost") {
-  
           return {
             ...item,
-  
             type: "repost",
-  
             created_at: item.created_at,
-  
             community_pinned:
               item.community_pinned || false,
-  
             community_pin_order:
               item.community_pin_order || 0,
-  
             post: item.post
               ? {
                   ...item.post,
-  
                   likes_count:
                     item.post.likes_count || 0,
-  
                   comments_count:
                     item.post.comments_count || 0,
-  
                   shares_count:
                     item.post.shares_count || 0,
-  
                   media_files:
                     item.post.media_files || [],
                 }
@@ -172,39 +161,26 @@ export default function CommunityPage({
         // -------------------------
         return {
           ...item,
-  
           type: "post",
-  
           community_pinned:
             item.community_pinned || false,
-  
           community_pin_order:
             item.community_pin_order || 0,
-  
           likes_count:
             item.likes_count || 0,
-  
           comments_count:
             item.comments_count || 0,
-  
           shares_count:
             item.shares_count || 0,
-  
           media_files:
             item.media_files || [],
         };
       });
-  
       setPosts(mapped);
-  
     } catch (err) {
-  
       console.error(err);
-  
     } finally {
-  
       setLoading(false);
-  
     }
   };
   
@@ -256,11 +232,8 @@ export default function CommunityPage({
         setShowRefresh(true);
         setHasMore(false);
       }
-  
     } catch (err) {
-  
       console.error(err);
-  
       // page doesn't exist
       setHasMore(false);
     }
@@ -359,9 +332,9 @@ export default function CommunityPage({
   };
 
   const toggleSelect = (id: number) => {
-    setSelectedPosts((prev) =>
+    setSelectedPosts((prev: any) =>
       prev.includes(id)
-        ? prev.filter((p) => p !== id)
+        ? prev.filter((p: any) => p !== id)
         : [...prev, id]
     );
   };
@@ -371,7 +344,7 @@ export default function CommunityPage({
       status === "joined" ||
       status === "already_joined"
     ) {
-      setCommunity(prev => ({
+      setCommunity((prev: any) => ({
         ...prev,
         joined: true,
         requested: false,
@@ -384,7 +357,7 @@ export default function CommunityPage({
       status === "requested" ||
       status === "already_requested"
     ) {
-      setCommunity(prev => ({
+      setCommunity((prev: any) => ({
         ...prev,
         joined: false,
         requested: true,
@@ -395,7 +368,7 @@ export default function CommunityPage({
   
     // 🔥 INVITED = BLOCK STATE
     if (status === "invited") {
-      setCommunity(prev => ({
+      setCommunity((prev: any) => ({
         ...prev,
         joined: false,
         requested: false,
@@ -409,8 +382,8 @@ export default function CommunityPage({
     const previousSuggested = [...suggestedCommunities];
   
     // 🔥 OPTIMISTIC UPDATE (like TribePage)
-    setSuggestedCommunities(prev =>
-      prev.map(c => {
+    setSuggestedCommunities((prev: any) =>
+      prev.map((c: any) => {
         if (c.id !== communityId) return c;
   
         return {
@@ -459,11 +432,8 @@ export default function CommunityPage({
       );
   
       applyJoinStatus(response.status);
-  
     } catch (err) {
-  
       console.error(err);
-  
       // rollback
       setCommunity(previousCommunity);
     }
@@ -580,7 +550,6 @@ export default function CommunityPage({
       <CommunityTabs
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        canModerate={canModerate}
         onChat={() =>
           push(`/main/community/${communityId}/chat`)
         }
@@ -612,6 +581,7 @@ export default function CommunityPage({
 
       {activeTab === "pending" && (
         <CommunityPending
+          setActionType={setActionType}
           pendingPosts={pendingPosts}
           selectMode={selectMode}
           selectedPosts={selectedPosts}
@@ -635,6 +605,7 @@ export default function CommunityPage({
         onClose={() => setShowMenuModal(false)}
         isOwner={isOwner}
         canManage={canManage}
+        canLeave={canLeave}
         onLeave={handleLeave}
         onSettings={() =>
           push(

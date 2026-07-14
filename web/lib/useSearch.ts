@@ -3,6 +3,12 @@
 import { useEffect, useState } from 'react';
 import { apiRequest } from '@/utils/api';
 
+type TrendingItem = {
+  query: string;
+  count: number;
+  unique_users: number;
+};
+
 export default function useSearch() {
 
   const [query, setQuery] = useState('');
@@ -26,7 +32,7 @@ export default function useSearch() {
   const [history, setHistory] =
     useState<string[]>([]);
 
-  const [trending, setTrending] = useState<string[]>([]);
+  const [trending, setTrending] = useState<TrendingItem[]>([]);
 
   // LOAD HISTORY
   useEffect(() => {
@@ -45,8 +51,10 @@ export default function useSearch() {
   
   const fetchTrending = async () => {
     try {
-      const data = await apiRequest("api/search/trending/");
-      setTrending(data.results || data);
+      const data: { results?: TrendingItem[] } | TrendingItem[] =
+        await apiRequest("api/search/trending/");
+  
+      setTrending(Array.isArray(data) ? data : data.results || []);
     } catch (err) {
       console.error("Failed to load trending:", err);
     }

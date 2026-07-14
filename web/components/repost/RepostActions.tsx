@@ -2,10 +2,17 @@
 
 import { Repeat, MessageCircle } from 'lucide-react';
 
-export default function RepostActions({ onNormal, onQuote }) {
+interface RepostActionsProps {
+  onNormal: () => void;
+  onQuote: () => void;
+}
+
+export default function RepostActions({
+  onNormal,
+  onQuote,
+}: RepostActionsProps) {
   return (
     <div className="flex flex-col space-y-2">
-
       {/* NORMAL REPOST */}
       <button
         onClick={onNormal}
@@ -23,7 +30,6 @@ export default function RepostActions({ onNormal, onQuote }) {
         <MessageCircle size={18} />
         Quote Repost
       </button>
-
     </div>
   );
 }

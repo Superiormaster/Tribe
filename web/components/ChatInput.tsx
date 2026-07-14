@@ -68,6 +68,12 @@ type Props = {
   
   showDrawer: boolean;
   setShowDrawer: (v: boolean) => void;
+  drawerMode:
+    | "plus"
+    | "emoji"
+    | "gif"
+    | "stickers"
+    | null;
   setDrawerMode: (
     v:
       | "plus"
@@ -77,8 +83,8 @@ type Props = {
       | null
   ) => void;
   
-  showMediaPicker: boolean
-  showCaptionBar: boolean 
+  showMediaPicker?: boolean
+  showCaptionBar?: boolean 
   previewIndex: number | null  
   
   selectedFiles: MediaFile[];
@@ -87,9 +93,9 @@ type Props = {
     React.SetStateAction<MediaFile[]>
   >;
   
-  index: number;
-  setIndex: React.Dispatch<React.SetStateAction<number>>;
-  onClose: () => void;
+  index?: number;
+  setIndex?: React.Dispatch<React.SetStateAction<number>>;
+  onClose?: () => void;
   
   setPreviewIndex: React.Dispatch<
     React.SetStateAction<number | null>
@@ -589,7 +595,7 @@ export default function ChatInput({
                   <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
             
                   <span className="dark:text-white text-gray-600 text-lg">
-                    {formatTime(duration)}
+                    {formatTime(duration ?? 0)}
                   </span>
                 </div>
             
@@ -792,19 +798,19 @@ export default function ChatInput({
           index={previewIndex}
           setIndex={setPreviewIndex}
           onClose={() => setPreviewIndex(null)}
-          onAddFiles={(newFiles) => {
+          onAddFiles={(newFiles: MediaFile[]) => {
             setSelectedFiles(prev => [
               ...prev,
               ...newFiles,
             ]);
           }}
-          onDelete={(index) => {
+          onDelete={(index: number) => {
             setSelectedFiles(prev => {
               const next = prev.filter((_, i) => i !== index);
           
               if (next.length === 0) {
                 setPreviewIndex(null);
-              } else if (previewIndex >= next.length) {
+              } else if (previewIndex !== null && previewIndex >= next.length) {
                 setPreviewIndex(next.length - 1);
               }
           

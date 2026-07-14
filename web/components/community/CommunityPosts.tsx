@@ -11,24 +11,24 @@ import { Users } from "lucide-react";
 type Props = {
   posts: any[];
   loading: boolean;
-  onToggleCommunityPin?: (postId: number) => void;
-  handleJoinCommunity?: (id: number) => void;
-  canManage?: boolean;
-  currentUser?: any;
-  handlePostAction?: (action: string, postId: number) => void;
-  
-  showRefresh?: boolean;
+  currentUser: any;
 
-  loadMore?: () => void;
-  hasMore?: boolean;
+  canDelete: boolean;
+  canRepost: boolean;
+  canManage: boolean;
 
-  refreshFeed?: () => void;
-  suggestedCommunities?: any[];
-  showSuggestions?: boolean;
-  starredUserIds?: Set<number>;
-  setStarredUsers?: React.Dispatch<
-    React.SetStateAction<Set<number>>
-  >;
+  onToggleCommunityPin: (postId: number) => void | Promise<void>;
+  handleJoinCommunity: (id: number) => void | Promise<void>;
+  handlePostAction: (action: string, postId: number) => void | Promise<void>;
+
+  showRefresh: boolean;
+  hasMore: boolean;
+  starredUserIds: Set<number>;
+  setStarredUsers: React.Dispatch<React.SetStateAction<Set<number>>>;
+  loadMore: () => void;
+  refreshFeed: () => void;
+  suggestedCommunities: any[];
+  showSuggestions: boolean;
 };
 
 export default function CommunityPosts({

@@ -7,12 +7,48 @@ import { timeAgo } from "@/utils/timeAgo";
 import ReportCommentModal from "@/components/ReportCommentModal";
 import { connectCommentsSocket } from "@/lib/comment-socket";
 import { ThumbsUp } from 'lucide-react';  
+type ReplyTarget = {
+  id: number | null;
+  type: "reply" | "comment" | null;
+  username?: string;
+};
 
-export default function CommentList({ postId, user, setReplyTarget, comments, setComments }) {
+type User = {
+  id: number;
+  username: string;
+  avatar?: string;
+};
+
+type Comment = {
+  id: number;
+  text: string;
+  created_at: string;
+  user: User;
+  replies?: Comment[];
+  likes_count?: number;
+  is_liked?: boolean;
+};
+
+interface CommentListProps {
+  postId: number;
+  user: User | null;
+  replyTarget?: ReplyTarget | null;
+  setReplyTarget: React.Dispatch<React.SetStateAction<ReplyTarget>>;
+  comments: Comment[];
+  setComments: React.Dispatch<React.SetStateAction<Comment[]>>;
+}
+
+export default function CommentList({
+  postId,
+  user,
+  setReplyTarget,
+  comments,
+  setComments,
+}: CommentListProps) {
   const [nextPage, setNextPage] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [showReplies, setShowReplies] = useState<Record<number, boolean>>({});
-  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState<number | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   
   const [editTarget, setEditTarget] = useState<number | null>(null);
@@ -141,7 +177,7 @@ export default function CommentList({ postId, user, setReplyTarget, comments, se
     }
   };
   
-  const handleDeleteComment = async (commentId) => {
+  const handleDeleteComment = async (commentId: number) => {
     setComments(prev =>
       removeCommentFromTree(prev, commentId)
     );
@@ -157,8 +193,12 @@ export default function CommentList({ postId, user, setReplyTarget, comments, se
     }
   };
   
-  const updateCommentTree = (list: any[], id: number, updateFn: Function) => {
-    return list.map(item => {
+  const updateCommentTree = (
+    list: Comment[],
+    id: number,
+    updateFn: (comment: Comment) => Comment
+  ): Comment[] => {
+    return list.map((item) => {
       if (item.id === id) {
         return updateFn(item);
       }
@@ -166,7 +206,7 @@ export default function CommentList({ postId, user, setReplyTarget, comments, se
       if (item.replies?.length) {
         return {
           ...item,
-          replies: updateCommentTree(item.replies, id, updateFn)
+          replies: updateCommentTree(item.replies, id, updateFn),
         };
       }
   
@@ -174,7 +214,10 @@ export default function CommentList({ postId, user, setReplyTarget, comments, se
     });
   };
   
-  const removeCommentFromTree = (list, id) => {
+  const removeCommentFromTree = (
+    list: Comment[],
+    id: number
+  ): Comment[] => {
     return list
       .filter(item => item.id !== id)
       .map(item => ({
@@ -184,34 +227,19 @@ export default function CommentList({ postId, user, setReplyTarget, comments, se
           : []
       }));
   };
-  
-  const handleReply = async (commentId: number) => {
-    const text = replyText[commentId];
-  
-    if (!text?.trim()) return;
-  
-    await apiRequest("api/comments/", {
-      method: "POST",
-      data: {
-        post: postId,
-        text,
-        parent: commentId,
-      },
-    });
-  
-    setReplyText(prev => ({
-      ...prev,
-      [commentId]: ""
-    }));
-  
-    setReplyingTo(null);
-  };
-  
-  const CommentItem = ({ item, depth = 0 }) => {
+ 
+  const CommentItem = ({
+    item,
+    depth = 0,
+  }: {
+    item: Comment;
+    depth?: number;
+  }) => {
     const isOpen = showReplies[item.id] ?? false;
     const isLiked = item.is_liked ?? false;
     const likesCount = item.likes_count ?? 0;
     const isOwner = user?.id === item.user?.id;
+    const replies = item.replies ?? [];
   
     return (
       <div className={`mt-2 ${depth > 0 ? "ml-6 border-l pl-3" : ""}`}>
@@ -369,21 +397,20 @@ export default function CommentList({ postId, user, setReplyTarget, comments, se
               </div>
     
               {/* 🔥 VIEW / HIDE TOGGLE */}
-              {item.replies?.length > 0 && (
+              {replies.length > 0 && (
                 <button
                   onClick={() => toggleReplies(item.id)}
                   className="text-xs text-gray-500 mt-1"
                 >
                   {isOpen
                     ? "Hide replies"
-                    : `View replies (${item.replies.length})`}
+                    : `View replies (${replies.length})`}
                 </button>
               )}
-    
-              {/* 🔥 REPLIES (RECURSIVE) */}
-              {isOpen && item.replies?.length > 0 && (
+              
+              {isOpen && replies.length > 0 && (
                 <div className="mt-2">
-                  {item.replies.map((child, index) => (
+                  {replies.map((child, index) => (
                     <CommentItem
                       key={`reply-${child.id}-${depth}-${index}`}
                       item={child}
@@ -399,7 +426,7 @@ export default function CommentList({ postId, user, setReplyTarget, comments, se
   };
 
   useEffect(() => {
-    let ws;
+    let ws: WebSocket | null = null;
   
     const init = async () => {
       ws = await connectCommentsSocket(postId);
@@ -413,22 +440,22 @@ export default function CommentList({ postId, user, setReplyTarget, comments, se
           const newComment = data.comment;
   
           setComments(prev => {
-            const addReply = (list) =>
-              list.map(c => {
+            const addReply = (list: Comment[]): Comment[] =>
+              list.map((c: Comment) => {
                 if (c.id === newComment.root_parent_id) {
                   return {
                     ...c,
-                    replies: [...(c.replies || []), newComment]
+                    replies: [...(c.replies || []), newComment],
                   };
                 }
-  
+            
                 if (c.replies?.length) {
                   return {
                     ...c,
-                    replies: addReply(c.replies)
+                    replies: addReply(c.replies),
                   };
                 }
-  
+            
                 return c;
               });
   
@@ -485,6 +512,7 @@ export default function CommentList({ postId, user, setReplyTarget, comments, se
             const isLiked = comment.is_liked ?? false;
             const likesCount = comment.likes_count ?? 0;
             const isOwner = user?.id === comment.user?.id;
+            const replies = comment.replies ?? [];
 
             return (
               <div key={`comment-${comment.id}`} className="flex gap-2">
@@ -541,13 +569,14 @@ export default function CommentList({ postId, user, setReplyTarget, comments, se
                         handleLike(comment.id);
                       }}
                       className={`flex items-center font-medium gap-1 ${
-                        comment.is_liked ? "text-blue-600" : "text-gray-500"
+                        isLiked ? "text-blue-600" : "text-gray-500"
                       }`}
                     >
                       <ThumbsUp size={14} className="mr-2" />
-                     {comment.likes_count > 0 && (
-                      <span>{comment.likes_count}</span>
-                    )}
+
+                      {likesCount > 0 && (
+                        <span>{likesCount}</span>
+                      )}
                     </button>
               
                       {/* 💬 REPLY BUTTON */}
@@ -644,28 +673,29 @@ export default function CommentList({ postId, user, setReplyTarget, comments, se
                     </div>
       
                     {/* 🔥 REPLIES */}
-                    {comment.replies?.length > 0 && (
+                    {replies.length > 0 && (
                       <div className="ml-6 mt-2">
                     
-                        {/* TOGGLE BUTTON */}
                         <button
                           onClick={() => toggleReplies(comment.id)}
-                          className="text-xs text-gray-500 mb-2"
+                          className="text-xs text-gray-500"
                         >
                           {showReplies[comment.id]
                             ? "Hide replies"
-                            : `View replies (${comment.replies.length})`}
+                            : `View replies (${replies.length})`}
                         </button>
                     
-                        {/* ONLY SHOW WHEN OPEN */}
-                        {showReplies[comment.id] &&
-                        comment.replies.map((reply, index) => (
-                          <CommentItem
-                            key={`reply-${reply.id}-${index}`}
-                            item={reply}
-                            depth={1}
-                          />
-                        ))}
+                        {showReplies[comment.id] && (
+                          <div className="mt-2">
+                            {replies.map((reply, index) => (
+                              <CommentItem
+                                key={`reply-${reply.id}-${index}`}
+                                item={reply}
+                                depth={1}
+                              />
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                 </div>

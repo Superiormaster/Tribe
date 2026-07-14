@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useMemo } from "react";
 import MediaGrid from '@/components/chat/MediaGridBubble';
+import { Message } from "@/utils/chat/messageContract";
 import { getMessageKey } from "@/utils/chat/messageMerger";
 import ProgressiveImage from '@/components/chat/ProgressiveImage';
 import {
@@ -16,11 +17,10 @@ import AudioWaveform from '@/components/AudioWaveform';
 import AudioBubble from "@/components/chat/AudioBubble";
 
 type MediaItem = {
-  src: string;
-  type: "image" | "video";
-  file?: File;
+  url: string | null;
   thumbnail?: string;
-  isLocal?: boolean;
+  duration?: number;
+  blob?: Blob;
 };
 
 export default function PrivateBubble({
@@ -100,70 +100,40 @@ export default function PrivateBubble({
     a.click();
   };
   
-  const mediaItems =
-    useMemo(() => {
-      if (!msg.files?.length) {
-        return [];
-      }
+  const mediaItems = useMemo<MediaItem[]>(() => {
+    if (!msg.files?.length) return [];
   
-      return msg.files.map(
-        (item: any) => ({
-          url:
-            item.media_url ||
-            item.preview ||
-            (
-              item.blob instanceof Blob
-                ? URL.createObjectURL(
-                    item.blob
-                  )
-                : null
-            ),
+    return msg.files.map((item: any): MediaItem => ({
+      url:
+        item.media_url ||
+        item.preview ||
+        (item.blob instanceof Blob
+          ? URL.createObjectURL(item.blob)
+          : null),
   
-          thumbnail:
-            item.thumbnail,
+      thumbnail: item.thumbnail,
+      duration: item.duration,
+      blob: item.blob,
+    }));
+  }, [msg.files]);
   
-          duration:
-            item.duration,
+  const files = mediaItems.map((item: MediaItem, i: number) => {
+    const file = msg.files?.[i];
   
-          blob:
-            item.blob,
-        })
-      );
-    }, [msg.files]);
+    const blob =
+      file instanceof File
+        ? file
+        : file?.blob;
   
-  const files =
-    mediaItems.map(
-      (item, i) => {
-        const file =
-          msg.files?.[i];
+    const isVideo = blob?.type?.startsWith("video/");
   
-        const blob =
-          file instanceof File
-            ? file
-            : file?.blob;
-  
-        const isVideo =
-          blob?.type?.startsWith(
-            "video/"
-          );
-  
-        return {
-          media_url:
-            item.url,
-  
-          thumbnail:
-            item.thumbnail,
-  
-          duration:
-            item.duration,
-  
-          media_type:
-            isVideo
-              ? "video"
-              : "image",
-        };
-      }
-    );
+    return {
+      media_url: item.url,
+      thumbnail: item.thumbnail,
+      duration: item.duration,
+      media_type: isVideo ? "video" : "image",
+    };
+  });
   
   useEffect(() => {
     return () => {
@@ -218,7 +188,9 @@ export default function PrivateBubble({
       index,
       msg,
       isMine: isCurrentUser,
-      onReply: setReplyingTo,
+      onReply: (msg: Message) => {
+        setReplyingTo(msg);
+      }
     });
   };
   
@@ -489,7 +461,12 @@ export default function PrivateBubble({
       case "gallery":
         return (
           <MediaGrid
-            items={mediaItems.map((item, index) => ({
+            items={mediaItems
+            .filter(
+              (item): item is typeof item & { url: string } =>
+                item.url !== null
+            )
+            .map((item, index) => ({
               url: item.url,
               thumb: item.thumbnail,
               priority: priority && index < 2,

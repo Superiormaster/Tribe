@@ -1,13 +1,14 @@
 'use client'
 
 import { createContext, useState, useMemo, useEffect, ReactNode } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { apiRequest } from "@/utils/api";
 import { connectNotificationSocket } from "@/lib/notifications-socket";
 
 interface NotificationContextType {
   notifications: any[];
   count: number;
-  setCount: (c: number) => void;
+  setCount: React.Dispatch<React.SetStateAction<number>>;
   addNotification: (n: any) => void;
   toast: any | null;
   dismissToast: () => void;
@@ -71,7 +72,7 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
       setCount(unread);
     });
     
-    let ws;
+    let ws: WebSocket | null = null;
   
     const connect =
       async () => {

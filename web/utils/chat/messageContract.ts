@@ -32,35 +32,33 @@ export interface Message {
   client_id: string;
   id?: number;
 
-  chat: number;
+  chat?: number;
 
   sender: number;
 
-  encrypted_text: string;
+  encrypted_text?: string;
   caption?: string;
 
-  media_url: string[];
-  media_type: MessageType;
+  media_url?: string[];
+  media_type?: MessageType;
 
-  thumbnail: string[];
-  duration: number[];
+  thumbnail?: string[];
+  duration?: number[];
 
-  waveform: number[];
+  waveform?: number[];
 
-  reply_to?: number | null;
+  status?: MessageStatus;
 
-  status: MessageStatus;
+  upload_progress?: number;
 
-  upload_progress: number;
-
-  created_at: string;
+  created_at?: string;
   updated_at?: string;
 
-  reactions: any[];
+  reactions?: any[];
 
-  hidden_for: number[];
+  hidden_for?: number[];
 
-  is_deleted: boolean;
+  is_deleted?: boolean;
 
   files?: LocalFile[];
   server_id?:number
@@ -73,5 +71,5 @@ export interface Message {
   
   delivered_to?:number[]
   
-  reply_to?:Message|null
+  reply_to?: Message|null
 }

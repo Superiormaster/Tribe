@@ -32,10 +32,16 @@ type PostCardProps = {
     }[]  
     content_type: string  
     likes_count: number  
-    comments_count: number  
+    comments_count: number 
+    is_liked?: boolean;
     liked_by_user: boolean
     community_id?: number
-    views_count?: number
+    community_joined?: boolean
+    profile_pinned?: boolean
+    community_pinned?: boolean
+    is_edited?: boolean
+    updated_at?: string
+    views_count: number
     created_at: string  
     is_starred_by_user: boolean
   }  
@@ -49,7 +55,6 @@ type PostCardProps = {
   hideCommunityName?: boolean
   hideStarButton?: boolean
   showJoinButton?: boolean
-  community_joined?: boolean
   
   isMyProfile?: boolean
 
@@ -87,13 +92,13 @@ type PostCardProps = {
   showPinnedLabel?: boolean
 }  
   
-function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyProfile, canPin, setSelectMode, isPinnedDraggable, onToggleProfilePin, onLongPress, onToggleCommunityPin, canBulkSelect, canEdit, canRepost, canReport, onApprove, onReject, canDelete, onSelect, isSelected, isEmbedded, isRepostContext, starredUserIds, setStarredUsers,
+function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyProfile, canPin, setSelectMode, isPinnedDraggable, onToggleProfilePin, onLongPress, onToggleCommunityPin, canBulkSelect, canEdit, canRepost, canReport, onApprove, onReject, canDelete, onSelect, isSelected, isEmbedded, isRepostContext, repostId, repostOwnerId, starredUserIds, setStarredUsers,
   handlePostAction, hideCommunityName = false, hideStarButton = false, showJoinButton = false, showManageButtons = false, showPinnedLabel=true }: PostCardProps) {
   const [liked, setLiked] = useState(!!post.is_liked || !!post.liked_by_user)
   const [likes, setLikes] = useState(post.likes_count || 0)
   const isStarred = starredUserIds?.has(post.user.id);
   const [menuOpen, setMenuOpen] = useState(false);
-  const { user: currentUser } = useContext(UserContext)  
+  const { user: currentUser } = useContext(UserContext)!
   const { push } = useNavigation()
   const menuRef = useRef<HTMLDivElement>(null);
   const [reportOpen, setReportOpen] = useState(false)
@@ -102,10 +107,8 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
   const [joined, setJoined] = useState(false);
   const alreadyJoined = post.community_joined;
   const hasValidCommunity =
-    post?.community_id !== undefined &&
-    post?.community_id !== null &&
-    post?.community_id !== "undefined" &&
-    post?.community_name;
+    typeof post.community_id === "number" &&
+    !!post.community_name;
   const isLikedByUser = liked;
   const postRef = useRef<HTMLDivElement | null>(null);
   const isPostOwner =
@@ -455,7 +458,7 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
         <span className="ml-2 flex flex-1 items-center flex-shrink-0 text-gray-500 text-sm">
           <AlarmClock className="text-sm mr-1" />
         
-          {post.is_edited ? (
+          {post.is_edited && post.updated_at ? (
             <>
               Edited • {timeAgo(post.updated_at)}
             </>
@@ -654,7 +657,7 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
         <ShareButton post={post} />
 
         <span className="flex items-center text-gray-500"> <ChartNoAxesColumn className="mr-2" />
-          {post.views_count > 0 && (
+          {post.views_count && post.views_count > 0 && (
             <span>{post.views_count}</span>
           )}
         </span>
@@ -710,7 +713,25 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
   )  
 }  
 
-const MediaItem = ({ media, index, videoRefs, handlePlay, handleDoubleClick }) => {
+interface MediaItemProps {
+  media: {
+    file_url: string;
+    thumbnail_url?: string;
+    media_type: "image" | "video";
+  };
+  index: number;
+  videoRefs: React.MutableRefObject<(HTMLVideoElement | null)[]>;
+  handlePlay: (index: number, e: React.MouseEvent) => void;
+  handleDoubleClick: (index: number) => void;
+}
+
+const MediaItem = ({
+  media,
+  index,
+  videoRefs,
+  handlePlay,
+  handleDoubleClick,
+}: MediaItemProps) => {
   const { ref, isVisible } = useInView();
 
   if (media.media_type === "image") {
@@ -733,7 +754,9 @@ const MediaItem = ({ media, index, videoRefs, handlePlay, handleDoubleClick }) =
           className="relative"
         >
           <video
-            ref={(el) => (videoRefs.current[index] = el)}
+            ref={(el): void => {
+              videoRefs.current[index] = el;
+            }}
             src={media.file_url}
             poster={media.thumbnail_url}
             preload="metadata"

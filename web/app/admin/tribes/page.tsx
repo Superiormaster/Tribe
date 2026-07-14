@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 
-import AppLink from '@/components/common/AppLink';
+import AppLink from '@/components/AppLink';
 import { apiRequest } from '@/utils/api';
 
 import {

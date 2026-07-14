@@ -11,7 +11,7 @@ export default function ApprovedPostsPage() {
 
   const params = useParams();
   const communityId = params.id;
-  const { user: currentUser } = useContext(UserContext);
+  const { user: currentUser } = useContext(UserContext)!;
 
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);

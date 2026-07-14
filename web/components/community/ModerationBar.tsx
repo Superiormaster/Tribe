@@ -4,7 +4,7 @@ type Props = {
   selectedCount: number;
   onApprove?: () => void;
   onReject?: () => void;
-  onDelete: () => void;
+  onDelete?: () => void;
   onCancel: () => void;
 };
 

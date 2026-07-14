@@ -19,29 +19,23 @@ import { useChatMessages } from '@/hooks/useChatMessages';
 import { useForwardMessages } from '@/hooks/useForwardMessages';
 import { useMediaUpload } from '@/hooks/useMediaUpload';
 import { getMessageKey } from '@/utils/chat/messageMerger';
+import type { MessageStatus } from "@/utils/chat/messageContract";
 import {
   saveMessage, getMessagesByChat, saveMessages, saveDraft, saveChatMeta, updateMessage, deleteChatData
 } from "@/lib/messageDB";
+import type { ChatUser } from "@/components/chat/chat";
 import { muteChat, unmuteChat } from '@/utils/chat/MessageClientApi';
 import { useChatSocket } from '@/lib/useChatSocket';
 import { useVoiceRecorder } from '@/lib/useVoiceRecorder';
 import VoiceRecorderUI from '@/components/VoiceRecorder';
 import { useNetwork } from '@/components/networkConnection/NetworkContext';
 import { useCallManager } from '@/lib/useCallManager';
-import { getLivekitToken } from "@/lib/calls";
+import { getLivekitToken, startCall } from "@/lib/calls";
 import CallUI from '@/components/CallUI';
 import { motion, AnimatePresence } from 'framer-motion';
 import ChatInput from '@/components/ChatInput';
-
-type ChatUser = {
-  id: number;
-  username: string;
-  avatar?: string;
-  status?: string;
-  last_seen?: string;
-  is_message_blocked?: boolean;
-  blocked_me?: boolean;
-};
+import { useNavigation } from "@/utils/useNavigation";
+import { Message } from "@/utils/chat/messageContract";
 
 type voiceState =
   | "idle"
@@ -53,6 +47,7 @@ type voiceState =
 export default function ChatPage() {
   const { user } = useContext(UserContext)!;
   const { canCommunicate } = useNetwork();
+  const { replace } = useNavigation();
 
   useEffect(() => {
     console.log("Chat page mounted");
@@ -81,20 +76,19 @@ export default function ChatPage() {
     index: number;
     msg: any;
     isMine: boolean;
-    onReply: React.Dispatch<
-      React.SetStateAction<any | null>
-    >;
+    onReply?: (msg: Message) => void;
   } | null>(null);
   const isPreviewOpen = previewState !== null;
 
   const chatIdNum = chatId ? Number(chatId) : null;
   const [chatUser, setChatUser] = useState<ChatUser | null>(null);
 
-  const [lastMessageStatus,
-    setLastMessageStatus] =
-    useState(null);
+  const [lastMessageStatus, setLastMessageStatus] =
+  useState<MessageStatus | null>(null);
   const [showDrawer, setShowDrawer] = useState(false);
-  const [drawerMode, setDrawerMode] = useState<"plus" | "emoji" | null>(null);
+  const [drawerMode, setDrawerMode] = useState<
+    "plus" | "emoji" | "gif" | "stickers" | null
+  >(null);
   const [isTyping, setIsTyping] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   
@@ -118,6 +112,9 @@ export default function ChatPage() {
   const [replyingTo, setReplyingTo] = useState<any | null>(null);
   const [voiceState, setVoiceState] = useState<voiceState>("idle");
   const [micPressed, setMicPressed] = useState(false);
+  if (chatIdNum === null) {
+    return null; 
+  }
   
   useEffect(() => {
     if (!chatIdNum) return;
@@ -126,11 +123,11 @@ export default function ChatPage() {
       const chatRes = await apiRequest(
         `api/chats/${chatIdNum}/detail/`
       );
-    
+
       const other =
         chatRes.members.find(
-          m => m.id !== currentUser.id
-        ) || {};
+          (m: ChatUser) => m.id !== currentUser.id
+        ) ?? ({} as ChatUser);
     
       const presence =
         await apiRequest(
@@ -169,55 +166,54 @@ export default function ChatPage() {
     chatUser?.is_message_blocked ||
     chatUser?.blocked_me;
   
-  const STATUS_PRIORITY = {
+  const STATUS_PRIORITY: Record<MessageStatus, number> = {
     sending: 0,
     pending: 0,
+    uploading: 1,
+    failed: 0,
     sent: 1,
     delivered: 2,
     seen: 3,
   };
   
   const updateStatus = (
-    oldStatus,
-    newStatus
-  ) => {
-    return (
-      STATUS_PRIORITY[newStatus] >
-      STATUS_PRIORITY[oldStatus]
-    )
-      ? newStatus
-      : oldStatus;
+    oldStatus: MessageStatus | undefined,
+    newStatus: MessageStatus
+  ): MessageStatus => {
+    const current = oldStatus ?? "pending";
+  
+    return STATUS_PRIORITY[newStatus] >
+      STATUS_PRIORITY[current]
+        ? newStatus
+        : current;
   };
   
   const updateConversationStatus = (
-    status
-  ) => {
-    setLastMessageStatus(prev =>
-      updateStatus(
-        prev,
-        status
-      )
+    status: MessageStatus
+  ): void => {
+    setLastMessageStatus((prev: MessageStatus | null) =>
+      prev ? updateStatus(prev, status) : status
     );
   };
 
   useEffect(() => {
-    const onDelivered = (e) => {
-      if (
-        e.detail.chatId === chatIdNum
-      ) {
-        updateConversationStatus(
-          "delivered"
-        );
+    const onDelivered: EventListener = (event) => {
+      const e = event as CustomEvent<{
+        chatId: number;
+      }>;
+    
+      if (e.detail.chatId === chatIdNum) {
+        updateConversationStatus("delivered");
       }
     };
   
-    const onSeen = (e) => {
-      if (
-        e.detail.chatId === chatIdNum
-      ) {
-        updateConversationStatus(
-          "seen"
-        );
+    const onSeen: EventListener = (event) => {
+      const e = event as CustomEvent<{
+        chatId: number;
+      }>;
+    
+      if (e.detail.chatId === chatIdNum) {
+        updateConversationStatus("seen");
       }
     };
   
@@ -248,6 +244,10 @@ export default function ChatPage() {
     messageIds = [],
     userId,
     chatId,
+  }: {
+    messageIds?: number[];
+    userId: number;
+    chatId: number;
   }) => {
     if (
       userId === currentUser.id ||
@@ -294,6 +294,10 @@ export default function ChatPage() {
     messageIds = [],
     userId,
     chatId,
+  }: {
+    messageIds?: number[];
+    userId: number;
+    chatId: number;
   }) => {
     if (
       userId === currentUser.id ||
@@ -343,7 +347,7 @@ export default function ChatPage() {
     connectRoom,
     disconnect,
     setCallState,
-  } = useCallManager("", "");
+  } = useCallManager();
   
   const {
     input,
@@ -540,14 +544,15 @@ export default function ChatPage() {
     };
 
   const handleStartCall = async () => {
-    const call = await startCall(chatIdNum, "audio");
-  
-    const { token, url } = await getLivekitToken(chatIdNum);
+    const roomId = String(chatIdNum);
+
+    const call = await startCall(roomId, "audio");
+    const { token, url } = await getLivekitToken(roomId);
   
     await connectRoom(url, token);
   };
   
-  const formatLastSeen = (date?: string) => {
+  const formatLastSeen = (date?: string | null) => {
     if (!date) return "";
   
     const lastSeen = new Date(date);
@@ -643,8 +648,12 @@ export default function ChatPage() {
       );
   
       for (const msg of selected) {
+        const messageKey = msg.client_id ?? msg.id;
+
+        if (messageKey == null) continue;
+        
         await updateMessage(
-          msg.client_id || msg.id,
+          String(messageKey),
           currentUser.id,
           {
             hidden_for: [
@@ -685,21 +694,16 @@ export default function ChatPage() {
       clearSelection();
       setShowDeleteModal(false);
       
-      if (isLastMessage) {
+      if (isLastMessage && chatIdNum !== null) {
         await deleteChatData(
           chatIdNum,
           currentUser.id
         );
       
         window.dispatchEvent(
-          new CustomEvent(
-            "chat-deleted",
-            {
-              detail: {
-                chatId: chatIdNum,
-              },
-            }
-          )
+          new CustomEvent("chat-deleted", {
+            detail: { chatId: chatIdNum },
+          })
         );
       
         replace("/main/messages");
@@ -747,17 +751,22 @@ export default function ChatPage() {
       );
   
       for (const msg of selected) {
+        const messageKey = msg.client_id ?? msg.id;
+      
+        if (messageKey == null) continue;
+      
         await updateMessage(
-          msg.client_id || msg.id?.toString(),
+          String(messageKey),
           currentUser.id,
           {
             is_deleted: true,
             text: "Deleted message",
             encrypted_text: "Deleted message",
-            media_url: null,
-            media_urls: [],
-            media_type: null,
-            thumbnail: null,
+            media_url: [],
+            media_type: "text",
+            thumbnail: [],
+            duration: [],
+            waveform: [],
             preview: null,
           }
         );
@@ -773,8 +782,12 @@ export default function ChatPage() {
       
         if (!repliedToDeleted) continue;
       
+        const messageKey = message.client_id ?? message.id;
+
+        if (messageKey == null) continue;
+  
         await updateMessage(
-          message.client_id || message.id?.toString(),
+          String(messageKey),
           currentUser.id,
           {
             reply_to: {
@@ -797,7 +810,7 @@ export default function ChatPage() {
             selected.some(
               s =>
                 Number(s.id) ===
-                Number(m.reply_to?.id)
+                Number(m.reply_to)
             );
       
           if (deleted) {
@@ -806,22 +819,23 @@ export default function ChatPage() {
               is_deleted: true,
               text: "Deleted message",
               encrypted_text: "Deleted message",
-              media_url: null,
-              media_urls: [],
-              media_type: null,
-              thumbnail: null,
+              media_url: [],
+              media_type: "text",
+              thumbnail: [],
+              duration: [],
+              waveform: [],
               preview: null,
             };
           }
       
-          if (repliedToDeleted) {
+          if (repliedToDeleted && m.reply_to) {
             return {
-              ...m,
-              reply_to: {
-                ...m.reply_to,
-                text: "Deleted message",
-                is_deleted: true,
-              },
+                ...m,
+                reply_to: {
+                    ...m.reply_to,
+                    text: "Deleted message",
+                    is_deleted: true,
+                },
             };
           }
       
@@ -977,15 +991,19 @@ export default function ChatPage() {
       userId,
       status,
       last_seen,
+    }: {
+      userId: number;
+      status: string;
+      last_seen: string | null;
     }) => {
       if (userId !== chatUser?.id) return;
-  
+    
       setChatUser(prev =>
         prev
           ? {
               ...prev,
               status,
-              last_seen,
+              last_seen: last_seen ?? undefined,
             }
           : prev
       );
@@ -1184,10 +1202,10 @@ export default function ChatPage() {
   useEffect(() => {
     if (!isRecording && !isDraggingMicRef.current && voiceState === ("idle")) return;
   
-    const move = (e) => handleMove(e);
-    const end = (e) => {
+    const move = (e: any) => handleMove(e);
+    const end = (e: any) => {
       if (!micPressed) return;
-      handleEnd(e);
+      handleEnd();
     }
   
     window.addEventListener("mousemove", move);
@@ -1222,6 +1240,7 @@ export default function ChatPage() {
     <div className="flex flex-col h-screen overflow-hidden bg-gray-300 dark:bg-[#0b141a]">
       {voiceState === "locked" && (
         <VoiceRecorderUI
+          voiceState={voiceState}
           waveform={waveform}
           duration={duration}
           drag={drag}
@@ -1289,7 +1308,6 @@ export default function ChatPage() {
           loadNewer();
         }}
       
-        selectionMode={selectionMode}
         selectedMessages={selectedMessages}
       
         previewState={previewState}
@@ -1324,11 +1342,14 @@ export default function ChatPage() {
           <ChatInput
             value={input}
             onChange={handleTyping}
+            chatId={chatIdNum}
+            saveDraftLocal={saveDraftLocal}
             onSend={handleSendMessage}
             onFileSelect={(file) => {
               setSelectedFiles(prev => [...prev, file]);
               handleFileSelect(file);
             }}
+            files={files}
             selectedFiles={selectedFiles}
             setSelectedFiles={setSelectedFiles}
             previewIndex={previewIndex}
@@ -1427,18 +1448,13 @@ export default function ChatPage() {
         <PreviewViewer
           files={previewState.files}
           index={previewState.index}
-          setIndex={(value) => {
+          setIndex={(value: number) => {
             setPreviewState(prev => {
               if (!prev) return null;
-      
-              const index =
-                typeof value === "function"
-                  ? value(prev.index)
-                  : value;
-      
+          
               return {
                 ...prev,
-                index,
+                index: value,
               };
             });
           }}

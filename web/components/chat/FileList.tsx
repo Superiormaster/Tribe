@@ -21,13 +21,13 @@ export default function FileList({
 
   const loadFiles = async () => {
     try {
-      const result = await Media.getPhotos({
-        limit: 100,
+      const result = await Media.getMedias({
+        quantity: 100,
       });
 
-      const mapped = result.photos.map((p: any) => ({
-        name: p.path?.split("/").pop() || "file",
-        webPath: p.webPath,
+      const mapped = result.medias.map((p) => ({
+        name: p.identifier,
+        webPath: p.data,
       }));
 
       setFiles(mapped);
@@ -36,10 +36,17 @@ export default function FileList({
     }
   };
 
-  const convertToFile = async (webPath: string) => {
-    const res = await fetch(webPath);
+  const convertToFile = async (data: string) => {
+    const dataUrl = data.startsWith("data:")
+      ? data
+      : `data:image/jpeg;base64,${data}`;
+  
+    const res = await fetch(dataUrl);
     const blob = await res.blob();
-    return new File([blob], "file", { type: blob.type });
+  
+    return new File([blob], "photo.jpg", {
+      type: blob.type,
+    });
   };
 
   return (

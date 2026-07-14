@@ -2,7 +2,6 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { useParams } from 'next/navigation'
-
 import Avatar from '@/components/Avatar'
 import Skeleton from '@/components/Skeleton'
 import CommentList from '@/components/CommentList'
@@ -20,22 +19,28 @@ import {
   ChartNoAxesColumn
 } from 'lucide-react'
 
+type ReplyTarget = {
+  id: number | null;
+  type: "reply" | "comment" | null;
+  username?: string;
+};
+
 export default function RepostDetailPage() {
   const params = useParams()
   const repostId = Number(params.id)
 
   const [repost, setRepost] = useState<any>(null)
-  const [comments, setComments] = useState([])
+  const [comments, setComments] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null)
 
   const [liked, setLiked] = useState(false)
   const [likes, setLikes] = useState(0)
 
-  const [replyTarget, setReplyTarget] = useState({
+  const [replyTarget, setReplyTarget] = useState<ReplyTarget>({
     id: null,
     type: null,
-  })
-
+  });
+ 
   const videoRef = useRef<HTMLVideoElement | null>(null)
 
   useEffect(() => {
@@ -163,7 +168,7 @@ export default function RepostDetailPage() {
         {post.media_files?.length > 0 && (
           <div className="flex flex-col gap-4">
 
-            {post.media_files.map((media, index) => (
+            {post.media_files.map((media: any, index: number) => (
               <div
                 key={index}
                 className="rounded-2xl overflow-hidden bg-gray-200 dark:bg-gray-700"
@@ -254,8 +259,8 @@ export default function RepostDetailPage() {
                 type: null,
               })
             }
-            onNewComment={(newComment) =>
-              setComments(prev => [
+            onNewComment={(newComment: any) =>
+              setComments((prev: any[]) => [
                 newComment,
                 ...prev
               ])

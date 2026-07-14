@@ -5,9 +5,11 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import AudioWaveform from '@/components/AudioWaveform';
 
 type VoiceState =
+  | "idle"
   | "recording"
   | "locked"
-  | "idle";
+  | "cancelling"
+  | "preview";
 
 type Props = {
   voiceState: VoiceState;

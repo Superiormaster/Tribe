@@ -15,8 +15,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import EmojiSection from '@/components/chat/EmojiSection';
 import GifSection from '@/components/chat/GifSection';
 import StickerSection from '@/components/chat/StickerSection';
-import CameraCaptureModal
-from '@/components/CameraCaptureModal';
+import AttachmentSection from "@/components/chat/AttachmentSection";
+import CameraCaptureModal from '@/components/CameraCaptureModal';
 
 import { useRef, useEffect, useState } from 'react';
 

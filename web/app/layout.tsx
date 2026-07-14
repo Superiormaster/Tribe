@@ -1,6 +1,15 @@
 import "./globals.css";
 import ClientWrapper from "@/components/ClientWrapper";
 import { Toaster } from "react-hot-toast";
+import InstallButton from "@/components/InstallButton";
+
+export const metadata = {
+  title: "Tribe",
+  description: "Tribe Social Network",
+  manifest: "/manifest.json",
+  themeColor: "#4f46e5",
+  applicationName: "Tribe",
+};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -18,6 +27,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ClientWrapper>
           {children}
         </ClientWrapper>
+  
+        <InstallButton />
 
         <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
         <script dangerouslySetInnerHTML={{ __html: "eruda.init();" }} />

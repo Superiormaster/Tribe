@@ -73,7 +73,7 @@ export default function ReelMenu({
                     <>
 
                         <button
-                            className="px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700"className="px-3 py-2 text-left text-gray-700 text-sm dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                          className="px-3 py-2 text-left text-gray-700 text-sm dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
                             onClick={onEdit}
                         >
                             Edit

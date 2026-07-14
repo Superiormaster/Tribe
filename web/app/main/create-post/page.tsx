@@ -275,7 +275,7 @@ export default function CreatePostPage() {
 
   const handlePost = async () => {
     if (!content.trim() && imageFiles.length === 0 && !video) return;
-    if (!!selectedCommunity && !isEntertainmentTribe && !selectedCommunity) {
+    if (!isEntertainmentTribe && !selectedCommunity) {
       alert("Please select a community");
       return;
     }

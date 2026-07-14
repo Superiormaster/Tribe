@@ -47,7 +47,7 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
   const [open, setOpen] = useState(false);
   const context = useContext(UserContext);
   const [inviteCount, setInviteCount] = useState(0);
-  const [invites, setInvites] = useState<Invite[]>([]);
+  const [invites, setInvites] = useState<any[]>([]);
 
   const [tribes, setTribes] = useState<any[]>([]);
   const [tribeOpen, setTribeOpen] = useState(false);

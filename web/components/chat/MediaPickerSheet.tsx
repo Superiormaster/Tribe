@@ -34,7 +34,6 @@ export default function MediaPickerSheet({
   return (
     <motion.div
       initial={{ y: "40%" }}
-      animate={{ y: dragY }}
       exit={{ y: "100%" }}
       transition={{ type: "spring", stiffness: 260, damping: 30 }}
       animate={{

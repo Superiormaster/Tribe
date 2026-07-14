@@ -11,13 +11,20 @@ import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import { apiRequest } from '@/utils/api';
 import AppLink from '@/components/AppLink';
 
+interface MediaFile {
+  thumbnail_url?: string;
+  file_url?: string;
+  thumbnail?: string;
+}
+
 export default function HomePage() {
   const [posts, setPosts] = useState<any[]>([]);
   const pagesCache = useRef<Record<number, any[]>>({});
   const [feedResponse, setFeedResponse] = useState<any>(null);
-  const [reels, setReels] = useState([]);
+  const [reels, setReels] = useState<any[]>([]);
   const [reachedLimit, setReachedLimit] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [community, setCommunity] = useState<any>({});
   const [starredUsers, setStarredUsers] = useState<Set<number>>(new Set());
   const loadingRef = useRef(false);
   const loadingMoreRef = useRef(false);
@@ -42,7 +49,7 @@ export default function HomePage() {
     useRef(0);
   const reelsRequestIdRef =
     useRef(0);
-  const currentTribe = tribes.find(t => t.id === selectedTribe);
+  const currentTribe = tribes.find((t: any) => t.id === selectedTribe);
   const loadMoreRef = useRef<HTMLDivElement>(null);
   const [refreshingFeed, setRefreshingFeed] =
     useState(false);
@@ -54,7 +61,7 @@ export default function HomePage() {
   const isEntertainment =
   currentTribe?.name?.toLowerCase() === "entertainment";
   const filteredPosts = posts.filter(
-    (post) => post.content_type !== "short_video"
+    (post: any) => post.content_type !== "short_video"
   );
   
   useEffect(() => {
@@ -149,7 +156,7 @@ export default function HomePage() {
   }, [reels]);
   
   useEffect(() => {
-    posts.slice(0, 10).forEach(post => {
+    posts.slice(0, 10).forEach((post: any) => {
       // preload avatar
       if (post.user?.avatar) {
         const avatar = new Image();
@@ -159,11 +166,11 @@ export default function HomePage() {
       }
   
       // preload media
-      post.media_files?.forEach(file => {
+      post.media_files?.forEach((file: MediaFile) => {
         const url = file.thumbnail_url ?? file.file_url;
-  
+      
         if (!url) return;
-  
+      
         const img = new Image();
         img.loading = "eager";
         img.decoding = "async";
@@ -231,8 +238,10 @@ export default function HomePage() {
     }
   };
   
-  const starredUserIds = useMemo(() => {
-    return new Set(feedResponse?.starred_user_ids || []);
+  const starredUserIds = useMemo<Set<number>>(() => {
+    return new Set<number>(
+      (feedResponse?.starred_user_ids ?? []) as number[]
+    );
   }, [feedResponse]);
   
   useEffect(() => {
@@ -331,14 +340,14 @@ export default function HomePage() {
   
       setFeedResponse(data);
   
-      setPosts(prev => {
+      setPosts((prev: any[]) => {
         const results =
           Array.isArray(data.results)
             ? data.results
             : [];
   
         const newItems =
-          results.map(item => ({
+          results.map((item:any) => ({
             id:
               item.type === "repost"
                 ? `repost-${item.data.id}`
@@ -362,10 +371,10 @@ export default function HomePage() {
           return newItems;
         }
   
-        const map = new Map();
+        const map = new Map<any, any>();
   
         [...prev, ...newItems]
-          .forEach(item => {
+          .forEach((item: any) => {
             map.set(item.id, item);
           });
   
@@ -390,8 +399,8 @@ export default function HomePage() {
   
   const incrementPostView = (postId: number) => {
 
-    setPosts(prev =>
-      prev.map(post =>
+    setPosts((prev: any[]) =>
+      prev.map((post: any) =>
         post.id === postId
           ? {
               ...post,
@@ -544,20 +553,10 @@ export default function HomePage() {
     }
     return item;
   };
-  
-  const getPostStats = (item: any) => {
-    const post = normalizePost(item);
-  
-    return {
-      likes: post?.likes_count ?? 0,
-      comments: post?.comments_count ?? 0,
-      shares: post?.shares_count ?? 0,
-    };
-  };
 
   console.log(posts);
   
-  console.log(posts.map(p => ({
+  console.log(posts.map((p: any) => ({
     user: p?.user?.username,
     starred: p?.user?.is_starred_by_user
   })));
@@ -622,7 +621,7 @@ export default function HomePage() {
           {/* CHIPS */}
           <div className="flex gap-2 flex-wrap">
       
-            {visibleTribes.map((tribe) => (
+            {visibleTribes.map((tribe: any) => (
               <button
                 key={tribe.id}
                 onClick={() => setSelectedTribe(tribe.id)}
@@ -677,8 +676,7 @@ export default function HomePage() {
         </div>
       ) : (
         <>
-        {filteredPosts.map((post, index) => {
-          const stats = getPostStats(post);
+        {filteredPosts.map((post: any, index: number) => {
           if (post.content_type === "short_video") return null;
           return (
             <div key={post.id}>
@@ -688,7 +686,6 @@ export default function HomePage() {
                 <RepostCard
                   repost={post}
                   currentUser={user}
-                  stats={stats}
                   handlePostAction={handlePostAction}
                   starredUserIds={starredUserIds}
                 />

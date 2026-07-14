@@ -1,4 +1,4 @@
-type SavedAccount = {
+export type SavedAccount = {
   email: string;
   type: "google" | "password";
   avatar?: string;

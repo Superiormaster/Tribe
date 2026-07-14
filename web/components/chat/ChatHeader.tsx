@@ -1,14 +1,7 @@
 'use client';
 
 import { Video, MoreVertical } from 'lucide-react';
-
-type ChatUser = {
-  id: number;
-  username: string;
-  avatar?: string;
-  status?: string;
-  last_seen?: string;
-};
+import type { ChatUser } from "@/components/chat/chat";
 
 type Props = {
   chatUser: ChatUser | null;
@@ -21,7 +14,7 @@ type Props = {
   onAudioCall: () => void;
   onVideoCall: () => void;
   formatLastSeen: (
-    date?: string
+    date?: string | null
   ) => string;
   onMore: () => void;
 };

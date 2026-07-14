@@ -83,7 +83,7 @@ export default function NotificationsPage() {
           return [data, ...prev];
         });
   
-        setCount(c => c + 1);
+        setCount((c: number) => c + 1);
       };
   
     });
@@ -211,7 +211,7 @@ export default function NotificationsPage() {
 
       {hasNext && (
         <button
-          onClick={loadNotifications}
+          onClick={() => loadNotifications()}
           className="w-full mt-4 py-2 bg-indigo-600 text-white rounded-lg"
         >
           Load more

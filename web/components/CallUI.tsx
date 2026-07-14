@@ -1,11 +1,26 @@
-import { callState } from "@/lib/callStore"
+export type CallState =
+  | "idle"
+  | "ringing"
+  | "connecting"
+  | "connected"
+  | "reconnecting"
+  | "ended";
 
-export default function CallUI({ callState, onAccept, onReject }) {
+interface CallUIProps {
+  callState: CallState;
+  onAccept: () => void;
+  onReject: () => void;
+}
+
+export default function CallUI({
+  callState,
+  onAccept,
+  onReject,
+}: CallUIProps) {
   if (callState === "idle") return null;
 
   return (
     <div className="fixed inset-0 bg-black/90 flex items-center justify-center">
-
       {callState === "ringing" && (
         <div className="text-center text-white">
           <div className="animate-pulse text-green-400 text-2xl">
@@ -13,10 +28,17 @@ export default function CallUI({ callState, onAccept, onReject }) {
           </div>
 
           <div className="flex gap-4 mt-6 justify-center">
-            <button onClick={onReject} className="bg-red-500 px-4 py-2 rounded-full">
+            <button
+              onClick={onReject}
+              className="bg-red-500 px-4 py-2 rounded-full"
+            >
               Reject
             </button>
-            <button onClick={onAccept} className="bg-green-500 px-4 py-2 rounded-full">
+
+            <button
+              onClick={onAccept}
+              className="bg-green-500 px-4 py-2 rounded-full"
+            >
               Accept
             </button>
           </div>

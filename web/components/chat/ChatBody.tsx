@@ -2,12 +2,13 @@
 
 import React, { forwardRef } from 'react';
 import MessageBubbles from '@/components/MessageBubbles';
+import { Message } from "@/utils/chat/messageContract";
 
 type Props = {
   chatId: number;
   messages: any[];
   currentUser: {
-    id: number | null;
+    id: number;
     username: string;
   };
 
@@ -23,7 +24,6 @@ type Props = {
   loadMore: () => void;
   loadNewer: () => void;
 
-  selectionMode: boolean;
   selectedMessages: Set<string>;
 
   previewState: {
@@ -81,7 +81,6 @@ const ChatBody = forwardRef<
       hasNewer,
       loadMore,
       loadNewer,
-      selectionMode,
       selectedMessages,
       previewState,
       setPreviewState,
@@ -115,7 +114,6 @@ const ChatBody = forwardRef<
         <MessageBubbles
           chatId={chatId}
           messages={messages}
-          currentUser={currentUser.username}
           currentUserId={currentUser.id}
           loadMore={loadMore}
           loadNewer={loadNewer}
@@ -124,7 +122,6 @@ const ChatBody = forwardRef<
             setShowDrawer(true);
           }}
           onForward={onForward}
-          selectionMode={selectionMode}
           selectedMessages={selectedMessages}
           previewState={previewState}
           setPreviewState={setPreviewState}
@@ -140,7 +137,6 @@ const ChatBody = forwardRef<
           }
           clearSelection={clearSelection}
           replyingTo={replyingTo}
-          setReplyingTo={setReplyingTo}
           onReply={setReplyingTo}
           hasMore={hasMore}
           hasNewer={hasNewer}

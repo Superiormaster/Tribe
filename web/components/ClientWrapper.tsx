@@ -13,7 +13,7 @@ import { useContext, useEffect } from "react";
 
 function AppContent({ children }: { children: React.ReactNode }) {
   const context = useContext(UserContext);
-  const { user, loadingUser } = useContext(UserContext)
+  const { user, loadingUser } = useContext(UserContext)!
   
   useEffect(() => {
     const handler = async () => {
@@ -44,7 +44,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
  
   useEffect(() => {
 
-    const handler = (event) => {
+    const handler = (event: ErrorEvent) => {
   
       if (
         event?.message?.includes?.("media resource was aborted")

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiRequest } from '@/utils/api';
+import { useNavigation } from "@/utils/useNavigation"
 import { Search } from 'lucide-react';
 
 type User = {
@@ -13,6 +14,7 @@ type User = {
 
 export default function BlockedPage() {
   const [users, setUsers] = useState<User[]>([]);
+  const { push } = useNavigation();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [next, setNext] = useState<string | null>(null);

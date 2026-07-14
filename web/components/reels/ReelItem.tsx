@@ -53,8 +53,8 @@ export default function ReelItem({
     ref: reelVideoRef,
     onViewed: (views) => {
 
-        reelsState.setReels(prev =>
-            prev.map(r =>
+        reelsState.setReels((prev: any) =>
+            prev.map((r: any) =>
                 r.id === reel.id
                     ? {
                           ...r,
@@ -268,7 +268,7 @@ export default function ReelItem({
       <button
         onClick={(e) => {
             e.stopPropagation();
-            back("/main/home");
+            back();
         }}
         className="
             fixed

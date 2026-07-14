@@ -2,7 +2,21 @@ import CommentInput from './CommentInput'
 import CommentList from './CommentList'
 import { useState } from "react";
 
-export default function CommentsModal({ postId, onClose }: any) {
+type User = {
+  id: number;
+  username: string;
+  avatar?: string;
+};
+
+export default function CommentsModal({
+  postId,
+  onClose,
+  user,
+}: {
+  postId: number;
+  onClose: () => void;
+  user?: User | null;
+}) {
   const [comments, setComments] = useState<any[]>([]);
   const [replyTarget, setReplyTarget] = useState<{
     id: number | null;
@@ -27,7 +41,9 @@ export default function CommentsModal({ postId, onClose }: any) {
         </div>
 
         <div className="flex-1 overflow-y-auto p-3">
-          <CommentList postId={postId}
+          <CommentList
+            user={user ?? null}
+            postId={postId}
             comments={comments}
             setComments={setComments}
             setReplyTarget={setReplyTarget}
@@ -36,7 +52,16 @@ export default function CommentsModal({ postId, onClose }: any) {
 
         {/* ✅ INPUT ALWAYS FIXED AT BOTTOM */}
         <div className="border-t p-2">
-          <CommentInput postId={postId} />
+          <CommentInput
+            postId={postId}
+            replyTarget={replyTarget}
+            onNewComment={(comment) =>
+              setComments((prev) => [...prev, comment])
+            }
+            onClearReply={() =>
+              setReplyTarget({ id: null, type: null })
+            }
+          />
         </div>
 
       </div>

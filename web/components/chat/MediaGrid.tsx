@@ -8,7 +8,7 @@ type MediaItem = {
   path?: string;
   file?: File;
   webPath: string;
-  format: string;
+  format: "image" | "video";
 };
 
 export default function MediaGrid({
@@ -30,23 +30,23 @@ export default function MediaGrid({
         return;
       }
   
-      const result = await Media.getPhotos({
-        limit: 100,
+      const result = await Media.getMedias({
+        quantity: 100,
       });
-
-      const mapped = result.photos
-      .map((p: any) => ({
-        path: p.path,
-        webPath: p.webPath,
-        format: p.mimeType?.startsWith("video/")
-          ? "video"
-          : "image",
-      }))
-      .filter(item =>
-        type === "video"
-          ? item.format === "video"
-          : item.format === "image"
-      );
+  
+      const mapped: MediaItem[] = result.medias
+        .map((p) => ({
+          path: p.identifier,
+          webPath: p.data.startsWith("data:")
+            ? p.data
+            : `data:image/jpeg;base64,${p.data}`,
+          format: (p.duration ? "video" : "image") as "image" | "video",
+        }))
+        .filter(item =>
+          type === "video"
+            ? item.format === "video"
+            : item.format === "image"
+        );
 
       setMedia(mapped);
     } catch (err) {

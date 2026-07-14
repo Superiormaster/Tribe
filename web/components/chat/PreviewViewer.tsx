@@ -4,6 +4,15 @@ import { useEffect, useMemo, useRef } from 'react';
 import { normalizeMedia } from "@/utils/chat/MediaNormalizer";
 import { Trash2 } from "lucide-react";
 
+interface PreviewViewerProps {
+  files: File[];
+  index: number;
+  setIndex: React.Dispatch<React.SetStateAction<number | null>>;
+  onClose: () => void;
+  onAddFiles: (files: File[]) => void;
+  onDelete: (index: number) => void;
+}
+
 export default function PreviewViewer({
   files,
   index,
@@ -11,7 +20,7 @@ export default function PreviewViewer({
   onClose,
   onAddFiles,
   onDelete,
-}: any) {
+}: PreviewViewerProps) {
   const startX = useRef(0);
   const deltaX = useRef(0);
   const dragging = useRef(false);
@@ -21,29 +30,40 @@ export default function PreviewViewer({
     inputRef.current?.click();
   };
   
-  const onStart = (e) => {
+  const onStart = (
+    e: React.MouseEvent | React.TouchEvent
+  ) => {
     dragging.current = true;
-    startX.current =
-      e.clientX || e.touches[0].clientX;
+  
+    if ("touches" in e) {
+      startX.current = e.touches[0].clientX;
+    } else {
+      startX.current = e.clientX;
+    }
   };
   
-  const onMove = (e) => {
+  const onMove = (
+    e: React.MouseEvent | React.TouchEvent
+  ) => {
     if (!dragging.current) return;
   
-    deltaX.current =
-      (e.clientX || e.touches[0].clientX) -
-      startX.current;
+    const currentX =
+      "touches" in e
+        ? e.touches[0].clientX
+        : e.clientX;
+  
+    deltaX.current = currentX - startX.current;
   };
   
   const onEnd = () => {
     dragging.current = false;
   
     if (deltaX.current > 80) {
-      setIndex((p) => Math.max(p - 1, 0));
+      setIndex((p) => Math.max((p ?? 0) - 1, 0));
     }
   
     if (deltaX.current < -80) {
-      setIndex((p) => Math.min(p + 1, files.length));
+      setIndex((p) => Math.min((p ?? 0) + 1, files.length));
     }
   
     deltaX.current = 0;

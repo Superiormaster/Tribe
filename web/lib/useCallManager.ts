@@ -1,11 +1,12 @@
 import { Room } from "livekit-client";
 import { useEffect, useRef, useState } from "react";
 import { apiRequest } from '@/utils/api';
+import type { CallState } from "@/components/CallUI";
 
 export function useCallManager() {
   const roomRef = useRef<Room | null>(null);
 
-  const [callState, setCallState] = useState("idle");
+  const [callState, setCallState] = useState<CallState>("idle");
   const [participants, setParticipants] = useState<any[]>([]);
   
   const connectRoom = async (url: string, token: string) => {

@@ -8,7 +8,7 @@ export default function AdminDashboard() {
   const [tribes, setTribes] = useState([]);
   const [name, setName] = useState('');
   const [allowReels, setAllowReels] = useState(false);
-  const { user } = useContext(UserContext);
+  const { user } = useContext(UserContext)!;
   const router = useRouter();
 
   const fetchTribes = async () => {

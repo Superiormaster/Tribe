@@ -10,32 +10,22 @@ import CommunityPinnedBar from '@/components/communityChat/CommunityPinnedBar';
 import CommunityChatInput from '@/components/communityChat/CommunityChatInput';
 import CommunityMediaPreview from '@/components/communityChat/CommunityMediaPreview';
 
+type UserRole = "owner" | "admin" | "moderator" | "member";
+
 type ChatMessage = {
   id: number;
-
   text?: string;
-
   media_url?: string;
   media_type?: string;
-
   created_at: string;
-
   sender: number;
-
   sender_username: string;
-
   sender_avatar?: string;
-
-  sender_role?: string;
-
+  sender_role?: UserRole;
   is_pinned?: boolean;
-
   deleted?: boolean;
-
   deleted_by_admin?: boolean;
-
   reactions?: any[];
-
   reply_to?: any;
 };
 
@@ -44,7 +34,7 @@ type Props = {
 };
 
 export default function CommunityChat({ communityId }: Props) {
-  const { user: currentUser } = useContext(UserContext);
+  const { user: currentUser } = useContext(UserContext)!;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -207,7 +197,7 @@ export default function CommunityChat({ communityId }: Props) {
 
   // Delete message (user or moderator)
   const handleDeleteMessage = async (messageId: number, ownerId: number) => {
-    if (ownerId !== currentUser.id && !isModerator()) return alert('Not authorized');
+    if (ownerId !== currentUser.id && !isModerator) return alert('Not authorized');
     setMessages((prev) => prev.filter((m) => m.id !== messageId));
 
     try {
@@ -345,7 +335,7 @@ export default function CommunityChat({ communityId }: Props) {
             handleDeleteMessage(id, ownerId)
           }
           onPin={togglepinMessage}
-          isModerator={user?.role === 'moderator'}
+          isModerator={isModerator}
           onReply={(message) => {
         
             setReplyingTo({

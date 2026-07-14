@@ -4,12 +4,25 @@ import { useState } from "react";
 import { apiRequest } from "@/utils/api";
 import { Send } from "lucide-react";
 
+type ReplyTarget = {
+  id: number | null;
+  username?: string;
+  type?: "reply" | "comment" | null;
+};
+
+interface CommentInputProps {
+  postId: number;
+  replyTarget?: ReplyTarget | null;
+  onNewComment: (comment: any) => void;
+  onClearReply?: () => void;
+}
+
 export default function CommentInput({
   postId,
   replyTarget,
   onNewComment,
   onClearReply,
-}) {
+}: CommentInputProps) {
   const [text, setText] = useState("");
 
   const handleSend = async () => {

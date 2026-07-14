@@ -26,13 +26,13 @@ interface Community {
 interface Tribe {
   id: string;
   name: string;
-  description: string;
+  description?: string;
   communities: Community[];
 }
 
 export default function TribePage() {
 
-  const { id } = useParams();
+  const { id } = useParams<{ id: string }>();
 
   const [tribe, setTribe] =
     useState<Tribe | null>(null);
@@ -63,11 +63,6 @@ export default function TribePage() {
       console.log(
         "COMMUNITIES FROM API",
         data.communities
-      );
-      console.log(
-        data.communities.find(
-          (c: Community) => c.id === 7
-        )
       );
 
       if (!tribe) {
@@ -225,7 +220,7 @@ export default function TribePage() {
         </h1>
 
         <p className="text-gray-600 dark:text-gray-400">
-          {tribe.description}
+          {tribe.description ?? ''}
         </p>
 
         <div className="flex items-center gap-4 mt-3">

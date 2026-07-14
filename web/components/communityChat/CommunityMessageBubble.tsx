@@ -53,6 +53,7 @@ type CommunityMessage = {
   sender_avatar?: string;
 
   sender_role?: 'member' | 'moderator' | 'admin' | 'owner';
+  status?: 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 
   is_pinned?: boolean;
 
@@ -89,6 +90,22 @@ type Props = {
   isModerator?: boolean;
 };
 
+type MessageBubbleProps = {
+  message: CommunityMessage;
+  isOwn: boolean;
+  sameUser: boolean;
+  currentUserId: number;
+  isSelected: boolean;
+  setSelectedMessage: React.Dispatch<React.SetStateAction<number | null>>;
+  onReply?: (message: CommunityMessage) => void;
+  renderStatus: (status?: string) => React.ReactNode;
+  onReaction?: (messageId: number, emoji: string) => void;
+  isModerator: boolean;
+  emojis: string[];
+  formatTime: (timestamp: string) => string;
+  getRoleBadge: (role?: string) => React.ReactNode;
+};
+
 export default function CommunityMessageBubbles({
   messages,
   currentUserId,
@@ -101,8 +118,8 @@ export default function CommunityMessageBubbles({
 
   const [selectedMessage, setSelectedMessage] =
     useState<number | null>(null);
-
-  const emojis = [
+  
+  const emojis: string[] = [
     '👍',
     '❤️',
     '😂',
@@ -274,7 +291,9 @@ export default function CommunityMessageBubbles({
                 <X size={22} />
               </button>
   
-              <span className="font-semibold" >{selectedMessages.size}</span>
+              <span className="font-semibold">
+                {selectedMessage ? 1 : 0}
+              </span>
             </div>
   
             <div className="flex items-center gap-5">
@@ -321,6 +340,7 @@ export default function CommunityMessageBubbles({
                   key={message.id}
                   message={message}
                   isOwn={isOwn}
+                  renderStatus={renderStatus}
                   sameUser={sameUser}
                   currentUserId={currentUserId}
                   isSelected={isSelected}
@@ -349,12 +369,13 @@ function MessageBubble({
   isSelected,
   setSelectedMessage,
   onReply,
+  renderStatus,
   onReaction,
   isModerator,
   getRoleBadge,
   emojis,
   formatTime,
-}: any) {
+}: MessageBubbleProps) {
   const [dragX, setDragX] = useState(0);
   
   const [dragging, setDragging] = useState(false);

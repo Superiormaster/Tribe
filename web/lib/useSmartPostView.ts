@@ -7,8 +7,8 @@ import { useReelView } from "@/lib/UseReelView";
 
 type SmartViewProps = {
   post: any;
-  ref?: RefObject<any>;
-  onViewed?: () => void;
+  ref: React.RefObject<HTMLVideoElement | HTMLDivElement | null>;
+  onViewed?: (views: number) => void;
 };
 
 export const useSmartPostView = ({
@@ -23,28 +23,23 @@ export const useSmartPostView = ({
   // SHORT REELS
   if (type === "short_video") {
     return useReelView({
-      postId: post?.id,
-      videoRef: type === "short_video" ? ref : undefined,
+      postId: post.id,
+      videoRef: ref as React.RefObject<HTMLVideoElement>,
       onViewed,
     });
   }
-
-  // LONG VIDEOS
-  if (
-    type === "video" ||
-    type === "long_video"
-  ) {
+  
+  if (type === "video" || type === "long_video") {
     return useVideoView({
-      postId: post?.id,
-      ref: type !== "short_video" ? ref : undefined,
+      postId: post.id,
+      ref: ref as React.RefObject<HTMLVideoElement>,
       onViewed,
     });
   }
-
-  // TEXT + IMAGE POSTS
+  
   return usePostView({
-    postId: post?.id,
-    ref,
+    postId: post.id,
+    ref: ref as React.RefObject<HTMLElement>,
     onViewed,
   });
 };

@@ -23,10 +23,10 @@ export default function ChangePasswordPage() {
     try {
       const res = await apiRequest("api/users/change-password/", {
         method: "POST",
-        body: JSON.stringify({
+        data: {
           old_password: oldPassword,
           new_password: newPassword,
-        }),
+        },
       });
 
       setMessage(res.message || "Password updated successfully");

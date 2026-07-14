@@ -26,11 +26,26 @@ type User = {
   connected?: boolean;
 };
 
+type MessageStatus =
+  | "sending"
+  | "pending"
+  | "sent"
+  | "delivered"
+  | "seen";
+  
+type ChatStatus =
+  | "sending"
+  | "pending"
+  | "sent"
+  | "delivered"
+  | "seen";
+
 type Chat = {
   id: number;
   username: string;
   avatar?: string;
   text: string;
+  encrypted_text: string;
   created_at: string;
   fromUserId: number;
   toUserId: number;
@@ -41,6 +56,7 @@ type Chat = {
   last_media_type?: string;
   pinned?: boolean;
   pinned_at?: string | null;
+  status?: ChatStatus;
 };
 
 export default function MessagesClient() {
@@ -87,7 +103,7 @@ export default function MessagesClient() {
 
   const { push, replace } = useNavigation();
   
-  const STATUS_PRIORITY = {
+  const STATUS_PRIORITY: Record<MessageStatus, number> = {
     sending: 0,
     pending: 0,
     sent: 1,
@@ -96,21 +112,21 @@ export default function MessagesClient() {
   };
   
   const updateStatus = (
-    oldStatus,
-    newStatus
-  ) => {
-    return (
-      STATUS_PRIORITY[newStatus] >
+    oldStatus: MessageStatus,
+    newStatus: MessageStatus
+  ): MessageStatus => {
+    return STATUS_PRIORITY[newStatus] >
       STATUS_PRIORITY[oldStatus]
-    )
       ? newStatus
       : oldStatus;
   };
-
   
   const handleDelivered = ({
     chatId,
     messageIds,
+  }: {
+    chatId: number;
+    messageIds: number[];
   }) => {
     setRecentChats(prev =>
       prev.map(chat => {
@@ -120,7 +136,7 @@ export default function MessagesClient() {
         return {
           ...chat,
           status: updateStatus(
-            chat.status,
+            chat.status ?? "sending",
             "delivered"
           ),
         };
@@ -132,6 +148,10 @@ export default function MessagesClient() {
     chatId,
     messageIds,
     userId,
+  }: {
+    chatId: number;
+    messageIds: number[];
+    userId: number;
   }) => {
     if (userId === user.id)
       return;
@@ -144,7 +164,7 @@ export default function MessagesClient() {
         return {
           ...chat,
           status: updateStatus(
-            chat.status,
+            chat.status ?? "sending",
             "seen"
           ),
         };
@@ -198,15 +218,15 @@ export default function MessagesClient() {
         ]);
         console.log("Pending data", pendingData);
   
-        const draftMap = {};
-        const pendingMap = {};
-        const metaMap = {};
+        const draftMap: Record<number, any> = {};
+        const pendingMap: Record<number, any> = {};
+        const metaMap: Record<number, any> = {};
   
-        draftsData.forEach(d => {
+        draftsData.forEach((d: any) => {
           draftMap[d.chatId] = d;
         });
   
-        pendingData.forEach(m => {
+        pendingData.forEach((m: any) => {
             const chatId = m.chat ?? m.chatId;
             const existing = pendingMap[chatId];
         
@@ -219,7 +239,7 @@ export default function MessagesClient() {
             }
         });
   
-        metaData.forEach(m => {
+        metaData.forEach((m: any) => {
           metaMap[m.chatId] = m;
         });
   
@@ -332,7 +352,7 @@ export default function MessagesClient() {
   }, []);
   
   useEffect(() => {
-    const delivered = (e) => {
+    const delivered = (e: any) => {
       const {
         chatId,
         messageIds,
@@ -407,10 +427,11 @@ export default function MessagesClient() {
       const res = await apiRequest(
         `api/chats/recent/?page=${page}`
       );
-      console.log("Recent chat", res); 
-  
-      setRecentChats(prev => {
-        const updated = prev.map(chat =>
+      console.log("Recent chat", res);
+      const serverChats: Chat[] = res.results;
+
+      {/*setRecentChats(prev =>
+        prev.map(chat =>
           chat.chat_id === message.chat
             ? {
                 ...chat,
@@ -420,7 +441,26 @@ export default function MessagesClient() {
                 last_media_type: message.media_type,
               }
             : chat
-        );
+        )
+      );*/}
+
+      setRecentChats(prev => {
+        const updated = serverChats.map(chat => {
+          const pending = pendingMap[chat.chat_id];
+      
+          if (pending) {
+            return {
+              ...chat,
+              text: pending.encrypted_text ?? pending.text,
+              created_at: pending.created_at,
+              last_sender_id: pending.sender,
+              last_media_type: pending.media_type,
+              status: pending.status,
+            };
+          }
+      
+          return chat;
+        });
       
         return updated.sort((a, b) => {
           if (a.pinned && !b.pinned) return -1;
@@ -758,26 +798,21 @@ export default function MessagesClient() {
     recentChats.map(c => c.chat_id)
   );
 
-  const localChats =
+  const localChats: number[] =
   !recentLoaded
     ? []
     : Object.keys({
         ...drafts,
         ...pendingMap,
-      }).filter(id => {
-          const chatId = Number(id);
-
-          if (
-            backendChatIds.has(chatId)
-          ) {
+      })
+        .map(Number)
+        .filter(chatId => {
+          if (backendChatIds.has(chatId)) {
             return false;
           }
 
-          return (
-            drafts[chatId] ||
-            pendingMap[chatId]
-          );
-      });
+          return drafts[chatId] || pendingMap[chatId];
+        });
   
   const unpinnedSelected =
     selectedItems.filter(
@@ -1374,7 +1409,7 @@ export default function MessagesClient() {
                     </p>
                   )}
                 
-                  {chat.unseen > 0 && (
+                  {(chat.unseen ?? 0) > 0 && (
                     <span className="text-xs bg-red-500 text-white px-2 rounded-full shrink-0">
                       {chat.unseen}
                     </span>

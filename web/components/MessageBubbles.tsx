@@ -12,49 +12,15 @@ import formatMessageDate from '@/components/chat/utils';
 import {
   saveChatScroll, getChatScroll,
 } from "@/lib/messageDB";
-
-type Message = {
-  id: number | string;
-  text?: string;
-  encrypted_text?: string;
-  username: string;
-  avatar?: string;
-  preview?: string;
-  created_at?: string;
-  seen_by?: number[];
-  media_type?: 'image' | 'video' | 'audio' | 'sticker' | 'gif';
-  media_source: 'upload' | 'external';
-  media_url?: string;
-  sender?: number;
-  reply_to?: {
-    id: number | string;
-    username: string;
-    text?: string;
-  } | null;
-  
-  reactions?: {
-    emoji: string;
-    count: number;
-  }[];
-  waveform?: number[];
-  
-  status?: 'sending' | 'sent' | 'pending' | 'delivered' | 'seen' | 'failed'
-  delivered_to?: number[];
-  
-  client_id?: number;
-  chatId?: number;
-
-  thumbnail?: string;
-  upload_progress?: number;
-};
+import { Message } from "@/utils/chat/messageContract";
 
 type Props = {
   chatId: number;
   messages: Message[];
   currentUserId: number;
 
-  LoadMore?: () => void;
-  LoadNewer?: () => void;
+  loadMore?: () => void;
+  loadNewer?: () => void;
   hasMore?: boolean;
   hasNewer?: boolean;
 
@@ -102,8 +68,8 @@ export default function MessageBubbles({
   chatId,
   messages,
   currentUserId,
-  LoadMore,
-  LoadNewer,
+  loadMore,
+  loadNewer,
   hasMore,
   hasNewer,
   resendPendingMessage,
@@ -131,7 +97,7 @@ export default function MessageBubbles({
   const hasScrolledInitially = useRef(false);
   const loadingMoreRef = useRef(false);
   const loadingNewerRef = useRef(false);
-  const lastMessageRef = useRef(null);
+  const lastMessageRef = useRef<Message["id"] | null>(null);
   
   const [showScrollButton, setShowScrollButton] =
     useState(false);
@@ -152,7 +118,7 @@ export default function MessageBubbles({
     const observer = new IntersectionObserver(
       entries => {
         entries.forEach(entry => {
-          if (!entry.isIntersecting) return;
+          if (!(entry.target instanceof HTMLElement)) return;
   
           const type = entry.target.dataset.type;
           const src = entry.target.dataset.media;
@@ -214,7 +180,7 @@ export default function MessageBubbles({
       // Load older messages
       // -----------------------
       if (
-        LoadMore &&
+        loadMore &&
         hasMore &&
         !loadingMoreRef.current &&
         el.scrollTop < 300
@@ -223,7 +189,7 @@ export default function MessageBubbles({
   
         const oldHeight = el.scrollHeight;
   
-        await LoadMore();
+        await loadMore();
   
         requestAnimationFrame(() => {
           const newHeight = el.scrollHeight;
@@ -245,7 +211,7 @@ export default function MessageBubbles({
         el.clientHeight;
   
       if (
-        LoadNewer &&
+        loadNewer &&
         hasNewer &&
         !loadingNewerRef.current &&
         distanceFromBottom < 300
@@ -254,7 +220,7 @@ export default function MessageBubbles({
   
         const oldTop = el.scrollTop;
   
-        await LoadNewer();
+        await loadNewer();
   
         requestAnimationFrame(() => {
           el.scrollTop = oldTop;
@@ -272,8 +238,8 @@ export default function MessageBubbles({
       );
     };
   }, [
-    LoadMore,
-    LoadNewer,
+    loadMore,
+    loadNewer,
     hasMore,
     hasNewer,
   ]);
@@ -316,22 +282,20 @@ export default function MessageBubbles({
   }, [messages.length]);
   
   useEffect(() => {
-    const preload = (url) => {
+    const preload = (url?: string) => {
+      if (!url) return;
+    
       const img = new Image();
       img.src = url;
     };
-  
-    messages
-      .slice(-20)
-      .forEach(msg => {
-        if (msg.media_type === "image") {
-          preload(msg.media_url);
-        }
-  
-        if (msg.thumbnail) {
-          preload(msg.thumbnail);
-        }
-      });
+    
+    messages.slice(-20).forEach(msg => {
+      if (msg.media_type === "image") {
+        msg.media_url?.forEach(preload);
+      }
+    
+      msg.thumbnail?.forEach(preload);
+    });
   }, [messages]);
   
   useEffect(() => {
@@ -487,68 +451,6 @@ export default function MessageBubbles({
     });
   };
   
-  useEffect(() => {
-
-    const observer = new IntersectionObserver(
-
-        entries => {
-
-            entries.forEach(entry => {
-
-                if(!entry.isIntersecting) return;
-
-                const type = entry.target.dataset.type;
-                const src = entry.target.dataset.media;
-
-                if(!src) return;
-
-                if(type==="image" || type==="gif" || type==="sticker"){
-
-                    const img = new Image();
-                    img.src = src;
-
-                }
-
-                if(type==="video"){
-
-                    const video=document.createElement("video");
-                    video.preload="metadata";
-                    video.src=src;
-
-                }
-
-                if(type==="audio"){
-
-                    const audio=new Audio();
-                    audio.preload="metadata";
-                    audio.src=src;
-
-                }
-
-            });
-
-        },
-
-        {
-
-            root:containerRef.current,
-
-            rootMargin:"1000px",
-
-            threshold:0
-
-        }
-
-    );
-
-    document
-      .querySelectorAll("[data-media]")
-      .forEach(el=>observer.observe(el));
-
-    return ()=>observer.disconnect();
-
-  },[messages]);
-  
   // =========================
   // GROUP BY DATE
   // =========================
@@ -650,7 +552,6 @@ export default function MessageBubbles({
                     setPreviewState={setPreviewState}
                     onOpenDrawer={onOpenDrawer}
                     clearSelection={clearSelection}
-                    setReplyingTo={onReply}
                   
                     replyingTo={replyingTo}
                     setReplyingTo={onReply}

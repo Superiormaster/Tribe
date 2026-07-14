@@ -33,26 +33,45 @@ import {
 import { apiRequest } from '@/utils/api';
 
 type Post = {
+  type?: "post" | "repost";
+
+  post?: {
+    media_files: {
+      file_url: string;
+      thumbnail_url?: string;
+      media_type: "image" | "video";
+    }[];
+  };
+
   id: number;
+
   user: {
-    id: number
-    username: string
-    avatar?: string
-  }
+    id: number;
+    username: string;
+    avatar?: string;
+    is_starred_by_user: boolean;
+  };
+
+  is_starred_by_user: boolean;
+
   caption?: string;
-  media_files: { file_url: string; thumbnail_url?: string; media_type: 'image' | 'video' }[];
+  media_files: {
+    file_url: string;
+    thumbnail_url?: string;
+    media_type: "image" | "video";
+  }[];
   content_type: string;
   likes_count: number;
   comments_count: number;
   liked_by_user: boolean;
   created_at: string;
   community_name?: string;
-  views_count?: number
+  views_count: number;
   is_deleted?: boolean;
-  profile_pinned?: boolean
-  profile_pin_order?: number | null
-  community_pinned?: boolean
-  community_pin_order?: number | null
+  profile_pinned?: boolean;
+  profile_pin_order?: number | null;
+  community_pinned?: boolean;
+  community_pin_order?: number | null;
 };
 
 type Profile = {
@@ -358,6 +377,9 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
     
       return {
         type: "repost",
+  
+        is_starred_by_user:
+          p.data?.is_starred_by_user ?? false,
     
         id: p.data.id,
     
@@ -393,6 +415,9 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
           shares_count:
             p.data.post?.shares_count || 0,
     
+          views_count:
+            p.data?.post?.views_count ?? 0,
+    
           liked_by_user:
             p.data.post?.is_liked || false,
     
@@ -411,6 +436,9 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
       ...p.data,
   
       type: "post",
+
+      is_starred_by_user:
+        p.data?.is_starred_by_user ?? false,
   
       profile_pinned:
         p.data?.profile_pinned || false,
@@ -438,6 +466,9 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
   
       shares_count:
         p.data?.shares_count || 0,
+
+      views_count:
+        p.data?.views_count ?? 0,
   
       liked_by_user:
         p.data?.is_liked || false,
