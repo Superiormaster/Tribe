@@ -5,6 +5,7 @@ import { apiRequest } from '@/utils/api';
 import { getConnectedUsers } from '@/lib/api';
 import { useNavigation } from "@/utils/useNavigation"
 import { saveMessage } from '@/lib/messageDB';
+import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import {
   sendChatMessage,
 } from "@/utils/chat/sendChatMessage";
@@ -24,6 +25,7 @@ export function useForwardMessages({
   setMessages,
   clearSelection,
 }: Props) {
+  const { canCommunicate } = useNetwork();
   const { push } = useNavigation()
   const [forwardMode, setForwardMode] = useState(false);
   const [forwardCaption, setForwardCaption] =
@@ -160,6 +162,7 @@ export function useForwardMessages({
             currentUser,
             socketRef,
             setMessages,
+            canCommunicate,
           });
         }
   
@@ -191,6 +194,7 @@ export function useForwardMessages({
             currentUser,
             socketRef,
             setMessages,
+            canCommunicate,
           });
         }
       }

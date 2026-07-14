@@ -42,20 +42,20 @@ type ChatMessage = {
   id?: number;
   chat: number;
   ownerId: number;
-
   sender: number;
-
   encrypted_text: string;
-
   status: "sending" | "sent" | "failed";
-
   created_at: string;
-
   reply_to?: {
     id: number;
     username: string;
     text?: string;
   } | null;
+};
+
+type Reaction = {
+  emoji: string;
+  userIds: number[];
 };
 
 export function useChatMessages({
@@ -111,7 +111,7 @@ export function useChatMessages({
       }
   
       const pending = (await getPendingMessages(currentUser.id))
-        .filter(m => m.chat === chatId);
+        .filter((m: any) => m.chat === chatId);
   
       localWindow = mergeMessages(localWindow, pending);
   
@@ -148,12 +148,19 @@ export function useChatMessages({
         return;
       }
       
+      const anchorId =
+        scroll?.messageId != null
+          ? Number(scroll.messageId)
+          : serverMessages.at(-1)?.id;
+      
+      if (anchorId == null) {
+        return;
+      }
+      
       setMessages(prev =>
         deleteMessagesOutsideWindow(
           mergeMessages(prev, serverMessages),
-          scroll?.messageId
-            ? Number(scroll.messageId)
-            : serverMessages[serverMessages.length - 1]?.id,
+          anchorId,
           40,
           40
         )
@@ -180,9 +187,16 @@ export function useChatMessages({
   
     try {
       const last = messages[messages.length - 1];
+
+      const lastId = last?.id;
+      
+      if (lastId == null) {
+        setLoadingNewer(false);
+        return;
+      }
   
       const res = await apiRequest(
-        `api/chats/${chatId}/messages/after/?anchor=${last.id}&limit=25`
+        `api/chats/${chatId}/messages/after/?anchor=${lastId}&limit=25`
       );
   
       const newer: Message[] =
@@ -201,7 +215,7 @@ export function useChatMessages({
             prev,
             newer
           ),
-          last.id,
+          lastId,
           40,
           40
         )
@@ -297,12 +311,17 @@ export function useChatMessages({
     setLoadingMore(true);
   
     try {
-  
-      const first =
-        messages[0];
+      const first = messages[0];
+
+      const firstId = first?.id;
+      
+      if (firstId == null) {
+        setLoadingMore(false);
+        return;
+      }
   
       const res = await apiRequest(
-        `api/chats/${chatId}/messages/before/?anchor=${first.id}&limit=25`
+        `api/chats/${chatId}/messages/before/?anchor=${firstId}&limit=25`
       );
   
       const older: Message[] =
@@ -321,7 +340,7 @@ export function useChatMessages({
             older,
             prev
           ),
-          first.id,
+          firstId,
           40,
           40
         )
@@ -410,8 +429,8 @@ export function useChatMessages({
           if (removed) {
             if (idx >= 0) {
               const users =
-                (reactions[idx].userIds || [])
-                .filter(id => id !== userId);
+              ((reactions[idx].userIds || []) as number[])
+                .filter((id: number) => id !== userId);
   
               if (users.length === 0) {
                 reactions.splice(idx, 1);
@@ -456,10 +475,13 @@ export function useChatMessages({
     };
   }, []);
 
-  const reactToMessage = async (messageId, emoji) => {
+  const reactToMessage = async (
+    messageId: number | string,
+    emoji: string
+  ) => {
     const userId = currentUser.id;
   
-    let updatedReactions = [];
+    let updatedReactions: Reaction[] = [];
   
     setMessages(prev =>
       prev.map(msg => {
@@ -469,7 +491,9 @@ export function useChatMessages({
   
         if (!isTarget) return msg;
   
-        let reactions = msg.reactions ? [...msg.reactions] : [];
+        let reactions: Reaction[] = msg.reactions
+        ? [...msg.reactions]
+        : [];
   
         const idx = reactions.findIndex(r => r.emoji === emoji);
   
@@ -479,7 +503,9 @@ export function useChatMessages({
           let userIds = existing.userIds ? [...existing.userIds] : [];
   
           if (userIds.includes(userId)) {
-            userIds = userIds.filter(id => id !== userId);
+            userIds = userIds.filter(
+              (id: number) => id !== userId
+            );
           } else {
             userIds.push(userId);
           }
@@ -512,7 +538,7 @@ export function useChatMessages({
     );
   
     // send API AFTER UI update
-    updateMessage(messageId, userId, {
+    updateMessage(String(messageId), userId, {
       reactions: updatedReactions,
     });
   

@@ -3,11 +3,13 @@
 type Props = {
   history: string[];
   onSelect: (v: string) => void;
+  onClear: () => void;
 };
 
 export default function SearchHistory({
   history,
   onSelect,
+  onClear,
 }: Props) {
 
   if (history.length === 0)
@@ -16,9 +18,18 @@ export default function SearchHistory({
   return (
     <div className="mt-6">
 
-      <p className="text-gray-500 mb-2">
-        🕒 Recent Searches
-      </p>
+      <div className="flex items-center justify-between mb-2">
+        <p className="text-gray-500">
+          🕒 Recent Searches
+        </p>
+      
+        <button
+          onClick={onClear}
+          className="text-sm text-red-500 hover:underline"
+        >
+          Clear
+        </button>
+      </div>
 
       <div className="flex flex-wrap gap-2">
 

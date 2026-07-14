@@ -4,21 +4,29 @@ import { getVideoDuration } from "@/utils/chat/videoThumbnail";
 import { restoreFiles } from "@/utils/chat/restoreFiles";
 import { useNetwork } from '@/components/networkConnection/NetworkContext';
 
+type UploadFile = File & {
+  preview?: string;
+  thumbnail?: string;
+  duration?: number;
+};
+
 export function useMediaUpload({
   chatId,
   currentUser,
   socketRef,
   setMessages,
 }: any) {
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<UploadFile[]>([]);
   const [caption, setCaption] = useState('');
   const [fileProgress, setFileProgress] = useState<Record<string, number>>({});
   const { canCommunicate } = useNetwork();
   
   const pickFile = async (
-    fileOrFiles: File | File[]
+    fileOrFiles: UploadFile | UploadFile[]
   ) => {
-    const processFile = async (file) => {
+    const processFile = async (
+      file: UploadFile
+    ): Promise<UploadFile> => {
       const preview =
         URL.createObjectURL(file);
     

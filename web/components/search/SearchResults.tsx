@@ -28,12 +28,6 @@ export default function SearchResults({
     return <SearchSkeleton />;
   }
   
-  const handleDoubleClick = (index: number) => {
-    const currentTime = videoRefs.current[index]?.currentTime || 0;
-  
-    router.push(`/main/home/${post.id}?t=${Math.floor(currentTime)}`);
-  };
-  
   const visibleUsers =
     (results.users || []).slice(
       activeTab === "all" ? 0 : undefined,
@@ -257,7 +251,6 @@ export default function SearchResults({
                             <MediaItem
                               key={i}
                               media={m}
-                              handleDoubleClick={handleDoubleClick}
                             />
       
                           ))}
@@ -290,7 +283,7 @@ export default function SearchResults({
   );
 }
 
-const MediaItem = ({ media, handleDoubleClick }: any) => {
+const MediaItem = ({ media }: any) => {
 
   // IMAGE
   if (media.type === "image") {
