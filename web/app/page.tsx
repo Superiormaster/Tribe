@@ -1,6 +1,6 @@
 "use client";
 
-import Link from 'next/link'
+import AppLink from '@/components/AppLink';
 import Image from "next/image";
 import { tribe2 } from "@/assets";
 import LoadingScreen from '@/components/LoadingScreen';
@@ -24,19 +24,19 @@ export default function Home() {
         </div>
 
         <div className="flex gap-4">
-          <Link
+          <AppLink
             href={"/auth/login"}
             className="px-4 py-2 rounded-lg border"
           >
             Login
-          </Link>
+          </AppLink>
 
-          <Link
+          <AppLink
             href={"/auth/register"}
             className="px-4 py-2 rounded-lg bg-indigo-600 text-white"
           >
             Get Started
-          </Link>
+          </AppLink>
         </div>
 
       </nav>
@@ -55,19 +55,19 @@ export default function Home() {
 
         <div className="flex justify-center gap-4">
 
-          <Link
+          <AppLink
             href={"/auth/register"}
             className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-lg"
           >
             Join Tribe
-          </Link>
+          </AppLink>
 
-          <Link
+          <AppLink
             href={"/auth/login"}
             className="px-6 py-3 border rounded-xl text-lg"
           >
             Login
-          </Link>
+          </AppLink>
 
         </div>
 
@@ -112,12 +112,12 @@ export default function Home() {
           Ready to join your Tribe?
         </h2>
 
-        <Link
+        <AppLink
           href={"/auth/register"}
           className="px-8 py-3 bg-indigo-600 text-white rounded-xl text-lg"
         >
           Create Account
-        </Link>
+        </AppLink>
 
       </section>
 

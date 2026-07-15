@@ -7,26 +7,35 @@ import { motion } from "framer-motion";
 
 interface LoadingScreenProps {
   onComplete?: () => void;
+  forceHomeOnComplete?: boolean;
 }
 
-export default function LoadingScreen({ onComplete }: LoadingScreenProps) {
+export default function LoadingScreen({ onComplete, forceHomeOnComplete }: LoadingScreenProps) {
   const [text, setText] = useState("");
   const fullText = "Tribe ";
   
   useEffect(() => {
     let index = 0;
+  
     const interval = setInterval(() => {
       setText(fullText.substring(0, index + 1));
       index++;
+  
       if (index > fullText.length) {
         clearInterval(interval);
+  
         setTimeout(() => {
-          forceHome();
+          if (forceHomeOnComplete) {
+            forceHome();
+          }
+        
+          onComplete?.();
         }, 1000);
       }
     }, 150);
+  
     return () => clearInterval(interval);
-  }, []);
+  }, [onComplete]);
 
   return (
     <div className='fixed inset-0 z-50 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 flex flex-col items-center justify-center'>

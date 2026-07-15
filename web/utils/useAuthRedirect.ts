@@ -1,16 +1,16 @@
 // utils/useAuthRedirect.ts
 "use client";
 import { useEffect, useContext } from "react";
-import { useRouter } from "next/navigation"; 
+import { useNavigation } from "@/utils/useNavigation";
 import { UserContext } from "@/components/UserContext";
 
 export default function useAuthRedirect() {
-  const router = useRouter();
+  const { replace } = useNavigation();
   const { user, loadingUser } = useContext(UserContext)!;
 
   useEffect(() => {
     if (!loadingUser && user) {
-      router.replace("/main/home");
+      replace("/main/home");
     }
-  }, [loadingUser, user, router]);
+  }, [loadingUser, user, replace]);
 }

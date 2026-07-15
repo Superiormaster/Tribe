@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, useContext } from "react";
 import { UserContext } from "@/components/UserContext";
-import { useRouter } from "next/navigation";
+import { useNavigation } from "@/utils/useNavigation";
 import { apiRequest } from "@/utils/api";
 
 export default function AdminDashboard() {
@@ -9,7 +9,7 @@ export default function AdminDashboard() {
   const [name, setName] = useState('');
   const [allowReels, setAllowReels] = useState(false);
   const { user } = useContext(UserContext)!;
-  const router = useRouter();
+  const { push } = useNavigation();
 
   const fetchTribes = async () => {
     const data = await apiRequest("api/admin/tribes/");
@@ -22,7 +22,7 @@ export default function AdminDashboard() {
   
   useEffect(() => {
     if (!user?.is_superuser) {
-      router.push("/");
+      push("/");
     }
   }, [user]);
 

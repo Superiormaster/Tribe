@@ -120,9 +120,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
     <>
       {isInactive && (
         <LoadingScreen
-          onComplete={() =>
-            setIsInactive(false)
-          }
+          forceHomeOnComplete
+          onComplete={() => setIsInactive(false)}
         />
       )}
   
