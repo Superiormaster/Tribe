@@ -922,7 +922,7 @@ def discover_people(request):
     # =========================
     # EXCLUSIONS
     # =========================
-    excluded_ids = [user.id]
+    users = User.objects.exclude(pk=request.user.pk)
     muted_ids, blocked_ids, blocked_me_ids = get_block_filters(user)
 
     # =========================
@@ -1345,16 +1345,33 @@ def complete_onboarding(request):
     user.save()
     return Response({"message": "Onboarding complete"})
 
-@api_view(['GET'])
+@api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def onboarding_status(request):
     user = request.user
 
+    profile_completed = all([
+        user.full_name,
+        user.username,
+        user.email,
+        user.bio,
+        user.country,
+        user.gender,
+    ])
+
+    interests_completed = len(user.interests or []) > 0
+
+    star_completed = user.onboarding_step >= 3
+
     return Response({
-        "profileCompleted": user.onboarding_step >= 1,
-        "interestsCompleted": user.onboarding_step >= 2,
-        "starCompleted": user.onboarding_step >= 3,
-        "completed": user.onboarding_step >= 3, 
+        "profileCompleted": profile_completed,
+        "interestsCompleted": interests_completed,
+        "starCompleted": star_completed,
+        "completed": (
+            profile_completed and
+            interests_completed and
+            star_completed
+        ),
     })
 
 @api_view(['GET'])

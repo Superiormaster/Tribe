@@ -7,7 +7,7 @@ import { logout } from "@/utils/auth"
 import LoadingScreen from '@/components/LoadingScreen';
 import { isSessionExpired, startActivityTracking } from "@/lib/activity";
 import { useNavigation } from "@/utils/useNavigation"
-import { FORCE_HOME_EVENT } from "@/lib/authEvents";
+import { REFRESH_HOME_EVENT } from "@/lib/authEvents";
 
 interface UserContextType {
   user: any | null;
@@ -96,18 +96,51 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }, []);
   
   useEffect(() => {
-    const handler = () => {
-      // close inactivity screen
+    const handler = async () => {
       setIsInactive(false);
+
+      try {
+          const selected =
+              localStorage.getItem("active_account");
   
-      // always reset to home
-      replace("/main/home");
+          if (!selected) {
+              replace("/");
+              return;
+          }
+  
+          const refresh =
+              await getRefreshToken(selected);
+  
+          if (!refresh) {
+              replace("/");
+              return;
+          }
+  
+          const token =
+              await apiRequest("api/users/refresh/", {
+                  method: "POST",
+                  data: { refresh }
+              });
+  
+          setAccessToken(token.access);
+  
+          const profile =
+              await apiRequest("api/users/me/");
+  
+          setUser(profile);
+          replace("/main/home");
+      } catch {
+          logout();
+      }
     };
   
-    window.addEventListener(FORCE_HOME_EVENT, handler);
+    window.addEventListener(
+      REFRESH_HOME_EVENT,
+      handler
+    );
   
     return () => {
-      window.removeEventListener(FORCE_HOME_EVENT, handler);
+      window.removeEventListener(REFRESH_HOME_EVENT, handler);
     };
   }, [replace]);
   
@@ -120,7 +153,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     <>
       {isInactive && (
         <LoadingScreen
-          forceHomeOnComplete
+          refreshOnComplete
           onComplete={() => setIsInactive(false)}
         />
       )}

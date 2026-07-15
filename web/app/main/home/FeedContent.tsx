@@ -10,6 +10,7 @@ import { UserContext } from "@/components/UserContext";
 import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import { apiRequest } from '@/utils/api';
 import AppLink from '@/components/AppLink';
+import { REFRESH_HOME_EVENT } from "@/lib/authEvents";
 
 interface MediaFile {
   thumbnail_url?: string;
@@ -70,6 +71,34 @@ export default function HomePage() {
       setStarredUsers(new Set(res.starred_users));
     })();
   }, []);
+  
+  useEffect(() => {
+    const refresh = async () => {
+        setRefreshingFeed(true);
+        pagesCache.current = {};
+        setPosts([]);
+        setPage(1);
+        setHasMore(true);
+        setReachedLimit(false);
+        await fetchPosts(1, true);
+
+        if (filter === "all") {
+            await fetchReels();
+        }
+        setRefreshingFeed(false);
+    };
+
+    window.addEventListener(
+        REFRESH_HOME_EVENT,
+        refresh
+    );
+
+    return () =>
+        window.removeEventListener(
+            REFRESH_HOME_EVENT,
+            refresh
+        );
+  }, [filter, selectedTribe]);
   
   useEffect(() => {
     if (

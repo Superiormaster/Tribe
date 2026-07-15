@@ -8,9 +8,10 @@ import { motion } from "framer-motion";
 interface LoadingScreenProps {
   onComplete?: () => void;
   forceHomeOnComplete?: boolean;
+  refreshOnComplete?: boolean;
 }
 
-export default function LoadingScreen({ onComplete, forceHomeOnComplete }: LoadingScreenProps) {
+export default function LoadingScreen({ onComplete, refreshOnComplete, forceHomeOnComplete }: LoadingScreenProps) {
   const [text, setText] = useState("");
   const fullText = "Tribe ";
   
@@ -25,8 +26,8 @@ export default function LoadingScreen({ onComplete, forceHomeOnComplete }: Loadi
         clearInterval(interval);
   
         setTimeout(() => {
-          if (forceHomeOnComplete) {
-            forceHome();
+          if (refreshOnComplete) {
+            refreshHome();
           }
         
           onComplete?.();

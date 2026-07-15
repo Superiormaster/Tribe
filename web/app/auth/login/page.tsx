@@ -6,6 +6,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faGoogle } from "@fortawesome/free-brands-svg-icons"
 import { apiRequest } from '@/utils/api'
 import { UserContext } from '@/components/UserContext'
+import { AuthLoading } from '@/components/AuthLoading'
 import { saveAccount, getAccounts, setActiveAccount } from '@/utils/accounts'
 import { handleOnboardingRedirect } from '@/utils/handleOnboardingRedirect';
 import { useSearchParams } from "next/navigation"
@@ -35,6 +36,7 @@ export default function LoginPage() {
   const [showPassword,setShowPassword] = useState(false)
   const [remember,setRemember] = useState(false)
   const [loading,setLoading] = useState(false)
+  const [authLoading, setAuthLoading] = useState(false)
   const [error,setError] = useState('')
   const [message,setMessage] = useState('')
   const [showResend,setShowResend] = useState(false)
@@ -93,6 +95,7 @@ export default function LoginPage() {
   }, []);
 
   const handleGoogleResponse = async (googleRes: any) => {
+    setAuthLoading(true)
     try {
       const res = await apiRequest("api/users/google-login/", {
         method: "POST",
@@ -121,6 +124,8 @@ export default function LoginPage() {
     } catch (err: any) {
       console.error(err);
       alert("Google login failed");
+    } finally {
+      setAuthLoading(false)
     }
   };
 
@@ -130,6 +135,7 @@ export default function LoginPage() {
     if (loading) return
     setLoading(true)
     setError('')
+    setAuthLoading(true)
     try {
       const res = await apiRequest('api/users/login/', {
         method: 'POST',
@@ -167,6 +173,7 @@ export default function LoginPage() {
       }
     } finally {
       setLoading(false)
+      setAuthLoading(false)
     }
   };
 
@@ -190,6 +197,11 @@ export default function LoginPage() {
   };
 
   return (
+    <>
+    <AuthLoading
+        show={authLoading}
+        text="Signing you into Tribe..."
+    />
     <div className="flex justify-center items-center rounded-2xl text-gray-700 dark:text-gray-200 dark:bg-gray-200 bg-gray-50 dark:bg-gray-950">
       <form onSubmit={handleLogin} className="bg-white dark:bg-gray-900 p-6 rounded-2xl shadow-lg w-96 space-y-4">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Login to Tribe</h1>
@@ -247,5 +259,6 @@ export default function LoginPage() {
 
       </form>
     </div>
+    </>
   )
 }

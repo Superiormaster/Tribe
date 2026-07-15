@@ -97,12 +97,6 @@ export default function RegisterPage() {
           Create your Tribe account
         </h1>
 
-        {error && (
-          <div className="bg-red-100 text-red-600 text-sm px-3 py-2 rounded-lg">
-            {error}
-          </div>
-        )}
-
         {/* Username */}
         <div className="space-y-1">
           <label className="text-sm text-gray-600 dark:text-gray-400">
@@ -156,12 +150,6 @@ export default function RegisterPage() {
           </button>
 
         </div>
-
-        {error && (
-          <div className="bg-red-100 text-red-600 text-sm px-3 py-2 rounded-lg">
-            {error}
-          </div>
-        )}
 
         {/* Confirm Password */}
         <div className="space-y-1 relative">
