@@ -22,6 +22,10 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")
+FRONTEND_URL = os.getenv(
+    "FRONTEND_URL",
+    "http://localhost:3000"
+)
 
 DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 IS_DEV = DEBUG
