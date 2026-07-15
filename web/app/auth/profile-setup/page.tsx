@@ -414,7 +414,7 @@ export default function ProfileSetup() {
         {/* Gender */}
         <div className="flex flex-col">
           <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-            Gender
+            Full name<span className="text-red-500">*</span>
           </label>
         
           <select
@@ -456,6 +456,7 @@ export default function ProfileSetup() {
             required
           >
             <option value="">Select Country</option>
+            <span className="text-red-500">*</span>
   
             {countryList.map((c) => (
               <option key={c.code} value={c.name}>

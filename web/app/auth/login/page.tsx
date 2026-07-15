@@ -6,7 +6,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faGoogle } from "@fortawesome/free-brands-svg-icons"
 import { apiRequest } from '@/utils/api'
 import { UserContext } from '@/components/UserContext'
-import { AuthLoading } from '@/components/AuthLoading'
+import AuthLoading from '@/components/AuthLoading'
 import { saveAccount, getAccounts, setActiveAccount } from '@/utils/accounts'
 import { handleOnboardingRedirect } from '@/utils/handleOnboardingRedirect';
 import { useSearchParams } from "next/navigation"

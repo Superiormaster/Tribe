@@ -152,7 +152,7 @@ export default function EditProfile() {
     )
 
   return (
-    <div className="flex justify-center items-center my-16 text-gray-800 dark:text-gray-200 rounded-2xl bg-gray-50 dark:bg-gray-950">
+    <div className="flex justify-center items-center my-20 text-gray-800 dark:text-gray-200 rounded-2xl bg-gray-50 dark:bg-gray-950">
       <form
         onSubmit={handleSave}
         className="w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-6 space-y-6"
