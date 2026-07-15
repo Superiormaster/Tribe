@@ -6,9 +6,8 @@ import { getConnectedUsers } from '@/lib/api';
 import { useNavigation } from "@/utils/useNavigation"
 import { saveMessage } from '@/lib/messageDB';
 import { useNetwork } from "@/components/networkConnection/NetworkContext";
-import {
-  sendChatMessage,
-} from "@/utils/chat/sendChatMessage";
+import { sendChatMessage } from "@/utils/chat/sendChatMessage";
+import type { MediaSource } from "@/utils/chat/messageContract";
 
 type Props = {
   socketRef: any;
@@ -71,7 +70,8 @@ export function useForwardMessages({
   const createForwardPayload = (
     msg: any,
     chatId: number,
-    forwardCaption: string
+    forwardCaption: string,
+    currentUser: any
   ) => {
     const canUseCaption =
       msg.media_type === "image" ||
@@ -87,8 +87,11 @@ export function useForwardMessages({
       forwardCaption?.trim();
   
     return {
-      localId: crypto.randomUUID(),
-      chatId,
+      client_id: crypto.randomUUID(),
+    
+      sender: currentUser?.id,
+    
+      chat: chatId,
     
       caption:
         canUseCaption
@@ -110,11 +113,15 @@ export function useForwardMessages({
               ""
             ),
     
-      media_url: msg.media_url ?? null,
-      media_type: msg.media_type ?? null,
-      thumbnail: msg.thumbnail ?? null,
-      media_source: "forward",
+      media_url: msg.media_url ?? [],
+      media_type: msg.media_type ?? "text",
+      thumbnail: msg.thumbnail ?? [],
+    
+      media_source: "forward" as MediaSource,
+    
       reply_to: null,
+    
+      files: [],
     };
   };
 
@@ -154,7 +161,8 @@ export function useForwardMessages({
             createForwardPayload(
               msg,
               chat.chat_id,
-              caption
+              caption,
+              currentUser
             );
         
           await sendChatMessage({
@@ -186,7 +194,8 @@ export function useForwardMessages({
             createForwardPayload(
               msg,
               chat.chat_id,
-              caption
+              caption,
+              currentUser
             );
       
           await sendChatMessage({

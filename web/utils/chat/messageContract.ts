@@ -58,7 +58,7 @@ export interface Message {
   media_type?: MessageType;
   media_source?: MediaSource;
 
-  thumbnail?: string[];
+  thumbnail?: (string | null)[];
   duration?: number[];
 
   waveform?: number[];

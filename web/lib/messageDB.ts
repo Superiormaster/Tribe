@@ -302,10 +302,10 @@ export async function getAllChatMeta() {
 }
 
 export async function saveChatMeta(
-  chatId,
-  userId,
-  username,
-  avatar
+  chatId: number,
+  userId: number,
+  username: string,
+  avatar: string | null
 ) {
   const db = await getDB();
   if (!db) return;
@@ -328,7 +328,7 @@ export async function getMessagesByChat(chatId: number, ownerId: number) {
     [chatId, ownerId]
   );
 
-  return messages.filter(m => !isHiddenForUser(m, ownerId));
+  return messages.filter((m: any) => !isHiddenForUser(m, ownerId));
 }
 
 export async function getMessage(
@@ -610,7 +610,7 @@ export async function getPendingMessages(
   const all = await db.getAll(MESSAGE_STORE);
 
   const pending = all.filter(
-      (m) =>
+      (m: any) =>
           m.ownerId === ownerId &&
           !m.server_id &&
           !m.is_deleted &&
@@ -683,6 +683,10 @@ export const saveDraft = async ({
   chatId,
   text,
   updated_at,
+}: {
+  chatId: number;
+  text: string;
+  updated_at?: string;
 }) => {
   if (
     chatId === undefined ||
@@ -783,7 +787,7 @@ export async function getPostDraft(draftId: string) {
   return db.get(POST_DRAFT_STORE, draftId);
 }
 
-export async function saveManualPostDraft(data) {
+export async function saveManualPostDraft(data:any) {
 
     const db = await getDB();
 
@@ -803,21 +807,33 @@ export async function saveManualPostDraft(data) {
     });
 }
 
+export type PostDraft = {
+  draftId: string;
+  content: string;
+  imageFiles: File[];
+  imageUrls: string[];
+  video: File | string | null;
+  type: "manual" | "auto";
+  selectedCommunity: number | null;
+  updated_at: number;
+  title?: string;
+  communityName?: string;
+};
+
 export async function getAllPostDrafts() {
     const db = await getDB();
     if (!db) return [];
 
     const drafts = await db.getAll(POST_DRAFT_STORE);
 
-    return drafts
-        .filter(d => d.type === "manual")
-        .sort(
-            (a, b) =>
-                b.updated_at - a.updated_at
-        );
+    return (drafts as PostDraft[])
+    .filter((d) => d.type === "manual")
+    .sort(
+      (a, b) => b.updated_at - a.updated_at
+    );
 }
 
-export async function saveAutoPostDraft(data){
+export async function saveAutoPostDraft(data: any){
 
     const db = await getDB();
 

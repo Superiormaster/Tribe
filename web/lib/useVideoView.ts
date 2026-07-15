@@ -2,14 +2,26 @@
 
 import { useEffect, useRef } from "react";
 import { apiRequest } from "@/utils/api";
+import type { RefObject } from "react";
 
-export const useVideoView = (postId: number, onViewed?: () => void) => {
+type VideoViewProps = {
+  postId: number;
+  ref: RefObject<HTMLVideoElement>;
+  onViewed?: (views: number) => void;
+};
+
+export const useVideoView = ({
+  postId,
+  ref,
+  onViewed,
+}: VideoViewProps) => {
   const hasTrackedRef = useRef(false);
   const watchStartRef = useRef<number | null>(null);
   const timerRef = useRef<any>(null);
 
   useEffect(() => {
-    const el = document.getElementById(`post-${postId}`);
+    const el = ref.current;
+
     if (!el || hasTrackedRef.current) return;
 
     const observer = new IntersectionObserver(
@@ -33,7 +45,7 @@ export const useVideoView = (postId: number, onViewed?: () => void) => {
               });
 
               hasTrackedRef.current = true;
-              onViewed?.();
+              onViewed?.(1);
             } catch (err) {
               console.error(err);
             }

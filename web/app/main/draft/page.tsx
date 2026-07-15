@@ -7,21 +7,10 @@ import {
   getAllPostDrafts,
   deletePostDraft,
 } from "@/lib/messageDB";
-
-type Draft = {
-  draftId: string;
-  title: string;
-  content: string;
-  communityName?: string;
-  selectedCommunity: number | null;
-  imageFiles?: (File | string)[];
-  imageUrls?: string[];
-  video?: File | string | null;
-  updated_at: number;
-};
+import type { PostDraft } from "@/lib/messageDB";
 
 export default function DraftsPage() {
-  const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [drafts, setDrafts] = useState<PostDraft[]>([]);
 
   useEffect(() => {
     loadDrafts();

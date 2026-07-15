@@ -1,4 +1,9 @@
-import { Room, RoomEvent, Track } from "livekit-client";
+import {
+  Room,
+  RoomEvent,
+  LocalAudioTrack,
+  LocalVideoTrack,
+} from "livekit-client";
 
 class CallManager {
   room: Room | null = null;
@@ -28,9 +33,17 @@ class CallManager {
       video,
     });
 
-    await this.room.localParticipant.publishTracks(
-      tracks.getTracks().map((t) => Track.createTrack(t))
-    );
+    for (const mediaTrack of tracks.getTracks()) {
+      if (mediaTrack.kind === "audio") {
+        await this.room.localParticipant.publishTrack(
+          new LocalAudioTrack(mediaTrack)
+        );
+      } else {
+        await this.room.localParticipant.publishTrack(
+          new LocalVideoTrack(mediaTrack)
+        );
+      }
+    }
   }
 
   async endCall() {

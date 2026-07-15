@@ -6,13 +6,19 @@ import {
   mergeMessages,
   sortMessages
 } from '@/utils/chat/messageMerger';
+import type { Message } from "@/utils/chat/messageContract";
+import type { Dispatch, SetStateAction } from "react";
+
+type CurrentUser = {
+  id: number;
+};
 
 export function useChatSocket(
   chatIdNum: number | null,
-  currentUser: any,
+  currentUser: CurrentUser | null,
   handlers?: {
-    onSeen?: (data:any)=>void;
-    onDelivered?: (data:any)=>void;
+    onSeen?: (data: any) => void;
+    onDelivered?: (data: any) => void;
   }
 ) {
   const socketRef = useRef<any>(null);
@@ -71,7 +77,11 @@ export function useChatSocket(
         };
 
         const handleReceiveMessage = (msg:any) => {
-          if (msg.chatId !== chatIdNum) return;
+          if (
+            Number(msg.chat ?? msg.chatId) !== Number(chatIdNum)
+          ) {
+            return;
+          }
       
           handleMessage(msg);
         };
@@ -147,12 +157,15 @@ export function useChatSocket(
         socketRef.current.setHandlers = ({
           setMessages,
           setIsTyping,
+        }: {
+          setMessages: Dispatch<SetStateAction<Message[]>>;
+          setIsTyping: Dispatch<SetStateAction<boolean>>;
         }) => {
           if (!socketRef.current) return;
         
-          socketRef.current.onTyping = ({
-            userId,
-          }) => {
+          socketRef.current.onTyping = (
+            { userId }: { userId: number }
+          ) => {
         
             if (userId === currentUser?.id)
               return;
@@ -160,9 +173,9 @@ export function useChatSocket(
             setIsTyping(true);
           };
         
-          socketRef.current.onStopTyping =
-            ({ userId }) => {
-        
+          socketRef.current.onStopTyping = (
+            { userId }: { userId: number }
+          ) => {
               if (userId === currentUser?.id)
                 return;
         
@@ -170,7 +183,7 @@ export function useChatSocket(
             };
   
           socketRef.current.onMessage = (message: Message) => {
-            setMessages(prev =>
+            setMessages((prev: Message[]) =>
               sortMessages(
                 mergeMessages(prev, [message])
               )
@@ -263,6 +276,7 @@ export function useChatSocket(
       );
     
       socket.__handlers = undefined;
+      socketRef.current = null;
     };
   }, [
       chatIdNum,

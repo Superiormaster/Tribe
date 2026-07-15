@@ -1,6 +1,6 @@
 const waitForConnect = (
-  socket,
-  timeout = 10000
+  socket: any,
+  timeout: number = 10000
 ) =>
   new Promise((resolve, reject) => {
     if (socket.connected) {
@@ -42,7 +42,7 @@ const waitForConnect = (
       resolve(true);
     };
 
-    const onError = err => {
+    const onError = (err: Error) => {
       cleanup();
       reject(err);
     };
@@ -63,8 +63,8 @@ const waitForConnect = (
   });
 
 export const ensureConnected = async (
-  socket
-) => {
+  socket: any
+): Promise<boolean> => {
   if (socket.connected) {
     return true;
   }

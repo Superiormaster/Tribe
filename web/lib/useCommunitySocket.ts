@@ -29,19 +29,25 @@ export function useCommunitySocket(
 
         if (!mounted) return;
 
-        const socket = connectSocket(auth);
+        const socket = await getSocket();
 
         socketRef.current = socket;
 
         // =========================
         // CONNECT
         // =========================
+        if (socket.connected) {
+          socket.emit('join_community', {
+            communityId,
+          });
+        }
+        
         socket.on('connect', () => {
           console.log(
             '✅ community socket connected:',
             socket.id
           );
-
+        
           socket.emit('join_community', {
             communityId,
           });
@@ -217,15 +223,24 @@ export function useCommunitySocket(
         // =========================
         // VISIBILITY RECONNECT
         // =========================
-        document.addEventListener('visibilitychange', () => {
+        const handleVisibility = () => {
           if (!socketRef.current) return;
         
           if (document.hidden) {
-            socketRef.current.emit('app_hidden', { communityId });
+            socketRef.current.emit('app_hidden', {
+              communityId,
+            });
           } else {
-            socketRef.current.emit('app_visible', { communityId });
+            socketRef.current.emit('app_visible', {
+              communityId,
+            });
           }
-        });
+        };
+        
+        document.addEventListener(
+          'visibilitychange',
+          handleVisibility
+        );
 
         // =========================
         // ERRORS

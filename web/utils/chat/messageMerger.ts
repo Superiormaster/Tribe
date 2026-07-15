@@ -1,3 +1,5 @@
+import type { Message } from "@/utils/chat/messageContract";
+
 export const getMessageKey = (m: any) => {
   return m.server_id
     ? `server-${m.server_id}`
@@ -66,17 +68,7 @@ export function mergeMessages(
   return sortMessages(Array.from(map.values()));
 }
 
-export function sortMessagesWithPins(msgs) {
-  return msgs.sort((a, b) => {
-    if (a.pinned !== b.pinned) {
-      return a.pinned ? -1 : 1;
-    }
-
-    return new Date(a.created_at) - new Date(b.created_at);
-  });
-}
-
-export function inferMediaType(msg) {
+export function inferMediaType(msg: Message) {
   if (msg.files?.length) {
     const f = msg.files[0];
 
@@ -85,8 +77,9 @@ export function inferMediaType(msg) {
     return "image";
   }
 
-  const url=msg.media_url?.[0]
-  if(url?.includes(".mp4")) return "video";
+  const url = msg.media_url?.[0];
+
+  if (url?.includes(".mp4")) return "video";
 
   return "text";
 }

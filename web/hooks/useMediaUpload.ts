@@ -27,6 +27,13 @@ type SendMediaArgs = {
   message?: SendMediaPayload;
 };
 
+type ExternalMediaPayload = {
+  media_type: MessageType;
+  media_url: string | string[];
+  thumbnail?: string | string[];
+  caption?: string;
+};
+
 export function useMediaUpload({
   chatId,
   currentUser,
@@ -214,7 +221,7 @@ export function useMediaUpload({
     media_url,
     thumbnail,
     caption = "",
-  }: any) => {
+  }: ExternalMediaPayload) => {
     if (!chatId) return;
   
     await sendChatMessage({

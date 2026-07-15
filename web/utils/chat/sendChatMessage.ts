@@ -8,8 +8,17 @@ import { uploadMediaFiles } from "./mediaUpload";
 import { emitSocketMessage } from "./emitMessage";
 import { sortMessages } from "@/utils/chat/messageMerger";
 import { ensureConnected } from "@/utils/chat/waitForConnect";
-import { Message } from "@/utils/chat/messageContract";
 import { restoreFiles } from "@/utils/chat/restoreFiles";
+import type { Dispatch, SetStateAction } from "react";
+import type { Message } from "@/utils/chat/messageContract";
+
+type SendChatMessageParams = {
+  message: Partial<Message>;
+  currentUser: { id: number };
+  socketRef: any;
+  setMessages: Dispatch<SetStateAction<Message[]>>;
+  canCommunicate: boolean;
+};
 
 export async function sendChatMessage({
   message,
@@ -17,11 +26,11 @@ export async function sendChatMessage({
   socketRef,
   setMessages,
   canCommunicate,
-}) {
+}: SendChatMessageParams) {
   const client_id = message.client_id ?? crypto.randomUUID();
 
   // 🧱 RAW SOURCE (NEVER MUTATED)
-  const rawMessage = {
+  const rawMessage: Message = {
     ...message,
     client_id,
     chat: message.chat,
@@ -32,8 +41,8 @@ export async function sendChatMessage({
     encrypted_text: message.encrypted_text || "",
     caption: message.caption || "",
   
-    Media: [],
     files: message.files || [],
+    duration: message.duration,
   
     reply_to: message.reply_to || null,
 
@@ -145,13 +154,11 @@ export async function sendChatMessage({
         media_type: uploaded.media_type,
         media_url: uploaded.media_url,
         thumbnail: uploaded.thumbnail,
-        duration: uploaded.duration,
     
         files: rawMessage.files.map((f,i)=>({
             ...f,
             media_url: uploaded.media_url[i],
             thumbnail: uploaded.thumbnail[i],
-            duration: uploaded.duration[i],
         })),
         upload_progress: 100,
       };

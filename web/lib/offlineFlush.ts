@@ -6,12 +6,15 @@ import {
 } from "./messageDB";
 import { emitSocketMessage as emitMessage } from "@/utils/chat/emitMessage";
 import { uploadMediaFiles } from "@/utils/chat/mediaUpload";
+import type { Socket } from "socket.io-client";
+import type { Message } from "@/utils/chat/messageContract";
+import type { Dispatch, SetStateAction } from "react";
 
 async function resendTextMessage(
-  socket,
+  socket: Socket,
   msg: Message,
-  ownerId,
-  setMessages?
+  ownerId: number,
+  setMessages?: React.Dispatch<React.SetStateAction<Message[]>>
 ) {
   await emitMessage(
     socket,
@@ -21,19 +24,22 @@ async function resendTextMessage(
   );
 }
 
+
 async function resendMediaMessage(
-  socket: any,
+  socket: Socket,
   msg: Message,
   ownerId: number,
-  setMessages?
+  setMessages?: Dispatch<SetStateAction<Message[]>>
 ) {
   let message = { ...msg };
 
   const needsUpload =
-    message.files?.length &&
-    message.media_url.some(url => url.startsWith("blob:"));
+    !!message.files?.length &&
+    (message.media_url ?? []).some((url) =>
+      url.startsWith("blob:")
+    );
 
-  if (needsUpload) {
+  if (needsUpload && message.files) {
     const uploaded = await uploadMediaFiles(message.files);
 
     message = {
@@ -41,7 +47,7 @@ async function resendMediaMessage(
       media_type: uploaded.media_type,
       media_url: uploaded.media_url,
       thumbnail: uploaded.thumbnail,
-      duration: uploaded.duration,
+      duration: message.duration,
     };
   }
 
@@ -59,7 +65,7 @@ export const flushOfflineMessages =
   async (
     socket: Socket,
     ownerId: number,
-    setMessages?
+    setMessages?: Dispatch<SetStateAction<Message[]>>
   ) => {
     if (flushing) {
       return;

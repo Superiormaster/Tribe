@@ -17,7 +17,7 @@ export const normalizeMedia = (file: any): MediaItem | null => {
   // LOCAL FILE
   if (file instanceof File) {
     return {
-      src: file.preview,
+      src: URL.createObjectURL(file),
       type: file.type.startsWith("video") ? "video" : "image",
       file,
       isLocal: true,

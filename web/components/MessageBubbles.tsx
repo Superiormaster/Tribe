@@ -282,7 +282,7 @@ export default function MessageBubbles({
   }, [messages.length]);
   
   useEffect(() => {
-    const preload = (url?: string) => {
+    const preload = (url: string | null | undefined) => {
       if (!url) return;
     
       const img = new Image();

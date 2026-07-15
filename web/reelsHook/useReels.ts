@@ -8,10 +8,18 @@ import {
 import { apiRequest } from '@/utils/api';
 import { useReelBuffer } from '@/reelsHook/useReelBuffer';
 
+type Reel = {
+  id: number;
+  pk?: number;
+  post_id?: number;
+  content_type?: string;
+  [key: string]: any;
+};
+
 export function useReels(reelId?: number) {
   const PAGE_SIZE = 5;
 
-  const [reels, setReels] = useState<any[]>([]);
+  const [reels, setReels] = useState<Reel[]>([]);
   const [page, setPage] = useState(1);
   const [hasNext, setHasNext] = useState(true);
   
@@ -69,24 +77,18 @@ export function useReels(reelId?: number) {
             `api/post/reels/?page=1&page_size=${PAGE_SIZE}`
         );
 
-        const normalized =
-            (res.results || [])
-                .filter(
-                    (r:any)=>
-                        r.content_type==="short_video"
-                )
-                .map((r:any)=>({
-                    ...r,
-                    id:
-                        r.id ??
-                        r.pk ??
-                        r.post_id,
-                }));
+        const normalized: Reel[] =
+          (res.results || [])
+              .filter((r: Reel) => r.content_type === "short_video")
+              .map((r: Reel) => ({
+                  ...r,
+                  id: r.id ?? r.pk ?? r.post_id,
+              }));
 
         if (clickedReelId) {
             const clicked =
                 normalized.find(
-                    r =>
+                    (r: Reel) =>
                         Number(r.id) ===
                         clickedReelId
                 );
@@ -94,7 +96,7 @@ export function useReels(reelId?: number) {
             if (clicked) {
                 const others =
                     normalized.filter(
-                        r =>
+                        (r: Reel) =>
                             Number(r.id)!==
                             clickedReelId
                     );
@@ -136,7 +138,7 @@ export function useReels(reelId?: number) {
             `api/post/reels/?page=${nextPage}&page_size=${PAGE_SIZE}`
         );
 
-        const normalized = (res.results || []).map((r: any) => ({
+        const normalized: Reel[] = (res.results || []).map((r: Reel) => ({
             ...r,
             id: r.id ?? r.pk ?? r.post_id,
         }));
@@ -147,9 +149,9 @@ export function useReels(reelId?: number) {
             return;
         }
 
-        setReels(prev => {
-            const ids = new Set(prev.map(r => r.id));
-            const fresh = normalized.filter(r => !ids.has(r.id));
+        setReels((prev: Reel[]) => {
+            const ids = new Set(prev.map((r: Reel) => r.id));
+            const fresh = normalized.filter((r: Reel) => !ids.has(r.id));
             return [...prev, ...fresh];
         });
 

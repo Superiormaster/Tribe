@@ -1,6 +1,7 @@
 // utils/chat/mediaUpload.ts
 
 import { uploadToCloudinary } from "@/utils/cloudinary";
+import type { MessageType } from "@/utils/chat/messageContract";
 
 export async function uploadMediaFiles(
   files: any[],
@@ -71,14 +72,14 @@ export async function uploadMediaFiles(
 
   const thumbnail = uploaded.map(m => m.thumbnail);
   
-  const media_type =
+  const media_type: MessageType =
     uploaded.length > 1
       ? "gallery"
-      : uploaded[0]?.type;
+      : (uploaded[0]?.type as MessageType);
   
   return {
-    media_url,
     media_type,
+    media_url,
     thumbnail,
   };
 }

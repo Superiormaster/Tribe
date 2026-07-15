@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { useNetwork } from '@/components/networkConnection/NetworkContext';
 import { updateMessage } from "@/lib/messageDB";
 import { sendChatMessage } from "@/utils/chat/sendChatMessage";
+import type { Message } from "@/utils/chat/messageContract";
 
 export function useVoiceRecorder(
   socketRef: any,
@@ -134,9 +135,7 @@ export function useVoiceRecorder(
   
     source.connect(analyser);
   
-    const dataArray = new Uint8Array(
-      analyser.frequencyBinCount
-    );
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
   
     audioContextRef.current = audioContext;
     analyserRef.current = analyser;
@@ -274,7 +273,7 @@ export function useVoiceRecorder(
   // RESEND FAILED AUDIO
   // ========================
   const resendMessage = async (
-    msg
+    msg: Message
   ) => {
     if (
       msg.media_type !== "audio"
@@ -283,22 +282,18 @@ export function useVoiceRecorder(
     }
   
     try {
-      let blob;
-  
-      if (msg.files?.length) {
-        blob =
-          msg.files[0] instanceof Blob
-            ? msg.files[0]
-            : new Blob([msg.files[0]]);
+      let blob: Blob;
+
+      if (msg.files?.length && msg.files[0].blob) {
+        blob = msg.files[0].blob;
+      } else if (msg.media_url?.length) {
+        blob = await fetch(msg.media_url[0]).then(r => r.blob());
       } else {
-        blob =
-          await fetch(
-            msg.media_url
-          ).then(r => r.blob());
+        throw new Error("Audio source unavailable.");
       }
   
-      setMessages(prev =>
-        prev.map(m =>
+      setMessages((prev: Message[]) =>
+        prev.map((m: Message) =>
           m.client_id === msg.client_id
             ? {
                 ...m,
@@ -323,8 +318,8 @@ export function useVoiceRecorder(
         msg.client_id
       );
     } catch {
-      setMessages(prev =>
-        prev.map(m =>
+      setMessages((prev: Message[]) =>
+        prev.map((m: Message) =>
           m.client_id === msg.client_id
             ? {
                 ...m,
@@ -421,8 +416,7 @@ export function useVoiceRecorder(
       const analyser =
         analyserRef.current;
   
-      const dataArray =
-        dataArrayRef.current;
+      const dataArray = dataArrayRef.current;
   
       if (!analyser || !dataArray) return;
   
@@ -430,7 +424,7 @@ export function useVoiceRecorder(
         if (!isRecordingRef.current) return;
   
         analyser.getByteFrequencyData(
-          dataArray
+          dataArray as unknown as Uint8Array<ArrayBuffer>
         );
   
         let sum = 0;

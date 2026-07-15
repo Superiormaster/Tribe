@@ -1,4 +1,4 @@
-import axios, { AxiosRequestConfig } from "axios";
+import axios, { AxiosRequestConfig, AxiosHeaders } from "axios";
 import {
   getRefreshToken,
   storeRefreshToken,
@@ -67,10 +67,14 @@ apiClient.interceptors.request.use(
 
     if (token) {
 
-      config.headers = {
-        ...config.headers,
-        Authorization: `Bearer ${token}`,
-      };
+      if (!config.headers) {
+        config.headers = new AxiosHeaders();
+      }
+      
+      config.headers.set(
+        "Authorization",
+        `Bearer ${token}`
+      );
     }
 
     return config;
@@ -116,8 +120,10 @@ apiClient.interceptors.response.use(
     if (isRefreshing) {
       return new Promise((resolve) => {
         subscribeTokenRefresh((token) => {
-          originalRequest.headers.Authorization =
-            `Bearer ${token}`;
+          (originalRequest.headers as AxiosHeaders).set(
+            "Authorization",
+            `Bearer ${token}`
+          );
 
           resolve(apiClient(originalRequest));
         });
@@ -193,8 +199,10 @@ apiClient.interceptors.response.use(
       /**
        * RETRY ORIGINAL REQUEST
        */
-      originalRequest.headers.Authorization =
-        `Bearer ${newAccessToken}`;
+      (originalRequest.headers as AxiosHeaders).set(
+        "Authorization",
+        `Bearer ${newAccessToken}`
+      );
 
       return apiClient(
         originalRequest

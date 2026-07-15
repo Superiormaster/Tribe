@@ -6,7 +6,7 @@ import { registerView } from "@/lib/useViewTracker";
 type Props = {
   postId: number;
   ref: RefObject<HTMLElement | null>;
-  onViewed?: () => void;
+  onViewed?: (views: number) => void;
 };
 
 export const usePostView = ({
@@ -43,7 +43,7 @@ export const usePostView = ({
                 }
               );
 
-              onViewed?.();
+              onViewed?.(1);
             } catch (err) {
               console.error(err);
             }
