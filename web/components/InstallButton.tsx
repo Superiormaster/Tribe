@@ -2,10 +2,18 @@
 
 import { useEffect, useState } from "react";
 
-export default function InstallButton() {
-  const [promptEvent, setPromptEvent] = useState<any>(null);
-  const [installed, setInstalled] = useState(false);
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  userChoice: Promise<{
+    outcome: "accepted" | "dismissed";
+    platform: string;
+  }>;
+}
 
+export default function InstallButton() {
+  const [promptEvent, setPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
+  const [installed, setInstalled] = useState(false);
+  
   useEffect(() => {
     // Already running as installed PWA
     if (
@@ -16,8 +24,9 @@ export default function InstallButton() {
     }
 
     const beforeInstall = (e: Event) => {
+      console.log("beforeinstallprompt fired");
       e.preventDefault();
-      setPromptEvent(e);
+      setPromptEvent(e as BeforeInstallPromptEvent);
     };
 
     const installedHandler = () => {
