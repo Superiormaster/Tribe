@@ -91,7 +91,7 @@ type Profile = {
 export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVideoElement) => void }) {
   const params = useParams();
   const { push } = useNavigation()
-  const { user: currentUser } = useContext(UserContext) || {};
+  const { user: currentUser } = useContext(UserContext)!;
   const username = Array.isArray(params.username) ? params.username[0] : params.username || '';
   const [profileUserId, setProfileUserId] = useState<number | null>(null);
   const [isPrivate, setIsPrivate] = useState(false);
@@ -100,6 +100,7 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [isMyProfile, setIsMyProfile] = useState(false);
   const [showUnstarModal, setShowUnstarModal] = useState(false);
   const [relationship, setRelationship] = useState({
     is_me: false,
@@ -117,10 +118,6 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
     setMounted(true);
   }, []);
 
-  const isMyProfile =
-    mounted &&
-    currentUser?.username === username;
-  
   const orderedPosts = useMemo(() => {
 
     return [...posts].sort((a, b) => {
@@ -539,6 +536,7 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
         request_sent: data.relationship?.request_sent || false,
         request_received: data.relationship?.request_received || false,
       });
+      setIsMyProfile(data.relationship.is_me)
   
       return {
         is_private: false,
@@ -1131,16 +1129,20 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
     )}
 
       <div className="flex justify-center py-4">
-        {nextPage !== null ? (
-          <button
-            onClick={() => fetchPosts(nextPage)}
-            disabled={loadingMore}
-            className="px-4 py-2 bg-indigo-600 text-white rounded-lg disabled:opacity-50"
-          >
-            {loadingMore ? "Loading..." : "Load More"}
-          </button>
-        ) : (
-          <span className="text-gray-500">No more posts</span>
+        {filteredPosts.length > 0 && (
+          <div className="flex justify-center py-4">
+            {nextPage ? (
+              <button
+                onClick={() => fetchPosts(nextPage)}
+                disabled={loadingMore}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg disabled:opacity-50"
+              >
+                {loadingMore ? "Loading..." : "Load More"}
+              </button>
+            ) : (
+              <span className="text-gray-500">No more posts</span>
+            )}
+          </div>
         )}
       </div>
     </div>

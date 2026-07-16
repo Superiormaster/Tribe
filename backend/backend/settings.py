@@ -22,10 +22,10 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")
-FRONTEND_URL = os.getenv(
-    "FRONTEND_URL",
-    "http://localhost:3000"
-)
+
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+LOGO_URL = f"{FRONTEND_URL}/tribe2.png"
+UNSUBSCRIBE_URL = f"{FRONTEND_URL}/unsubscribe"
 
 DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 IS_DEV = DEBUG
@@ -111,8 +111,8 @@ ROOT_URLCONF = 'backend.urls'
 # -----------------------------
 TEMPLATES = [
     {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "DIRS": [BASE_DIR / "templates"],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [

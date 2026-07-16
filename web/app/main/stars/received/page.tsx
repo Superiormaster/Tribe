@@ -23,7 +23,7 @@ export default function MyStarsPage() {
   }
 
   return (
-    <div className="p-4 space-y-3 max-w-xl mx-auto">
+    <div className="p-4 my-20 space-y-3 max-w-xl mx-auto">
       <h1 className="text-xl text-gray-700 dark:text-white font-bold mb-4">⭐ Stars I received </h1>
 
       {users.map(user => (

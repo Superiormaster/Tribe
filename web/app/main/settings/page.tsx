@@ -14,7 +14,7 @@ import {
 import SettingsItem from "@/components/settings/SettingsItem";
 import SettingsCard from "@/components/settings/SettingsCard";
 import SettingsSearch from "@/components/settings/SettingsSearch";
-import AccountSwitcherModal from "@/components/AccountSwitcherModal";
+import { useAccountSwitcher } from "@/components/AccountSwitcherContext";
 import {
   getAccounts,
   getActiveAccount,
@@ -23,8 +23,8 @@ import { apiRequest } from "@/utils/api";
 
 export default function SettingsPage() {
   const [search, setSearch] = useState("");
-  const [showSwitcher, setShowSwitcher] = useState(false);
   const [currentAccount, setCurrentAccount] = useState<any>(null);
+  const { openSwitcher } = useAccountSwitcher();
   const [notificationsEnabled,
   setNotificationsEnabled] =
     useState(true);
@@ -89,7 +89,7 @@ export default function SettingsPage() {
               title={currentAccount?.username || "Current Account"}
               description={currentAccount?.email}
               buttonText="Switch Account"
-              onClick={() => setShowSwitcher(true)}
+              onClick={openSwitcher}
             />
           </div>
         </section>
@@ -177,15 +177,6 @@ export default function SettingsPage() {
         </section>
         */}
       </div>
-
-      <AccountSwitcherModal
-        open={showSwitcher}
-        onClose={() => setShowSwitcher(false)}
-        onSwitch={(account: any) => {
-          setCurrentAccount(account);
-          setShowSwitcher(false);
-        }}
-      />
     </div>
   );
 }

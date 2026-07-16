@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getAccounts } from "@/utils/accounts";
+import { CheckCircle } from "lucide-react";
+import { getAccounts, getActiveAccount } from "@/utils/accounts";
 import { switchAccount } from "@/lib/switchAccount";
 import { logout } from "@/utils/auth"
 
@@ -14,10 +15,12 @@ type Account = {
 
 export default function SwitchAccountPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
+  const [activeAccount, setActiveAccount] = useState<string | null>(null);
 
   // ✅ Use helper (clean)
   useEffect(() => {
     setAccounts(getAccounts());
+    setActiveAccount(getActiveAccount());
   }, []);
 
   const removeAccount = (email: string) => {
@@ -29,7 +32,7 @@ export default function SwitchAccountPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center mt-24 p-2">
+    <div className="min-h-screen w-full flex flex-col items-center my-24 p-2">
       <h1 className="text-2xl font-bold mb-6 text-gray-800 dark:text-white">
         Switch Account
       </h1>
@@ -42,13 +45,16 @@ export default function SwitchAccountPage() {
         {accounts.map((acc) => (
           <div
             key={acc.email}
-            className="flex items-center gap-3 p-4 rounded-2xl shadow border bg-white dark:bg-gray-900 w-full"
+            className="flex items-center gap-3 p-4 rounded-2xl shadow border bg-white dark:bg-gray-900"
           >
           
             {/* ACCOUNT BUTTON */}
             <button
-              onClick={() => switchAccount(acc.email)}
-              className="flex items-center gap-3 min-w-0 flex-1 text-left overflow-hidden"
+              onClick={() => {
+                setActiveAccount(acc.email);
+                switchAccount(acc.email);
+              }}
+              className="items-center gap-3 min-w-0 flex-1 text-left overflow-hidden"
             >
           
               <img
@@ -68,6 +74,13 @@ export default function SwitchAccountPage() {
               </div>
           
             </button>
+          
+            {activeAccount === acc.email && (
+              <CheckCircle
+                className="w-5 h-5 text-green-500 shrink-0"
+                fill="currentColor"
+              />
+            )}
           
             {/* TYPE */}
             <span className="text-sm shrink-0">

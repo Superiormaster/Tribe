@@ -1,0 +1,36 @@
+New Login Detected
+
+A new login to your Tribe account was detected.
+
+Device:
+{{ device }}
+
+Location:
+{{ location }}
+
+IP Address:
+{{ ip_address }}
+
+Time:
+{{ login_time }}
+
+If this was you, no further action is needed.
+
+If you don't recognize this login, secure your account immediately by resetting your password:
+
+{{ reset_password_link }}
+
+— The Tribe Team
+
+
+
+Variables to pass
+Python
+{
+    "device": device_name,
+    "location": location,
+    "ip_address": ip_address,
+    "login_time": login_time,
+    "reset_password_link": reset_password_link,
+}
+This email provides the user with the key information they need to recognize whether the login was theirs, without overwhelming them with unnecessary details.

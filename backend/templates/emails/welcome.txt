@@ -1,0 +1,21 @@
+Welcome to Tribe! 🎉
+
+Your account is now ready.
+
+We're excited to have you join the Tribe community.
+
+Get started by:
+
+• Completing your profile
+• Connecting with people
+• Joining communities
+• Sharing your first post
+• Starting conversations
+
+Open Tribe:
+
+{{ app_url }}
+
+We're glad you're here.
+
+— The Tribe Team

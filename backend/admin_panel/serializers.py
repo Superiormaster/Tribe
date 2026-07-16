@@ -1,28 +1,29 @@
 from rest_framework import serializers
 from feedback.models import Report
-from communities.models import TribeRequest
+from communities.models import Tribe, TribeRequest
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
+class CreatorSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = (
+            "id",
+            "username",
+            "email",
+            "avatar",
+        )
+
+class TribeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Tribe
+        fields = ("id", "name")
 
 class AdminTribeRequestSerializer(serializers.ModelSerializer):
-    creator_name = serializers.CharField(
-        source="creator.username",
-        read_only=True
-    )
-
-    creator_email = serializers.EmailField(
-        source="creator.email",
-        read_only=True
-    )
-
-    creator_avatar = serializers.SerializerMethodField()
-
-    reviewed_by = serializers.CharField(
-        source="reviewed_by.username",
-        read_only=True
-    )
+    creator = CreatorSerializer(read_only=True)
+    reviewed_by = CreatorSerializer(read_only=True)
+    tribe = TribeSerializer(read_only=True)
 
     class Meta:
         model = TribeRequest
@@ -33,24 +34,17 @@ class AdminTribeRequestSerializer(serializers.ModelSerializer):
             "request_reason",
             "status",
             "creator",
-            "creator_name",
-            "creator_email",
-            "creator_avatar",
             "created_at",
             "reviewed_by",
             "reviewed_at",
             "rejection_reason",
+            "tribe",
         )
 
     def get_creator_avatar(self, obj):
       if obj.creator.avatar:
           return obj.creator.avatar
       return None
-
-
-class ApproveTribeRequestSerializer(serializers.Serializer):
-    request_id = serializers.IntegerField()
-
 
 class RejectTribeRequestSerializer(serializers.Serializer):
     request_id = serializers.IntegerField()
@@ -66,6 +60,12 @@ class TribeRequestSerializer(serializers.ModelSerializer):
         model = TribeRequest
         fields = '__all__'
 
+
+class CreateTribeSerializer(serializers.Serializer):
+    request_id = serializers.IntegerField()
+    name = serializers.CharField(max_length=255)
+    description = serializers.CharField()
+    allow_reels = serializers.BooleanField(default=False)
 
 class ReportSerializer(serializers.ModelSerializer):
     class Meta:

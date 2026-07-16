@@ -1,0 +1,12 @@
+Welcome to Tribe!
+
+Thanks for creating your Tribe account.
+
+To activate your account, verify your email by visiting the link below:
+
+{{ verification_link }}
+
+If you didn't create a Tribe account, you can safely ignore this email.
+
+—
+The Tribe Team

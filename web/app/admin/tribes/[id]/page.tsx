@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
+import { useNavigation } from "@/utils/useNavigation";
 
 import { apiRequest } from '@/utils/api';
 
@@ -42,7 +43,7 @@ interface TribeRequestDetail {
 }
 
 export default function TribeRequestDetailPage() {
-  const router = useRouter();
+  const { push } = useNavigation();
   const params = useParams();
 
   const requestId = Number(params.id);
@@ -67,24 +68,9 @@ export default function TribeRequestDetailPage() {
     }
   }, [requestId]);
 
-  const approveRequest = async () => {
-    try {
-      setSubmitting(true);
-
-      await apiRequest('api/admin/tribe-requests/approve/', {
-        method: 'POST',
-        data: {
-          request_id: requestId,
-        },
-      });
-
-      await fetchRequest();
-    } catch (error) {
-      console.error('Failed to approve tribe request:', error);
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  const approveRequest = () => {
+    push(`/admin/tribes/${requestId}/create`);
+  }
 
   const rejectRequest = async () => {
     const reason = window.prompt('Enter rejection reason');
@@ -127,7 +113,7 @@ export default function TribeRequestDetailPage() {
         }
       );
 
-      router.push('/admin/tribe-requests');
+      push('/admin/tribe-requests');
     } catch (error) {
       console.error('Failed to delete tribe request:', error);
     } finally {
@@ -162,17 +148,17 @@ export default function TribeRequestDetailPage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto text-gray-700 dark:text-gray-200 max-w-5xl space-y-6">
       <button
         type="button"
-        onClick={() => router.push('/admin/tribe-requests')}
+        onClick={() => push('/admin/tribes')}
         className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 transition hover:text-black"
       >
         <ArrowLeft className="h-4 w-4" />
         Back to Tribe Requests
       </button>
 
-      <div className="rounded-xl border border-gray-200 bg-white p-6">
+      <div className="rounded-xl border border-gray-200 bg-white dark:bg-zinc-800 p-6">
         <h1 className="text-2xl font-bold">
           {request.tribe_name}
         </h1>
@@ -183,7 +169,7 @@ export default function TribeRequestDetailPage() {
       </div>
   
       <div className="grid gap-6">
-        <div className="rounded-xl border border-gray-200 bg-white p-6">
+        <div className="rounded-xl border border-gray-200 bg-white dark:bg-zinc-800 p-6">
           <div className="flex items-center gap-2">
             <User className="h-5 w-5 text-gray-500" />
             <h2 className="text-lg font-semibold">Creator</h2>
@@ -197,7 +183,7 @@ export default function TribeRequestDetailPage() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-gray-200 bg-white p-6">
+        <div className="rounded-xl border dark:bg-zinc-800 border-gray-200 bg-white p-6">
           <div className="flex items-center gap-2">
             <Users className="h-5 w-5 text-gray-500" />
             <h2 className="text-lg font-semibold">Tribe Name</h2>
@@ -206,7 +192,7 @@ export default function TribeRequestDetailPage() {
           <p className="mt-4">{request.tribe_name}</p>
         </div>
 
-        <div className="rounded-xl border border-gray-200 bg-white p-6">
+        <div className="rounded-xl border dark:bg-zinc-800 border-gray-200 bg-white p-6">
           <div className="flex items-center gap-2">
             <FileText className="h-5 w-5 text-gray-500" />
             <h2 className="text-lg font-semibold">Description</h2>
@@ -217,7 +203,7 @@ export default function TribeRequestDetailPage() {
           </p>
         </div>
 
-        <div className="rounded-xl border border-gray-200 bg-white p-6">
+        <div className="rounded-xl border dark:bg-zinc-800 border-gray-200 bg-white p-6">
           <div className="flex items-center gap-2">
             <FileText className="h-5 w-5 text-gray-500" />
             <h2 className="text-lg font-semibold">Reason</h2>
@@ -228,7 +214,7 @@ export default function TribeRequestDetailPage() {
           </p>
         </div>
 
-        <div className="rounded-xl border border-gray-200 bg-white p-6">
+        <div className="rounded-xl border dark:bg-zinc-800 border-gray-200 bg-white p-6">
           <div className="flex items-center gap-2">
             <Calendar className="h-5 w-5 text-gray-500" />
             <h2 className="text-lg font-semibold">Requested</h2>
@@ -239,7 +225,7 @@ export default function TribeRequestDetailPage() {
           </p>
         </div>
 
-        <div className="rounded-xl border border-gray-200 bg-white p-6">
+        <div className="rounded-xl border dark:bg-zinc-800 border-gray-200 bg-white p-6">
           <div className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-gray-500" />
             <h2 className="text-lg font-semibold">Reviewed By</h2>
@@ -250,7 +236,7 @@ export default function TribeRequestDetailPage() {
           </p>
         </div>
 
-        <div className="rounded-xl border border-gray-200 bg-white p-6">
+        <div className="rounded-xl border dark:bg-zinc-800 border-gray-200 bg-white p-6">
           <div className="flex items-center gap-2">
             <Calendar className="h-5 w-5 text-gray-500" />
             <h2 className="text-lg font-semibold">Reviewed At</h2>
@@ -263,7 +249,7 @@ export default function TribeRequestDetailPage() {
           </p>
         </div>
 
-        <div className="rounded-xl border border-gray-200 bg-white p-6">
+        <div className="rounded-xl border dark:bg-zinc-800 border-gray-200 bg-white p-6">
           <div className="flex items-center gap-2">
             <X className="h-5 w-5 text-red-500" />
             <h2 className="text-lg font-semibold">
@@ -277,7 +263,7 @@ export default function TribeRequestDetailPage() {
         </div>
       </div>
   
-      <div className="rounded-xl border border-gray-200 bg-white p-6">
+      <div className="rounded-xl border border-gray-200 dark:bg-zinc-800 bg-white p-6">
         <h2 className="text-lg font-semibold">Actions</h2>
         <p className="mt-1 text-sm text-gray-500">
           Manage this tribe request
@@ -323,7 +309,7 @@ export default function TribeRequestDetailPage() {
               <button
                 type="button"
                 onClick={() =>
-                  router.push(`/tribes/${request.id}`)
+                  push(`/main/tribe/${request.tribe.id}`)
                 }
                 className="inline-flex items-center gap-2 rounded-lg bg-black px-4 py-2 text-white transition hover:bg-gray-800"
               >
@@ -348,7 +334,7 @@ export default function TribeRequestDetailPage() {
               <button
                 type="button"
                 onClick={() =>
-                  router.push('/admin/tribe-requests')
+                  push('/admin/tribe-requests')
                 }
                 className="inline-flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2 text-gray-700 transition hover:bg-gray-50"
               >

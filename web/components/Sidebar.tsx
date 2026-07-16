@@ -8,7 +8,7 @@ import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import { apiRequest } from '@/utils/api';
 import { useTheme } from "next-themes";
 import Image from "next/image";
-import AccountSwitcherModal from "@/components/AccountSwitcherModal";
+import { useAccountSwitcher } from "@/components/AccountSwitcherContext";
 
 import {
   LayoutDashboard,
@@ -41,10 +41,10 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
     isOnline,
     latency,
   } = useNetwork();
+  const { openSwitcher } = useAccountSwitcher();
   const { push, replace } = useNavigation();
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
-  const [open, setOpen] = useState(false);
   const context = useContext(UserContext);
   const [inviteCount, setInviteCount] = useState(0);
   const [invites, setInvites] = useState<any[]>([]);
@@ -141,8 +141,8 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
             {/* RIGHT: Open modal */}
             <button
               onClick={(e) => {
-                e.stopPropagation(); // 🔥 prevents triggering parent click
-                setOpen(true);
+                e.stopPropagation();
+                openSwitcher();
               }}
               className="p-2 rounded-full hover:bg-gray-300 dark:hover:bg-zinc-700"
             >
@@ -269,11 +269,6 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
           </button>
 
         </div>
-
-        <AccountSwitcherModal
-          open={open}
-          onClose={() => setOpen(false)}
-        />
 
       </nav>
 

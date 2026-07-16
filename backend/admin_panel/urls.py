@@ -13,7 +13,7 @@ from .views import (
     create_admin,
     list_tribe_requests,
     tribe_request_detail,
-    approve_tribe_request,
+    create_tribe_from_request,
     reject_tribe_request,
     delete_tribe_request,
 )
@@ -48,8 +48,8 @@ urlpatterns = [
     ),
   
     path(
-        "tribe-requests/approve/",
-        approve_tribe_request,
+        "tribe-requests/create-tribe/",
+        create_tribe_from_request,
     ),
   
     path(

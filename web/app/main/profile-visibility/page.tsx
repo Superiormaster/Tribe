@@ -63,12 +63,6 @@ description:
 "Anyone can view your profile.",
 },
 {
-value: "members",
-title: "Members Only",
-description:
-"Only Tribe members can view your profile.",
-},
-{
 value: "private",
 title: "Private",
 description:

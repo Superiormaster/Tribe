@@ -84,25 +84,19 @@ def create_star_notification(
         actors=[instance.star],
     )
 
-@receiver(
-    post_save,
-    sender=ConnectionRequest
-)
-def create_connection_request_notification(
-    sender,
-    instance,
-    created,
-    **kwargs
-):
-    if not created:
-        return
+@receiver(post_save, sender=ConnectionRequest)
+def create_connection_request_notification(sender, instance, created, **kwargs):
 
-    create_notification(
-        type=
-            "connection_request",
-        recipient=
-            instance.receiver,
-        actors=[
-            instance.sender
-        ],
-    )
+    if created:
+        create_notification(
+            type="connection_request",
+            recipient=instance.to_user,
+            actors=[instance.from_user],
+        )
+
+    elif instance.status == "accepted":
+        create_notification(
+            type="connection_accepted",
+            recipient=instance.from_user,
+            actors=[instance.to_user],
+        )

@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useNavigation } from "@/utils/useNavigation";
+import { Plus } from 'lucide-react'
 
 import AppLink from '@/components/AppLink';
 import { apiRequest } from '@/utils/api';
@@ -40,9 +41,10 @@ interface TribeRequest {
 }
 
 export default function TribeRequestsPage() {
-  const router = useRouter();
+  const { push } = useNavigation();
 
   const [requests, setRequests] = useState<TribeRequest[]>([]);
+  const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
@@ -115,42 +117,6 @@ export default function TribeRequestsPage() {
     }
   }, [next, loadingMore, search, status]);
 
-  const approveRequest = async (requestId: number) => {
-    try {
-      await apiRequest('api/admin/tribe-requests/approve/', {
-        method: 'POST',
-        data: {
-          request_id: requestId,
-        },
-      });
-
-      setOpenMenuId(null);
-      fetchRequests();
-    } catch (error) {
-      console.error('Failed to approve request:', error);
-    }
-  };
-
-  const rejectRequest = async (
-    requestId: number,
-    reason: string
-  ) => {
-    try {
-      await apiRequest('/api/admin/tribe-requests/reject/', {
-        method: 'POST',
-        data: {
-          request_id: requestId,
-          reason,
-        },
-      });
-
-      setOpenMenuId(null);
-      fetchRequests();
-    } catch (error) {
-      console.error('Failed to reject request:', error);
-    }
-  };
-
   const deleteRequest = async (requestId: number) => {
     try {
       await apiRequest(
@@ -175,7 +141,17 @@ export default function TribeRequestsPage() {
     <div className="space-y-6 text-gray-700 dark:text-gray-200">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">TRIBE REQUESTS</h1>
+          <div className="flex items-center justify-between">
+            <h1 className="text-2xl font-bold">TRIBE REQUESTS</h1>
+            <button
+              disabled={!selectedRequestId}
+              onClick={() =>
+                push(`/admin/tribes/${selectedRequestId}/create`)
+              }
+            >
+              <Plus size={18} />
+            </button>
+          </div>
           <p className="text-sm text-gray-500">
             {count} request{count === 1 ? '' : 's'}
           </p>
@@ -246,14 +222,20 @@ export default function TribeRequestsPage() {
               {requests.map((request) => (
                 <tr
                   key={request.id}
-                  onClick={() =>
-                    router.push(`/admin/tribes/${request.id}`)
-                  }
-                  className="cursor-pointer border-b transition"
+                  onClick={() => setSelectedRequestId(request.id)}
+                  className={`cursor-pointer border-b transition ${
+                    selectedRequestId === request.id
+                      ? "bg-blue-50 dark:bg-zinc-700"
+                      : ""
+                  }`}
                 >
                   <td className="px-6 py-4">
                     <div>
-                      <p className="font-medium text-gray-900">
+                      <p onClick={() => {
+                      setSelectedRequestId(request.id);
+                      push(`/admin/tribes/${request.id}`);
+                    }}
+                      className="font-medium text-gray-900">
                         {request.creator.username}
                       </p>
 
@@ -270,19 +252,19 @@ export default function TribeRequestsPage() {
                   <td className="px-6 py-4">
                     {request.status === 'pending' && (
                       <span className="rounded-full bg-yellow-100 px-3 py-1 text-xs font-medium text-yellow-700">
-                        🟡 Pending
+                        Pending
                       </span>
                     )}
 
                     {request.status === 'approved' && (
                       <span className="rounded-full bg-green-100 px-3 py-1 text-xs font-medium text-green-700">
-                        🟢 Approved
+                        Approved
                       </span>
                     )}
 
                     {request.status === 'rejected' && (
                       <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-medium text-red-700">
-                        🔴 Rejected
+                        Rejected
                       </span>
                     )}
                   </td>
@@ -308,36 +290,10 @@ export default function TribeRequestsPage() {
                     </button>
 
                     {openMenuId === request.id && (
-                      <div className="absolute right-4 top-12 z-20 w-52 rounded-lg border border-gray-200 bg-white shadow-lg">
+                      <div className="absolute right-4 top-12 z-20 w-52 rounded-lg border border-gray-200 dark:bg-zinc-800 bg-white shadow-lg">
 
                         {request.status === 'pending' && (
                           <>
-                            <button
-                              type="button"
-                              onClick={() => approveRequest(request.id)}
-                              className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-gray-50"
-                            >
-                              <Check className="h-4 w-4 text-green-600" />
-                              Approve
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const reason = window.prompt(
-                                  'Rejection reason'
-                                );
-
-                                if (reason?.trim()) {
-                                  rejectRequest(request.id, reason.trim());
-                                }
-                              }}
-                              className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-gray-50"
-                            >
-                              <X className="h-4 w-4 text-red-600" />
-                              Reject
-                            </button>
-
                             <button
                               type="button"
                               onClick={() => deleteRequest(request.id)}
@@ -354,7 +310,7 @@ export default function TribeRequestsPage() {
                             <button
                               type="button"
                               onClick={() =>
-                                router.push(`/tribes/${request.id}`)
+                              push(`/main/tribe/${request.tribe.id}`)
                               }
                               className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-gray-50"
                             >
@@ -378,7 +334,7 @@ export default function TribeRequestsPage() {
                             <button
                               type="button"
                               onClick={() =>
-                                router.push(`/admin/tribe-requests/${request.id}`)
+                                push(`/admin/tribe-requests/${request.id}`)
                               }
                               className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-gray-50"
                             >

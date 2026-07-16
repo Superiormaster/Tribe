@@ -2,8 +2,9 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
-import { getAccounts, type SavedAccount } from "@/utils/accounts";
+import { getAccounts, type SavedAccount, getActiveAccount } from "@/utils/accounts";
 import { switchAccount } from "@/lib/switchAccount";
+import { CheckCircle } from "lucide-react";
 
 interface AccountSwitcherModalProps {
   open: boolean;
@@ -17,9 +18,11 @@ export default function AccountSwitcherModal({
   onSwitch,
 }: AccountSwitcherModalProps) {
   const [accounts, setAccounts] = useState<SavedAccount[]>([]);
+  const [activeAccount, setActiveAccount] = useState<string | null>(null);
 
   useEffect(() => {
     setAccounts(getAccounts());
+    setActiveAccount(getActiveAccount());
   }, []);
 
   return (
@@ -27,7 +30,7 @@ export default function AccountSwitcherModal({
       {open && (
         <>
           <motion.div
-            className="fixed z-50 inset-0 bg-black/40"
+            className="fixed z-40 inset-0 bg-black/50"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -52,6 +55,7 @@ export default function AccountSwitcherModal({
                   whileTap={{ scale: 0.96 }}
                   className="flex items-center gap-3 p-3 rounded-xl bg-gray-100 dark:bg-gray-800"
                   onClick={() => {
+                    setActiveAccount(acc.email);
                     switchAccount(acc.email);
                     onSwitch?.(acc);
                     onClose();
@@ -67,6 +71,12 @@ export default function AccountSwitcherModal({
                       {acc.email}
                     </p>
                   </div>
+                  {activeAccount === acc.email && (
+                    <CheckCircle
+                      className="w-5 h-5 text-green-500 shrink-0"
+                      fill="currentColor"
+                    />
+                  )}
                 </motion.div>
               ))}
             </div>

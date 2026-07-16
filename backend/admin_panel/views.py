@@ -18,8 +18,8 @@ from django.utils import timezone
 from communities.models import TribeRequest
 from .serializers import (
     AdminTribeRequestSerializer,
-    ApproveTribeRequestSerializer,
     RejectTribeRequestSerializer,
+    CreateTribeSerializer,
 )
 
 User = get_user_model()
@@ -293,55 +293,6 @@ def delete_tribe_request(request, pk):
 
 @api_view(["POST"])
 @permission_classes([IsAdmin])
-def approve_tribe_request(request):
-
-    serializer = ApproveTribeRequestSerializer(
-        data=request.data
-    )
-
-    serializer.is_valid(raise_exception=True)
-
-    tribe_request = TribeRequest.objects.filter(
-        id=serializer.validated_data["request_id"]
-    ).first()
-
-    if not tribe_request:
-        return Response(
-            {"detail": "Request not found."},
-            status=404,
-        )
-
-    if tribe_request.status != "pending":
-        return Response(
-            {
-                "detail":
-                "This request has already been reviewed."
-            },
-            status=400,
-        )
-
-    tribe_request.status = "approved"
-    tribe_request.reviewed_by = request.user
-    tribe_request.reviewed_at = timezone.now()
-
-    tribe_request.save()
-
-    create_notification(
-        type="tribe_request_approved",
-        recipient=tribe_request.creator,
-        actors=[request.user],
-        tribe_request=tribe_request,
-    )
-
-    return Response(
-        {
-            "detail":
-            "Tribe request approved."
-        }
-    )
-
-@api_view(["POST"])
-@permission_classes([IsAdmin])
 def reject_tribe_request(request):
 
     serializer = RejectTribeRequestSerializer(
@@ -392,3 +343,72 @@ def reject_tribe_request(request):
             "Tribe request rejected."
         }
     )
+
+
+@api_view(["POST"])
+@permission_classes([IsAdmin])
+def create_tribe_from_request(request):
+
+    serializer = CreateTribeSerializer(
+        data=request.data
+    )
+
+    serializer.is_valid(raise_exception=True)
+
+    data = serializer.validated_data
+
+    tribe_request = TribeRequest.objects.filter(
+        id=data["request_id"]
+    ).select_related("creator").first()
+
+    if not tribe_request:
+        return Response(
+            {"detail": "Request not found."},
+            status=404,
+        )
+
+    if tribe_request.status != "pending":
+        return Response(
+            {
+                "detail":
+                "This request has already been reviewed."
+            },
+            status=400,
+        )
+
+    if Tribe.objects.filter(
+        name=data["name"]
+    ).exists():
+        return Response(
+            {
+                "detail":
+                "A tribe with this name already exists."
+            },
+            status=400,
+        )
+
+    tribe = Tribe.objects.create(
+        name=data["name"],
+        description=data["description"],
+        allow_reels=data["allow_reels"],
+    )
+
+    tribe_request.status = "approved"
+    tribe_request.reviewed_by = request.user
+    tribe_request.reviewed_at = timezone.now()
+    tribe_request.save()
+
+    create_notification(
+        type="tribe_request_approved",
+        recipient=tribe_request.creator,
+        actors=[request.user],
+        tribe_request=tribe_request,
+    )
+
+    return Response({
+        "detail": "Tribe created successfully.",
+        "tribe": {
+            "id": tribe.id,
+            "name": tribe.name,
+        }
+    })

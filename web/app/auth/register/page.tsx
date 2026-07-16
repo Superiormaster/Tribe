@@ -71,14 +71,22 @@ export default function RegisterPage() {
         },
       })
 
-      alert(data.message)
+      push(`/auth/verify-email?email=${encodeURIComponent(email)}`)
 
-      push('/auth/login')
-
-    }catch(err:any){
-
-      setError(err?.message || 'Registration failed')
-
+    } catch (err: any) {
+      console.log(err);
+    
+      if (err.username) {
+        setError(err.username[0]);
+      } else if (err.email) {
+        setError(err.email[0]);
+      } else if (err.password) {
+        setError(err.password[0]);
+      } else if (err.detail) {
+        setError(err.detail);
+      } else {
+        setError("Registration failed");
+      }
     }finally{
       setLoading(false)
     }

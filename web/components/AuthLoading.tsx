@@ -23,7 +23,6 @@ export default function AuthLoading({
           <Image
             src={tribe2}
             alt="Tribe Logo"
-            fill
             className="w-full h-full object-cover"
           />
         </div>

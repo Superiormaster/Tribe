@@ -17,6 +17,14 @@ class TribeRequest(models.Model):
         ("approved", "Approved"),
         ("rejected", "Rejected"),
     )
+  
+    tribe = models.OneToOneField(
+      Tribe,
+      null=True,
+      blank=True,
+      on_delete=models.SET_NULL,
+      related_name="request"
+    )
 
     creator = models.ForeignKey(
         settings.AUTH_USER_MODEL,

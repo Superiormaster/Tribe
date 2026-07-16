@@ -1,0 +1,57 @@
+{% extends "emails/base.html" %}
+
+{% block title %}Verify Your Email{% endblock %}
+
+{% block content %}
+
+<h2 style="color:#333;margin-top:0;">
+    Welcome to Tribe 👋
+</h2>
+
+<p style="color:#555;line-height:1.7;">
+    Thanks for creating your Tribe account.
+</p>
+
+<p style="color:#555;line-height:1.7;">
+    Before you can start connecting with people and joining communities, please verify your email address by clicking the button below.
+</p>
+
+<div style="text-align:center;margin:35px 0;">
+
+    <a
+        href="{{ verification_link }}"
+        style="
+            background:#4F46E5;
+            color:#ffffff;
+            padding:14px 30px;
+            border-radius:8px;
+            text-decoration:none;
+            font-weight:bold;
+            display:inline-block;
+        "
+    >
+        Verify Email
+    </a>
+
+</div>
+
+<p style="color:#555;line-height:1.7;">
+    If the button doesn't work, copy and paste this link into your browser:
+</p>
+
+<p style="word-break:break-all;">
+    <a href="{{ verification_link }}" style="color:#4F46E5;">
+        {{ verification_link }}
+    </a>
+</p>
+
+<p style="color:#555;line-height:1.7;">
+    If you didn't create a Tribe account, you can safely ignore this email.
+</p>
+
+<p style="color:#777;font-size:14px;margin-top:30px;">
+    Thanks,<br>
+    <strong>The Tribe Team</strong>
+</p>
+
+{% endblock %}

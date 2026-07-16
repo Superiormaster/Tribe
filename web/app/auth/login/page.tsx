@@ -4,14 +4,13 @@ import { useState, useEffect, useContext } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome"
 import { faGoogle } from "@fortawesome/free-brands-svg-icons"
-import { apiRequest } from '@/utils/api'
+import { apiRequest, setAccessToken } from '@/utils/api'
 import { UserContext } from '@/components/UserContext'
 import AuthLoading from '@/components/AuthLoading'
 import { saveAccount, getAccounts, setActiveAccount } from '@/utils/accounts'
 import { handleOnboardingRedirect } from '@/utils/handleOnboardingRedirect';
 import { useSearchParams } from "next/navigation"
 import { storeRefreshToken, getRefreshToken } from "@/lib/keyStore"
-import { setAccessToken } from "@/utils/api"
 import { useNavigation } from "@/utils/useNavigation";
 
 declare global {
@@ -161,38 +160,30 @@ export default function LoginPage() {
 
       // Redirect based on profile completeness
       await handleOnboardingRedirect(push);
-    } catch(err:any) {
-      const detail = err?.detail || err?.message || 'Login failed'
+    } catch (err:any) {
+
+      const detail =
+          err?.detail ||
+          err?.message ||
+          "Login failed"
+  
       if (detail.includes("Email not verified")) {
-        setShowResend(true)
-        setError("Your email is not verified.")
-      } else if (detail.includes("credentials")) {
-        setError("Wrong email or password.")
+  
+          push(
+              `/auth/verify-email?email=${encodeURIComponent(email)}`
+          )
+  
+          return
+      }
+  
+      if (detail.includes("credentials")) {
+          setError("Wrong email or password.")
       } else {
-        setError(detail)
+          setError(detail)
       }
     } finally {
       setLoading(false)
       setAuthLoading(false)
-    }
-  };
-
-  // Resend verification
-  const handleResend = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setMessage('')
-    setError('')
-    try {
-      const data = await apiRequest('api/users/resend-verification/', {
-        method: 'POST',
-        data: { email },
-      })
-      setMessage(data.message)
-    } catch(err:any) {
-      setError(err?.message || 'Failed to resend')
-    } finally {
-      setLoading(false)
     }
   };
 
@@ -234,18 +225,6 @@ export default function LoginPage() {
         >
           {loading ? "Logging in..." : "Login"}
         </button>
-
-        {showResend && (
-          <div className="p-4 bg-yellow-50 border border-yellow-300 rounded">
-            <p className="text-yellow-700 mb-2">Your email is not verified.</p>
-            <form onSubmit={handleResend} className="space-y-2">
-              <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="Enter your email"
-                required className="w-full p-2 rounded border bg-gray-100 dark:bg-gray-800"/>
-              <button disabled={loading} className="w-full py-2 bg-indigo-600 text-white rounded">{loading?"Sending...":"Resend Link"}</button>
-            </form>
-            {message && <p className="text-green-600 mt-2">{message}</p>}
-          </div>
-        )}
 
         <div className="flex items-center gap-2 text-gray-400 text-sm">
           <div className="flex-1 h-px bg-gray-300"/> OR <div className="flex-1 h-px bg-gray-300"/>

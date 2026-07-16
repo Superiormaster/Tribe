@@ -283,14 +283,10 @@ export async function apiRequest(
         err.response.data
       );
 
-      const error = new Error(
-        "API error"
-      );
-
-      (error as any).data =
-        err.response.data;
-
-      throw error;
+      throw {
+        status: err.response.status,
+        ...err.response.data,
+      };
     }
 
     console.error(

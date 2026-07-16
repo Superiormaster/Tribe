@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Tribe{% endblock %}</title>
+</head>
+
+<body style="font-family:Arial,border-radius:12px,sans-serif;background:#f6f6f6;padding:20px;margin:0;">
+
+    <div style="
+        max-width:600px;
+        width:100%;
+        background:#ffffff;
+        border-radius:12px;
+        overflow:hidden;
+        box-shadow:0 4px 12px rgba(0,0,0,.08);
+    ">
+
+        <!-- Header -->
+        <div style="
+            background:#4F46E5;
+            padding:30px;
+            text-align:center;
+        ">
+
+            <img
+                src="{{ logo_url }}"
+                alt="Tribe Logo"
+                width="90"
+                style="display:block;margin:auto;"
+            >
+
+            <h1 style="
+                color:#ffffff;
+                margin:20px 0 8px;
+                font-size:28px;
+            ">
+                Tribe
+            </h1>
+
+            <p style="
+                color:#E5E7EB;
+                margin:0;
+                font-size:15px;
+            ">
+                Connect. Chat. Build Communities.
+            </p>
+
+        </div>
+
+        <!-- Content -->
+        <div style="padding:35px;">
+
+            {% block content %}
+
+            {% endblock %}
+
+        </div>
+
+        <!-- Footer -->
+        <div style="
+            background:#F9FAFB;
+            padding:25px;
+            text-align:center;
+            border-top:1px solid #E5E7EB;
+        ">
+
+            <p style="
+                color:#6B7280;
+                font-size:13px;
+                margin-bottom:15px;
+            ">
+                This email was sent automatically by Tribe.
+            </p>
+
+            <p style="margin-bottom:15px;">
+
+                <a
+                    href="{{ unsubscribe_url }}"
+                    style="
+                        color:#4F46E5;
+                        text-decoration:none;
+                        font-size:13px;
+                    "
+                >
+                    Unsubscribe
+                </a>
+
+            </p>
+
+            <p style="
+                color:#9CA3AF;
+                font-size:12px;
+                margin:0;
+            ">
+                © {% now "Y" %} Tribe. All rights reserved.
+            </p>
+
+        </div>
+
+    </div>
+
+</body>
+</html>

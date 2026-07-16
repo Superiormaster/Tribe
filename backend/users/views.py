@@ -46,7 +46,7 @@ from django.utils.decorators import method_decorator
 from sib_api_v3_sdk import ApiClient, Configuration
 from sib_api_v3_sdk.api import transactional_emails_api
 from sib_api_v3_sdk.models import SendSmtpEmail
-from users.email import send_brevo_email
+from users.email_service import *
 from .models import Star, ConnectionRequest, UserDevice, SavedLoginDevice, PrivacySettings, BlockedUser, MutedUser
 from .utils import redis_client
 from django.db.models import Count, Exists, OuterRef, F
@@ -111,80 +111,6 @@ def issue_tokens(user, response=None):
         }
     }
 
-def send_verification_email(email, verification_link):
-    html_content = f"""
-<html>
-  <body style="font-family:Arial,sans-serif; background:#f6f6f6; padding:20px;">
-    <div style="max-width:600px; margin:auto; background:#fff; padding:20px; border-radius:8px;">
-      <div style="text-align:center; margin-bottom:20px;">
-        <img src="https://yourdomain.com/logo.png" alt="Tribe Logo" width="120" />
-      </div>
-      <h2 style="color:#333;">Verify your Tribe account</h2>
-      <p>Hi,</p>
-      <p>Click below to verify your Tribe account:</p>
-      <p style="text-align:center; margin:30px 0;">
-        <a href="{verification_link}" style="background:#4f46e5; color:#fff; padding:12px 24px; border-radius:6px; text-decoration:none;">Verify Email</a>
-      </p>
-      <p>If you didn't signup, you can safely ignore this email.</p>
-      <hr style="margin:20px 0; border-color:#ddd;">
-        <a href="https://yourdomain.com/unsubscribe" style="color:#888;">Unsubscribe</a>
-      </p>
-    </div>
-  </body>
-</html>
-"""
-    send_brevo_email(
-      user.email,
-      "Verify your Tribe Email",
-      html_content,
-      text_content=f"Click here to verify: {verification_link}"
-    )
-
-def send_reset_email(email, reset_link):
-    text_content = f"""
-Hi,
-
-You requested a password reset for your Tribe account.
-Click this link to reset your password:
-
-{reset_link}
-
-If you didn’t request this, you can ignore this email.
-
-— Tribe Team
-"""
-
-    html_content = f"""
-<html>
-  <body style="font-family:Arial,sans-serif; background:#f6f6f6; padding:20px;">
-    <div style="max-width:600px; margin:auto; background:#fff; padding:20px; border-radius:8px;">
-      <div style="text-align:center; margin-bottom:20px;">
-        <img src="https://yourdomain.com/logo.png" alt="Tribe Logo" width="120" />
-      </div>
-      <h2 style="color:#333;">Reset Your Password</h2>
-      <p>Hi,</p>
-      <p>You requested a password reset for your Tribe account. Click the button below to reset your password:</p>
-      <p style="text-align:center; margin:30px 0;">
-        <a href="{reset_link}" style="background:#4f46e5; color:#fff; padding:12px 24px; border-radius:6px; text-decoration:none;">Reset Password</a>
-      </p>
-      <p>If you didn't request this, you can safely ignore this email.</p>
-      <hr style="margin:20px 0; border-color:#ddd;">
-      <p style="font-size:12px; color:#888; text-align:center;">
-        You received this email because you have an account with Tribe.<br/>
-        <a href="https://yourdomain.com/unsubscribe" style="color:#888;">Unsubscribe</a>
-      </p>
-    </div>
-  </body>
-</html>
-"""
-
-    send_brevo_email(
-        email,
-        "Reset Your Tribe Password",
-        html_content,
-        text_content=f"Reset your password using this link: {reset_link}"
-    )
-
 def update_user_location(request, user):
     ip = request.META.get('HTTP_X_FORWARDED_FOR')
     if ip:
@@ -245,12 +171,15 @@ def enforce_profile_visibility(viewer, profile_user):
     return None
 
 def create_session(user, request, refresh_token):
-    fingerprint = request.headers.get("X-Device-Fingerprint")
-    device_id = request.META.get("HTTP_USER_AGENT", "") + str(request.META.get("REMOTE_ADDR"))
 
-    session, _ = SavedLoginDevice.objects.update_or_create(
+    fingerprint = request.headers.get("X-Device-Fingerprint")
+
+    if not fingerprint:
+        fingerprint = request.META.get("HTTP_USER_AGENT", "")
+
+    session, created = SavedLoginDevice.objects.update_or_create(
         user=user,
-        device_id=device_id,  # ✅ THIS is your lookup
+        device_id=fingerprint,
         defaults={
             "session_id": str(uuid.uuid4()),
             "refresh_token_hash": sha256(refresh_token.encode()).hexdigest(),
@@ -259,10 +188,10 @@ def create_session(user, request, refresh_token):
             "device_name": request.META.get("HTTP_USER_AGENT", "")[:120],
             "is_active": True,
             "last_used": timezone.now(),
-        }
+        },
     )
 
-    return session
+    return session, created
 
 class ProfilePostPagination(PageNumberPagination):
     page_size = 20
@@ -302,7 +231,17 @@ class GoogleLoginView(generics.GenericAPIView):
         data = issue_tokens(user)
         
         # 🔥 CREATE SESSION HERE
-        create_session(user, request, data["refresh"])
+        session, is_new_device = create_session(user, request, data["refresh"])
+
+        if is_new_device:
+          send_login_alert_email(
+            email=user.email,
+            device=request.META.get("HTTP_USER_AGENT", "Unknown Device"),
+            location="Unknown",
+            ip_address=get_client_ip(request),
+            login_time=timezone.localtime().strftime("%d %b %Y %I:%M %p"),
+            reset_password_link=f"{settings.FRONTEND_URL}/auth/forgot-password",
+          )
         
         response.data = data
         return response
@@ -330,7 +269,17 @@ class NormalLoginView(generics.GenericAPIView):
         data = issue_tokens(user)
         
         # 🔥 CREATE SESSION HERE
-        create_session(user, request, data["refresh"])
+        session, is_new_device = create_session(user, request, data["refresh"])
+
+        if is_new_device:
+          send_login_alert_email(
+            email=user.email,
+            device=request.META.get("HTTP_USER_AGENT", "Unknown Device"),
+            location="Unknown",
+            ip_address=get_client_ip(request),
+            login_time=timezone.localtime().strftime("%d %b %Y %I:%M %p"),
+            reset_password_link=f"{settings.FRONTEND_URL}/auth/forgot-password",
+          )
         
         response.data = data
         return response
@@ -354,6 +303,13 @@ def change_password(request):
 
     user.set_password(new_password)
     user.save()
+  
+    reset_link = f"{settings.FRONTEND_URL}/auth/forgot-password"
+
+    send_password_changed_email(
+      email=user.email,
+      reset_password_link=reset_link,
+    )
 
     return Response({"message": "Password changed successfully"})
 
@@ -392,11 +348,21 @@ class RegisterView(generics.CreateAPIView):
 
     def post(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+        
         user = serializer.save()
 
-        verification_url = f"{settings.FRONTEND_URL}/auth/verify-email?code={user.verification_code}"
-        send_verification_email(user.email, verification_url)
+        verification_url = (
+          f"{settings.FRONTEND_URL}/auth/verify-email"
+          f"?code={user.verification_code}&email={user.email}"
+        )
+        
+        send_verification_email(
+          email=user.email,
+          verification_link=verification_url,
+        )
 
         return Response({"message": "Check your email to verify your account"}, status=201)
 
@@ -409,19 +375,33 @@ class VerifyEmailView(generics.GenericAPIView):
 
     def get(self, request):
         code = request.query_params.get("code")
+
         if not code:
-            return Response({"error": "Invalid verification link"}, status=400)
+            return Response(
+                {"error": "Invalid verification link"},
+                status=400
+            )
+
         try:
-            user = User.objects.get(verification_code=code)
+            user = User.objects.get(
+                verification_code=code
+            )
+
             user.email_verified = True
             user.verification_code = ""
             user.save()
 
-            res = Response({"message": "Email verified successfully!"})
-            return set_cookie_account(res, user)
+            send_welcome_email(user.email)
+
+            data = issue_tokens(user)
+
+            return Response(data)
 
         except User.DoesNotExist:
-            return Response({"error": "Invalid verification code"}, status=400)
+            return Response(
+                {"error": "Verification link has expired."},
+                status=400
+            )
 
 
 # -----------------------------
@@ -441,7 +421,10 @@ class ForgotPasswordView(generics.GenericAPIView):
             token = PasswordResetTokenGenerator().make_token(user)
             uid = urlsafe_base64_encode(force_bytes(user.pk))
             reset_url = f"{settings.FRONTEND_URL}/auth/reset-password?uid={uid}&token={token}"
-            send_reset_email(user.email, reset_url)
+            send_reset_email(
+              email=user.email,
+              reset_link=reset_url,
+            )
         except User.DoesNotExist:
             pass
 
@@ -473,8 +456,13 @@ class ResetPasswordView(generics.GenericAPIView):
 
         user.set_password(password)
         user.save()
-        res = Response({"message": "Password reset successfully"})
-        return set_cookie_account(res, user)
+        reset_link = f"{settings.FRONTEND_URL}/auth/forgot-password"
+
+        send_password_changed_email(
+          email=user.email,
+          reset_password_link=reset_link,
+        )
+        return Response({"message": "Password reset successfully"})
 
 # -----------------------------
 # MULTI-ACCOUNT LOGOUT
@@ -510,31 +498,16 @@ class ResendVerificationView(APIView):
             # Regenerate verification code
             user.generate_verification_code()
 
-            verification_url = f"{settings.FRONTEND_URL}/auth/verify-email?code={user.verification_code}"
-
-            html_content = f"""
-<html>
-  <body style="font-family:Arial,sans-serif; background:#f6f6f6; padding:20px;">
-    <div style="max-width:600px; margin:auto; background:#fff; padding:20px; border-radius:8px;">
-      <div style="text-align:center; margin-bottom:20px;">
-        <img src="https://yourdomain.com/logo.png" alt="Tribe Logo" width="120" />
-      </div>
-      <h2 style="color:#333;">Verify your Tribe account</h2>
-      <p>Hi,</p>
-      <p>Click below to verify your Tribe account:</p>
-      <p style="text-align:center; margin:30px 0;">
-        <a href="{verification_url}" style="background:#4f46e5; color:#fff; padding:12px 24px; border-radius:6px; text-decoration:none;">Verify Email</a>
-      </p>
-      <p>If you didn't signup, you can safely ignore this email.</p>
-      <hr style="margin:20px 0; border-color:#ddd;">
-        <a href="https://yourdomain.com/unsubscribe" style="color:#888;">Unsubscribe</a>
-      </p>
-    </div>
-  </body>
-</html>
-"""
-
-            send_brevo_email(user.email, "Verify your Tribe Email", html_content)
+            verification_url = (
+              f"{settings.FRONTEND_URL}/auth/verify-email"
+              f"?code={user.verification_code}"
+              f"&email={user.email}"
+            )
+            
+            send_verification_email(
+              email=user.email,
+              verification_link=verification_url,
+            )
 
             return Response({"message": "Verification link sent successfully."})
         except User.DoesNotExist:
@@ -922,8 +895,20 @@ def discover_people(request):
     # =========================
     # EXCLUSIONS
     # =========================
-    users = User.objects.exclude(pk=request.user.pk)
     muted_ids, blocked_ids, blocked_me_ids = get_block_filters(user)
+  
+    connected_ids = get_connected_users(user).values_list("id", flat=True)
+
+    pending_sent_ids = ConnectionRequest.objects.filter(
+      from_user=user,
+      status="pending"
+    ).values_list("to_user_id", flat=True)
+  
+    excluded_ids = set(
+      list(connected_ids) +
+      list(pending_sent_ids) +
+      [user.id]
+    )
 
     # =========================
     # BASE QUERYSET
@@ -1023,30 +1008,20 @@ def discover_people(request):
         results.append({
             "id": u.id,
             "username": u.username,
-
             "avatar": (
                 u.avatar.url
                 if hasattr(u.avatar, "url")
                 else u.avatar
             ) if u.avatar else None,
-
             "bio": u.bio,
-
             "country": u.country,
-
             "interests": u.interests,
-
             "mutual_interests": mutual_interests,
-
             "distance": distance_km,
-
             "type": user_type,
-
             "stars_count": u.stars_received_count,
-
             # star system
             "starred": u.is_starred,
-
             # connect system
             "connected": rel["is_connected"],
             "requestPending": rel["request_sent"],

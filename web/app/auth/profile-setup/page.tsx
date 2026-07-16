@@ -322,7 +322,7 @@ export default function ProfileSetup() {
 
         <div className="flex flex-col">
           <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-            Full name<span className="text-red-500">*</span>
+            Full name <span className="text-red-500">*</span>
           </label>
           <input
             placeholder="Full name"
@@ -414,7 +414,7 @@ export default function ProfileSetup() {
         {/* Gender */}
         <div className="flex flex-col">
           <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-            Full name<span className="text-red-500">*</span>
+            Gender <span className="text-red-500">*</span>
           </label>
         
           <select
@@ -434,7 +434,7 @@ export default function ProfileSetup() {
         {/* Bio */}
         <div className="flex flex-col">
           <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-            Bio<span className="text-red-500">*</span>
+            Bio <span className="text-red-500">*</span>
           </label>
           <textarea
             placeholder="Tell us something about yourself..."
@@ -446,31 +446,35 @@ export default function ProfileSetup() {
           />
         </div>
         
-        <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">
+            Country <span className="text-red-500">*</span>
+          </label>
 
-          {/* Country */}
-          <select
-            value={country}
-            onChange={e => setCountry(e.target.value)}
-            className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-100 dark:bg-gray-800"
-            required
-          >
-            <option value="">Select Country</option>
-            <span className="text-red-500">*</span>
-  
-            {countryList.map((c) => (
-              <option key={c.code} value={c.name}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-
-          <input
-              placeholder="City"
-              value={city}
-              onChange={(e)=>setCity(e.target.value)}
+          <div className="grid grid-cols-2 gap-4">
+            {/* Country */}
+            <select
+              value={country}
+              onChange={e => setCountry(e.target.value)}
               className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-100 dark:bg-gray-800"
-            />
+              required
+            >
+              <option value="">Select Country</option>
+    
+              {countryList.map((c) => (
+                <option key={c.code} value={c.name}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+  
+            <input
+                placeholder="City"
+                value={city}
+                onChange={(e)=>setCity(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-100 dark:bg-gray-800"
+              />
+            </div>
           </div>
   
           <input

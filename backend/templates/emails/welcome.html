@@ -1,0 +1,60 @@
+{% extends "emails/base.html" %}
+
+{% block title %}
+Welcome to Tribe
+{% endblock %}
+
+{% block content %}
+
+<h2>
+Welcome to Tribe 🎉
+</h2>
+
+<p>
+Your account is now ready.
+</p>
+
+<p>
+We're excited to have you join the Tribe community. Start exploring, connect with people who share your interests, and become part of meaningful conversations.
+</p>
+
+<div style="text-align:center;margin:40px 0;">
+
+<a href="{{ app_url }}"
+style="
+background:#4F46E5;
+color:white;
+padding:15px 40px;
+border-radius:10px;
+text-decoration:none;
+font-weight:bold;
+display:inline-block;
+">
+
+Open Tribe
+
+</a>
+
+</div>
+
+<p>
+Here are a few things you can do next:
+</p>
+
+<ul style="color:#555;line-height:1.8;padding-left:20px;">
+    <li>Complete your profile.</li>
+    <li>Find people to connect with.</li>
+    <li>Join communities that interest you.</li>
+    <li>Share your first post.</li>
+    <li>Start chatting with friends.</li>
+</ul>
+
+<p>
+We can't wait to see what you'll build and discover.
+</p>
+
+<p>
+See you on Tribe!
+</p>
+
+{% endblock %}

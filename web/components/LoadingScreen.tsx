@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import { tribe } from "@/assets";
-import { forceHome } from "@/lib/authEvents";
+import { refreshHome } from "@/lib/authEvents";
 import { motion } from "framer-motion";
 
 interface LoadingScreenProps {

@@ -1,0 +1,75 @@
+{% extends "emails/base.html" %}
+
+{% block title %}
+New Login Alert
+{% endblock %}
+
+{% block content %}
+
+<h2>
+New Login Detected
+</h2>
+
+<p>
+We noticed a new sign-in to your Tribe account.
+</p>
+
+<p>
+Here are the details of this login:
+</p>
+
+<div style="
+background:#F9FAFB;
+border:1px solid #E5E7EB;
+border-radius:10px;
+padding:20px;
+margin:30px 0;
+line-height:1.8;
+">
+
+<strong>Device:</strong><br>
+{{ device }}<br><br>
+
+<strong>Location:</strong><br>
+{{ location }}<br><br>
+
+<strong>IP Address:</strong><br>
+{{ ip_address }}<br><br>
+
+<strong>Time:</strong><br>
+{{ login_time }}
+
+</div>
+
+<p>
+If this was you, you can safely ignore this email.
+</p>
+
+<p>
+If you don't recognize this login, we recommend changing your password immediately to secure your account.
+</p>
+
+<div style="text-align:center;margin:40px 0;">
+
+<a href="{{ reset_password_link }}"
+style="
+background:#4F46E5;
+color:white;
+padding:15px 40px;
+border-radius:10px;
+text-decoration:none;
+font-weight:bold;
+display:inline-block;
+">
+
+Secure My Account
+
+</a>
+
+</div>
+
+<p>
+Your security is important to us. If you continue to notice suspicious activity, please contact the Tribe support team.
+</p>
+
+{% endblock %}
