@@ -1,3 +1,4 @@
+require("dotenv").config()
 const express =
   require("express");
 
@@ -35,7 +36,6 @@ app.use(
   express.json()
 );
 
-require("dotenv").config();
 const CLIENT_URL =
   process.env.CLIENT_URL;
 

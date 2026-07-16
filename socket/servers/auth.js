@@ -3,6 +3,8 @@
 const axios = require('axios');
 const API_URL = process.env.API_URL;
 
+console.log("API_URL =", API_URL);
+
 async function authenticate(socket) {
 
   try {
@@ -15,14 +17,15 @@ async function authenticate(socket) {
       throw new Error('No auth');
     }
 
-    const res = await axios.get(
-      `${API_URL}/users/me/`,
-      {
-        headers: {
-          Authorization: `Bearer ${user.token}`,
-        },
-      }
-    );
+    const url = `${API_URL}/users/me/`;
+
+    console.log("Calling:", url);
+    
+    const res = await axios.get(url, {
+      headers: {
+        Authorization: `Bearer ${user.token}`,
+      },
+    });
 
     const verifiedUser = res.data;
 

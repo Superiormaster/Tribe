@@ -25,6 +25,10 @@ interface TribeRequestDetail {
   id: number;
   tribe_name: string;
   description: string;
+  tribe: {
+    id: number;
+    name: string;
+  } | null;
   reason: string;
   status: TribeRequestStatus;
   created_at: string;
@@ -308,9 +312,12 @@ export default function TribeRequestDetailPage() {
             <>
               <button
                 type="button"
-                onClick={() =>
-                  push(`/main/tribe/${request.tribe.id}`)
-                }
+                disabled={!request.tribe}
+                onClick={() => {
+                  if (request.tribe) {
+                    push(`/main/tribe/${request.tribe.id}`);
+                  }
+                }}
                 className="inline-flex items-center gap-2 rounded-lg bg-black px-4 py-2 text-white transition hover:bg-gray-800"
               >
                 <SquareArrowOutUpRight className="h-4 w-4" />

@@ -22,6 +22,10 @@ type TribeRequestStatus = 'pending' | 'approved' | 'rejected';
 interface TribeRequest {
   id: number;
   tribe_name: string;
+  tribe: {
+    id: number;
+    name: string;
+  } | null;
   description: string;
   reason: string;
   status: TribeRequestStatus;
@@ -309,9 +313,12 @@ export default function TribeRequestsPage() {
                           <>
                             <button
                               type="button"
-                              onClick={() =>
-                              push(`/main/tribe/${request.tribe.id}`)
-                              }
+                              disabled={!request.tribe}
+                              onClick={() => {
+                                if (request.tribe) {
+                                  push(`/main/tribe/${request.tribe.id}`);
+                                }
+                              }}
                               className="flex w-full items-center gap-2 px-4 py-3 text-left hover:bg-gray-50"
                             >
                               <ExternalLink className="h-4 w-4" />
