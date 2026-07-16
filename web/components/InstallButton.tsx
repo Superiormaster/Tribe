@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import toast from "react-hot-toast";
+import { Toaster } from 'react-hot-toast';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -16,10 +18,12 @@ export default function InstallButton() {
   
   useEffect(() => {
     // Already running as installed PWA
-    if (
+    const alreadyInstalled =
       window.matchMedia("(display-mode: standalone)").matches ||
-      (window.navigator as any).standalone
-    ) {
+      (window.navigator as any).standalone ||
+      localStorage.getItem("tribe-installed") === "true";
+  
+    if (alreadyInstalled) {
       setInstalled(true);
     }
 
@@ -30,8 +34,12 @@ export default function InstallButton() {
     };
 
     const installedHandler = () => {
+      console.log("APP INSTALLED EVENT");
+      localStorage.setItem("tribe-installed", "true");
       setInstalled(true);
       setPromptEvent(null);
+    
+      toast.success("Tribe installed successfully 🎉");
     };
 
     window.addEventListener(
@@ -57,15 +65,32 @@ export default function InstallButton() {
   }, []);
   
   const handleInstall = async () => {
-    if (promptEvent) {
-      promptEvent.prompt();
-      await promptEvent.userChoice;
-      setPromptEvent(null);
-    } else {
-      alert(
-        "Installation isn't available right now. You can install the app from your browser's menu."
-      );
+    if (
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (window.navigator as any).standalone ||
+      localStorage.getItem("tribe-installed") === "true"
+    ) {
+      toast("Tribe is already installed.");
+      return;
     }
+  
+    if (!promptEvent) {
+      toast.error("Install isn't available. Use Chrome's menu if needed.");
+      return;
+    }
+  
+    await promptEvent.prompt();
+  
+    const choice = await promptEvent.userChoice;
+    console.log("CHOICE", choice);
+  
+    if (choice.outcome === "accepted") {
+      toast.success("Installing Tribe...");
+    } else {
+      toast.error("Installation cancelled");
+    }
+  
+    setPromptEvent(null);
   };
 
   if (installed) return null;
