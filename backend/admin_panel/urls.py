@@ -3,8 +3,11 @@ from .views import (
     admin_login,
     admin_me,
     get_reports,
+    report_detail,
     resolve_report,
     delete_report,
+    feedback_list,
+    feedback_detail,
     get_users,
     get_user_detail,
     ban_user,
@@ -22,14 +25,23 @@ urlpatterns = [
     path('login/', admin_login),
     path('me/', admin_me),
     path('reports/', get_reports),
+    path(
+      "reports/<str:category>/<int:report_id>/",
+      report_detail,
+    ),
     path('reports/resolve/', resolve_report),
     path('reports/<int:report_id>/', delete_report),
+    path('feedback/', feedback_list),
+    path(
+      'feedback-details/<int:feedback_id>/',
+      feedback_detail
+    ),
     path('users/', get_users),
     path('users/<int:user_id>/', get_user_detail),
     path('users/ban/', ban_user),
     path('users/unban/', unban_user),
     path(
-        'dashboard/stats/',
+        'dashboard-stats/',
         dashboard_stats
     ),
     path(

@@ -54,6 +54,8 @@ from django.conf import settings
 from math import radians, sin, cos, sqrt, atan2
 
 from .serializers import RegisterSerializer, ProfileSerializer, GoogleAuthSerializer, CustomTokenObtainPairSerializer, PublicProfileSerializer, MiniUserSerializer, PrivacySettingsSerializer, MutedUserSerializer, BlockedUserSerializer, ChangePasswordSerializer
+from communities.models import Tribe, CommunityMembership
+from communities.serializers import TribeDetailSerializer
 
 User = get_user_model()
 logger = logging.getLogger(__name__)
@@ -938,18 +940,26 @@ def discover_people(request):
     # =========================
     # OPTIONAL FILTERS
     # =========================
-    interest = request.query_params.get("interest")
     country = request.query_params.get("country")
-
-    if interest:
-        users = users.filter(
-            interests__icontains=interest
-        )
 
     if country:
         users = users.filter(
             country__iexact=country
         )
+    
+    joined_communities = CommunityMembership.objects.filter(
+      user=user
+    ).values_list("community_id", flat=True)
+  
+    users = users.annotate(
+      mutual_communities_count=Count(
+          "communitymembership",
+          filter=Q(
+              communitymembership__community_id__in=joined_communities
+          ),
+          distinct=True,
+      )
+    )
 
     # =========================
     # SERIALIZE
@@ -989,18 +999,11 @@ def discover_people(request):
             if distance_km <= 5:
                 user_type = "nearby"
 
-        # -------------------------
-        # MUTUAL INTERESTS
-        # -------------------------
-        mutual_interests = []
-
-        if user.interests and u.interests:
-
-            mutual_interests = list(
-                set(user.interests).intersection(
-                    set(u.interests)
-                )
-            )
+        same_country = (
+          user.country
+          and u.country
+          and user.country.lower() == u.country.lower()
+        )
 
         # -------------------------
         # SERIALIZE
@@ -1015,8 +1018,8 @@ def discover_people(request):
             ) if u.avatar else None,
             "bio": u.bio,
             "country": u.country,
-            "interests": u.interests,
-            "mutual_interests": mutual_interests,
+            "sameCountry": same_country,
+            "mutualCommunities": u.mutual_communities_count,
             "distance": distance_km,
             "type": user_type,
             "stars_count": u.stars_received_count,
@@ -1032,11 +1035,12 @@ def discover_people(request):
     # SORTING PRIORITY
     # =========================
     results.sort(
-        key=lambda x: (
-            x["type"] != "nearby",
-            -(len(x["mutual_interests"])),
-            -(x["stars_count"])
-        )
+      key=lambda x: (
+          x["type"] != "nearby",
+          -x["mutualCommunities"],
+          -x["stars_count"],
+          not x["sameCountry"],
+      )
     )
 
     # =========================
@@ -1334,67 +1338,22 @@ def onboarding_status(request):
         user.gender,
     ])
 
-    interests_completed = len(user.interests or []) > 0
+    discover_completed = CommunityMembership.objects.filter(
+      user=user
+    ).exists()
 
     star_completed = user.onboarding_step >= 3
 
     return Response({
         "profileCompleted": profile_completed,
-        "interestsCompleted": interests_completed,
+        "discoverCompleted": discover_completed,
         "starCompleted": star_completed,
         "completed": (
             profile_completed and
-            interests_completed and
+            discover_completed and
             star_completed
         ),
     })
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def discover_creators(request):
-    user = request.user
-    interests = user.interests or []
-    muted_ids, blocked_ids, blocked_me_ids = get_block_filters(user)
-
-    # Base queryset: all creators except current user
-    creators_qs = User.objects.filter(
-      is_creator=True
-    ).exclude(
-        id=user.id
-    ).exclude(
-        id__in=muted_ids
-    ).exclude(
-        id__in=blocked_ids
-    ).exclude(
-        id__in=blocked_me_ids
-    )
-
-    # Creators matching user's interests
-    interest_creators = creators_qs.filter(interests__overlap=interests)
-
-    # Creators the user has starred
-    starred_creators_ids = Star.objects.filter(follower=user).values_list('following_id', flat=True)
-    starred_creators = creators_qs.filter(id__in=starred_creators_ids)
-
-    # Popular creators by stars received
-    popular_creators = creators_qs.annotate(star_count=Count('starred_by')).order_by('-star_count')
-
-    # Combine all three querysets and remove duplicates
-    combined_creators = (interest_creators | starred_creators | popular_creators).distinct()[:20]
-
-    # Build response
-    data = [
-        {
-            "id": c.id,
-            "username": c.username,
-            "avatar": request.build_absolute_uri(c.avatar.url) if c.avatar else None,
-            "bio": c.bio,
-            "stars_count": c.starred_by.count() if hasattr(c, 'starred_by') else 0
-        }
-        for c in combined_creators
-    ]
-
-    return Response(data)
 
 class StarViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
@@ -1531,20 +1490,101 @@ class ProfileView(generics.RetrieveUpdateAPIView):
 
         return Response(serializer.data)
 
-@api_view(['PATCH'])
+@api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def save_interests(request):
-    user = request.user
+def discover_communities(request):
+    queryset = (
+        Tribe.objects
+        .prefetch_related("communities")
+        .order_by("name")
+    )
 
-    interests = request.data.get("interests", [])
+    paginator = PageNumberPagination()
+    paginator.page_size = 10
 
-    user.interests = interests
-    user.onboarding_step = max(user.onboarding_step, 2)
+    page = paginator.paginate_queryset(queryset, request)
 
-    user.save(update_fields=["interests", "onboarding_step"])
+    serializer = TribeDetailSerializer(
+        page,
+        many=True,
+        context={
+            "request": request,
+            "discover": True,
+        },
+    )
+
+    return paginator.get_paginated_response(serializer.data)
+
+def join_community(user, community):
+    membership = CommunityMembership.objects.filter(
+        user=user,
+        community=community,
+    ).first()
+
+    if membership and membership.banned:
+        return
+
+    if membership:
+        return
+
+    if community.join_approval_required:
+        CommunityJoinRequest.objects.get_or_create(
+            community=community,
+            user=user,
+        )
+        
+        recipients = {community.owner.id: community.owner}
+
+        staff_members = CommunityMembership.objects.filter(
+          community=community,
+          role__in=["admin", "moderator"]
+        ).exclude(
+          user=community.owner
+        )
+
+        for member in staff_members:
+          recipients[member.user.id] = member.user
+
+        for recipient in recipients.values():
+          create_notification(
+            type="join_request",
+            recipient=recipient,
+            actors=[request.user],
+            community=community
+          )
+        return
+
+    CommunityMembership.objects.create(
+        user=user,
+        community=community,
+        role="owner" if user == community.owner else "member",
+    )
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def discover_join(request):
+    ids = request.data.get("community_ids", [])
+
+    communities = Community.objects.filter(
+        id__in=ids
+    )
+
+    for community in communities:
+        join_community(
+            request.user,
+            community,
+        )
+
+    request.user.onboarding_step = max(
+        request.user.onboarding_step,
+        2,
+    )
+    request.user.save(
+        update_fields=["onboarding_step"]
+    )
 
     return Response({
-        "message": "Interests saved"
+        "success": True
     })
 
 class PublicProfileView(generics.RetrieveAPIView):

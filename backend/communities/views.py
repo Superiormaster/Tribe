@@ -179,11 +179,6 @@ class CommunityViewSet(viewsets.ModelViewSet):
                     community=community
                 )
     
-            if not created:
-                return Response({
-                    "status": "already_requested"
-                })
-    
             return Response({
                 "status": "requested"
             })
@@ -494,7 +489,9 @@ class CommunityViewSet(viewsets.ModelViewSet):
         community = self.get_object()
         user = request.user
     
-        interests = user.interests or []
+        joined_communities = CommunityMembership.objects.filter(
+            user=user
+        ).values_list("community_id", flat=True)
     
         starred_ids = set(
             Star.objects.filter(star=user).values_list("starred_user_id", flat=True)
@@ -508,7 +505,7 @@ class CommunityViewSet(viewsets.ModelViewSet):
         items = build_community_feed(
             community=community,
             user=user,
-            interests=interests,
+            joined_communities=joined_communities,
             starred_ids=starred_ids,
             two_weeks_ago=two_weeks_ago
         )

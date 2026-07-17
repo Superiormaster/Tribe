@@ -34,18 +34,6 @@ class User(AbstractUser):
             ("superadmin", "Super Admin"),
         ],
     )
-
-    creator_type = models.CharField(
-        max_length=50,
-        blank=True,
-        choices=[
-            ("journalist", "Journalist"),
-            ("analyst", "Analyst"),
-            ("blogger", "Blogger"),
-            ("news_org", "News Organization"),
-            ("reporter", "Community Reporter"),
-        ],
-    )
     
     gender = models.CharField(
         max_length=20,
@@ -57,10 +45,13 @@ class User(AbstractUser):
             ("prefer_not", "Prefer not to say"),
         ]
     )
+    what_do_you_do = models.CharField(
+      max_length=100,
+      blank=True,
+      help_text="Tell people what you do"
+    )
     
     date_of_birth = models.DateField(null=True, blank=True)
-
-    interests = models.JSONField(default=list, blank=True)
 
     verified = models.BooleanField(default=False)
 
@@ -68,6 +59,8 @@ class User(AbstractUser):
     is_deactivated = models.BooleanField(
         default=False
     )
+    
+    is_active = models.BooleanField(default=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 

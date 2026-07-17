@@ -935,7 +935,9 @@ class FeedViewSet(viewsets.ModelViewSet):
           timedelta(days=14)
       )
   
-      interests = user.interests or []
+      joined_communities = CommunityMembership.objects.filter(
+        user=user
+      ).values_list("community_id", flat=True)
       tribe_id = request.query_params.get("tribe")
   
       starred_ids = set(
@@ -944,7 +946,7 @@ class FeedViewSet(viewsets.ModelViewSet):
   
       feed_items = build_global_feed(
           user,
-          interests,
+          joined_communities,
           starred_ids,
           two_weeks_ago,
           tribe_id

@@ -1,5 +1,9 @@
 from rest_framework import serializers
-from feedback.models import Report
+from feedback.models import (
+    Feedback,
+    Report,
+    ProblemReport,
+)
 from communities.models import Tribe, TribeRequest
 from django.contrib.auth import get_user_model
 
@@ -67,10 +71,213 @@ class CreateTribeSerializer(serializers.Serializer):
     description = serializers.CharField()
     allow_reels = serializers.BooleanField(default=False)
 
+class FeedbackSerializer(serializers.ModelSerializer):
+    user = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Feedback
+        fields = [
+            "id",
+            "rating",
+            "message",
+            "resolved",
+            "created_at",
+            "user",
+        ]
+
+    def get_user(self, obj):
+        return {
+            "id": obj.user.id,
+            "username": obj.user.username,
+            "email": obj.user.email,
+            "avatar": obj.user.avatar,
+        }
+
+class ProblemReportSerializer(serializers.ModelSerializer):
+    reporter = serializers.SerializerMethodField()
+    user = serializers.SerializerMethodField()
+    report_category = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProblemReport
+        fields = [
+            "id",
+            "report_category",
+            "report_type",
+            "status",
+            "message",
+            "created_at",
+            "reporter",
+            "user",
+        ]
+
+    def get_user(self, obj):
+        return {
+            "id": obj.user.id,
+            "username": obj.user.username,
+            "email": obj.user.email,
+            "avatar": obj.user.avatar,
+        }
+        
+    def get_reporter(self, obj):
+        return {
+            "id": obj.user.id,
+            "username": obj.user.username,
+            "email": obj.user.email,
+            "avatar": obj.user.avatar,
+        }
+
+    def get_report_category(self, obj):
+        return "problem"
+
+class SimpleUserSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    username = serializers.CharField()
+    email = serializers.EmailField()
+
+class SimplePostSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+
+class SimpleCommentSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+
+class SimpleMessageSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+
+class SimpleCommunitySerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+
 class ReportSerializer(serializers.ModelSerializer):
+    reporter = serializers.SerializerMethodField()
+    target_user = serializers.SerializerMethodField()
+    target_post = serializers.SerializerMethodField()
+    target_comment = serializers.SerializerMethodField()
+    target_message = serializers.SerializerMethodField()
+    target_community = serializers.SerializerMethodField()
+
+    # Very useful for the details page
+    target_type = serializers.SerializerMethodField()
+    target_id = serializers.SerializerMethodField()
+    report_category = serializers.SerializerMethodField()
+
     class Meta:
         model = Report
-        fields = '__all__'
+        fields = [
+            "id",
+            "reason",
+            "details",
+            "status",
+            "report_type",
+            "created_at",
+
+            "reporter",
+            "report_category",
+
+            "target_type",
+            "target_id",
+
+            "target_user",
+            "target_post",
+            "target_comment",
+            "target_message",
+            "target_community",
+        ]
+
+    def get_reporter(self, obj):
+        return {
+            "id": obj.reporter.id,
+            "username": obj.reporter.username,
+            "email": obj.reporter.email,
+        }
+  
+    def get_report_category(self, obj):
+      return "content"
+
+    def get_target_user(self, obj):
+        if not obj.target_user:
+            return None
+
+        return {
+            "id": obj.target_user.id,
+            "username": obj.target_user.username,
+            "email": obj.target_user.email,
+        }
+
+    def get_target_post(self, obj):
+        if not obj.target_post:
+            return None
+
+        return {
+            "id": obj.target_post.id,
+        }
+
+    def get_target_comment(self, obj):
+        if not obj.target_comment:
+            return None
+
+        return {
+            "id": obj.target_comment.id,
+        }
+
+    def get_target_message(self, obj):
+        if not obj.target_message:
+            return None
+
+        return {
+            "id": obj.target_message.id,
+        }
+
+    def get_target_community(self, obj):
+        if not obj.target_community:
+            return None
+
+        return {
+            "id": obj.target_community.id,
+            "name": obj.target_community.name,
+        }
+
+    def get_target_type(self, obj):
+        if obj.target_post:
+            return "post"
+
+        if obj.target_user:
+            return "user"
+
+        if obj.target_comment:
+            return "comment"
+
+        if obj.target_message:
+            return "message"
+
+        if obj.target_community:
+            return "community"
+
+        if obj.target_repost:
+            return "repost"
+
+        return None
+
+    def get_target_id(self, obj):
+        if obj.target_post:
+            return obj.target_post.id
+
+        if obj.target_user:
+            return obj.target_user.id
+
+        if obj.target_comment:
+            return obj.target_comment.id
+
+        if obj.target_message:
+            return obj.target_message.id
+
+        if obj.target_community:
+            return obj.target_community.id
+
+        if obj.target_repost:
+            return obj.target_repost.id
+
+        return None
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -86,19 +293,19 @@ class CreateAdminSerializer(serializers.ModelSerializer):
             "username",
             "email",
             "password",
-            "creator_type",
         )
 
     def create(self, validated_data):
         password = validated_data.pop("password")
 
-        user = User(**validated_data)
-
+        user = User.objects.create_user(
+            password=password,
+            **validated_data,
+        )
+        
         user.role = "admin"
         user.is_staff = True
         user.email_verified = True
-
-        user.set_password(password)
         user.save()
-
+        
         return user

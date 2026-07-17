@@ -38,8 +38,6 @@ export default function InstallButton() {
       localStorage.setItem("tribe-installed", "true");
       setInstalled(true);
       setPromptEvent(null);
-    
-      toast.success("Tribe installed successfully 🎉");
     };
 
     window.addEventListener(

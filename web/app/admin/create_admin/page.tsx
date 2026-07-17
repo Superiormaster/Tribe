@@ -6,7 +6,6 @@ import { apiRequest } from '@/utils/api';
 export default function CreateAdminPage() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
-  const [creatorType, setCreatorType] = useState('journalist');
   const [password, setPassword] = useState('');
 
   const [loading, setLoading] = useState(false);
@@ -33,7 +32,6 @@ export default function CreateAdminPage() {
             username,
             email,
             password,
-            creator_type: creatorType,
           },
         }
       );
@@ -45,7 +43,6 @@ export default function CreateAdminPage() {
       setUsername('');
       setEmail('');
       setPassword('');
-      setCreatorType('journalist');
     } catch (err: any) {
       setError(
         err?.detail ||
@@ -110,40 +107,6 @@ export default function CreateAdminPage() {
             className="w-full border rounded-lg p-2 dark:bg-zinc-800"
             required
           />
-        </div>
-
-        <div>
-          <label className="block mb-1">
-            Creator Type
-          </label>
-
-          <select
-            value={creatorType}
-            onChange={(e) =>
-              setCreatorType(e.target.value)
-            }
-            className="w-full border rounded-lg p-2 dark:bg-zinc-800"
-          >
-            <option value="journalist">
-              Journalist
-            </option>
-
-            <option value="analyst">
-              Analyst
-            </option>
-
-            <option value="blogger">
-              Blogger
-            </option>
-
-            <option value="news_org">
-              News Organization
-            </option>
-
-            <option value="reporter">
-              Community Reporter
-            </option>
-          </select>
         </div>
 
         <div>

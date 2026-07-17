@@ -6,6 +6,7 @@ import Avatar from "@/components/Avatar";
 import { timeAgo } from "@/utils/timeAgo";
 import ReportCommentModal from "@/components/ReportCommentModal";
 import { connectCommentsSocket } from "@/lib/comment-socket";
+import { formatCount } from '@/utils/formatCount';
 import { ThumbsUp } from 'lucide-react';  
 type ReplyTarget = {
   id: number | null;
@@ -299,7 +300,7 @@ export default function CommentList({
                 >
                   <ThumbsUp size={14} />
                   {likesCount > 0 && (
-                    <span>{likesCount}</span>
+                    <span>{formatCount(likesCount)}</span>
                   )}
                 </button>
     
@@ -575,7 +576,7 @@ export default function CommentList({
                       <ThumbsUp size={14} className="mr-2" />
 
                       {likesCount > 0 && (
-                        <span>{likesCount}</span>
+                        <span>{formatCount(likesCount)}</span>
                       )}
                     </button>
               

@@ -3,11 +3,11 @@ from rest_framework.response import Response
 from notifications.services import create_notification
 from users.models import SavedLoginDevice
 from .permissions import IsAdmin, IsSuperAdmin
-from .serializers import UserSerializer, ReportSerializer
+from django.shortcuts import get_object_or_404
 from django.db.models import Q
+from itertools import chain
 from rest_framework.pagination import PageNumberPagination
 from django.contrib.auth import get_user_model
-from feedback.models import Report
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
 from rest_framework.permissions import AllowAny
@@ -15,12 +15,27 @@ from users.serializers import ProfileSerializer
 import uuid
 from hashlib import sha256
 from django.utils import timezone
-from communities.models import TribeRequest
+from communities.models import TribeRequest, Tribe
 from .serializers import (
     AdminTribeRequestSerializer,
     RejectTribeRequestSerializer,
     CreateTribeSerializer,
+    ReportSerializer,
+    UserSerializer,
+    ProblemReportSerializer,
+    FeedbackSerializer,
 )
+from feedback.models import Feedback, Report, ProblemReport
+
+class AdminReportPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = "page_size"
+    max_page_size = 100
+
+class AdminUserPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = "page_size"
+    max_page_size = 100
 
 User = get_user_model()
 
@@ -111,11 +126,47 @@ def admin_login(request):
 
     return Response(data)
 
-@api_view(['GET'])
+@api_view(["GET"])
 @permission_classes([IsAdmin])
 def get_users(request):
-    users = User.objects.all().order_by('-id')
-    return Response(UserSerializer(users, many=True).data)
+    search = request.GET.get("search", "").strip()
+    role = request.GET.get("role")
+    status = request.GET.get("status")
+
+    queryset = User.objects.all().order_by("-date_joined")
+
+    if search:
+        queryset = queryset.filter(
+            Q(username__icontains=search)
+            | Q(email__icontains=search)
+            | Q(first_name__icontains=search)
+            | Q(last_name__icontains=search)
+        )
+
+    if role:
+        queryset = queryset.filter(role=role)
+
+    if status == "active":
+        queryset = queryset.filter(is_active=True)
+
+    elif status == "banned":
+        queryset = queryset.filter(is_active=False)
+
+    paginator = AdminUserPagination()
+
+    page = paginator.paginate_queryset(
+        queryset,
+        request
+    )
+
+    serializer = UserSerializer(
+        page,
+        many=True
+    )
+
+    return paginator.get_paginated_response(
+        serializer.data
+    )
 
 
 @api_view(['POST'])
@@ -144,12 +195,126 @@ def get_user_detail(request, user_id):
     user = User.objects.get(id=user_id)
     return Response(UserSerializer(user).data)
 
-@api_view(['GET'])
+@api_view(["GET"])
 @permission_classes([IsAdmin])
 def get_reports(request):
-    reports = Report.objects.all().order_by('-created_at')
-    return Response(ReportSerializer(reports, many=True).data)
 
+    search = request.GET.get("search", "").strip()
+    status = request.GET.get("status", "")
+    report_type = request.GET.get("type", "")
+
+    content_reports = Report.objects.select_related(
+        "reporter",
+        "target_user",
+        "target_post",
+        "target_comment",
+        "target_message",
+        "target_community",
+    )
+
+    problem_reports = ProblemReport.objects.select_related(
+        "user"
+    )
+
+    if search:
+        content_reports = content_reports.filter(
+            Q(reporter__username__icontains=search)
+            | Q(reporter__email__icontains=search)
+            | Q(reason__icontains=search)
+            | Q(details__icontains=search)
+        )
+
+        problem_reports = problem_reports.filter(
+            Q(user__username__icontains=search)
+            | Q(user__email__icontains=search)
+            | Q(message__icontains=search)
+            | Q(report_type__icontains=search)
+        )
+
+    if status:
+        content_reports = content_reports.filter(
+            status=status
+        )
+
+        problem_reports = problem_reports.filter(
+            status=status
+        )
+
+    if report_type:
+        content_reports = content_reports.filter(
+            report_type=report_type
+        )
+
+        problem_reports = problem_reports.filter(
+            report_type=report_type
+        )
+
+    merged = sorted(
+        chain(
+            content_reports,
+            problem_reports,
+        ),
+        key=lambda x: x.created_at,
+        reverse=True,
+    )
+
+    paginator = AdminReportPagination()
+
+    page = paginator.paginate_queryset(
+        merged,
+        request,
+    )
+
+    results = []
+
+    for obj in page:
+
+        if isinstance(obj, Report):
+            results.append(
+                ReportSerializer(obj).data
+            )
+        else:
+            results.append(
+                ProblemReportSerializer(obj).data
+            )
+
+    return paginator.get_paginated_response(
+        results
+    )
+
+@api_view(["GET"])
+@permission_classes([IsAdmin])
+def report_detail(request, category, report_id):
+  
+    if category == "problem":
+        problem = ProblemReport.objects.select_related("user").filter(id=report_id).first()
+
+        if problem:
+            return Response(
+                ProblemReportSerializer(problem).data
+            )
+
+    report = Report.objects.select_related(
+        "reporter",
+        "target_user",
+        "target_post",
+        "target_repost",
+        "target_comment",
+        "target_message",
+        "target_community",
+    ).filter(id=report_id).first()
+
+    if report:
+        return Response(
+            ReportSerializer(report).data
+        )
+
+    return Response(
+        {
+            "detail": "Not found."
+        },
+        status=404,
+    )
 
 @api_view(['POST'])
 @permission_classes([IsAdmin])
@@ -168,16 +333,78 @@ def delete_report(request, report_id):
     report.delete()
     return Response({"message": "Report deleted"})
 
-@api_view(['GET'])
+@api_view(["GET"])
+@permission_classes([IsAdmin])
+def feedback_list(request):
+    search = request.GET.get("search", "").strip()
+    resolved = request.GET.get("resolved", "")
+
+    feedback = Feedback.objects.select_related(
+        "user"
+    ).order_by("-created_at")
+
+    if search:
+        feedback = feedback.filter(
+            Q(user__username__icontains=search)
+            | Q(user__email__icontains=search)
+            | Q(message__icontains=search)
+            | Q(rating__icontains=search)
+        )
+
+    if resolved != "":
+        feedback = feedback.filter(
+            resolved=resolved.lower() == "true"
+        )
+
+    paginator = AdminReportPagination()
+
+    page = paginator.paginate_queryset(
+        feedback,
+        request
+    )
+
+    serializer = FeedbackSerializer(
+        page,
+        many=True
+    )
+
+    return paginator.get_paginated_response(
+        serializer.data
+    )
+
+@api_view(["GET"])
+@permission_classes([IsAdmin])
+def feedback_detail(request, feedback_id):
+    feedback = Feedback.objects.select_related(
+        "user"
+    ).filter(
+        id=feedback_id
+    ).first()
+
+    if not feedback:
+        return Response(
+            {"detail": "Not found."},
+            status=404
+        )
+
+    return Response(
+      FeedbackSerializer(feedback).data
+    )
+
+@api_view(["GET"])
 @permission_classes([IsAdmin])
 def dashboard_stats(request):
+    reports_count = Report.objects.count()
+    problem_reports_count = ProblemReport.objects.count()
+
     return Response({
         "users": User.objects.count(),
-        "reports": Report.objects.count(),
-        "banned_users":
-            User.objects.filter(
-                is_active=False
-            ).count(),
+        "reports": reports_count + problem_reports_count,
+        "feedback": Feedback.objects.count(),
+        "tribes": Tribe.objects.count(),
+        "banned_users": User.objects.filter(
+            is_active=False
+        ).count(),
     })
 
 @api_view(['GET'])

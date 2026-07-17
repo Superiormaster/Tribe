@@ -4,11 +4,11 @@ import { useEffect } from 'react'
 import { useNavigation } from "@/utils/useNavigation"
 import { apiRequest } from '@/utils/api'
 
-type Step = 'profile' | 'interests' | 'star'
+type Step = "profile" | "discover" | "star"
 
 interface OnboardingStatus {
   profileCompleted: boolean
-  interestsCompleted: boolean
+  discoverCompleted: boolean
   starCompleted: boolean
   completed: boolean
 }
@@ -31,7 +31,7 @@ export const useOnboardingGuard = (currentStep: Step) => {
           // only redirect if EVERYTHING truly done
           if (
             status.profileCompleted &&
-            status.interestsCompleted &&
+            status.discoverCompleted &&
             status.starCompleted &&
             status.completed
           ) {
@@ -42,7 +42,7 @@ export const useOnboardingGuard = (currentStep: Step) => {
         }
 
         // INTERESTS PAGE
-        if (currentStep === 'interests') {
+        if (currentStep === 'discover') {
 
           if (!status.profileCompleted) {
             replace('/auth/profile-setup')
@@ -51,7 +51,7 @@ export const useOnboardingGuard = (currentStep: Step) => {
 
           if (
             status.profileCompleted &&
-            status.interestsCompleted
+            status.discoverCompleted
           ) {
             replace('/auth/star')
             return
@@ -68,8 +68,8 @@ export const useOnboardingGuard = (currentStep: Step) => {
             return
           }
 
-          if (!status.interestsCompleted) {
-            replace('/auth/interests')
+          if (!status.discoverCompleted) {
+            replace('/auth/discover')
             return
           }
 

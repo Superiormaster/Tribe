@@ -31,6 +31,7 @@ import {
   getConnectedUsers
 } from '@/lib/api'
 import { apiRequest } from '@/utils/api';
+import { formatCount } from '@/utils/formatCount';
 
 type Post = {
   type?: "post" | "repost";
@@ -91,8 +92,12 @@ type Profile = {
 export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVideoElement) => void }) {
   const params = useParams();
   const { push } = useNavigation()
-  const { user: currentUser } = useContext(UserContext)!;
-  const username = Array.isArray(params.username) ? params.username[0] : params.username || '';
+  const { user: currentUser, setUser } = useContext(UserContext)!;
+  const username =
+    Array.isArray(params.username)
+      ? params.username[0]
+      : params.username || '';
+  const name = decodeURIComponent(username).replace(/\s+/g, "_");
   const [profileUserId, setProfileUserId] = useState<number | null>(null);
   const [isPrivate, setIsPrivate] = useState(false);
   const [nextPage, setNextPage] = useState<string | null>(null)
@@ -641,7 +646,19 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
   
       // Show preview immediately
       const reader = new FileReader();
-      reader.onload = () => setProfile(prev => prev ? { ...prev, avatar: reader.result as string } : prev);
+      reader.onload = () => {
+        const preview = reader.result as string;
+      
+        setProfile(prev =>
+          prev ? { ...prev, avatar: preview } : prev
+        );
+      
+        setUser((prev: any) => ({
+          ...prev,
+          avatar: preview,
+        }));
+      };
+      
       reader.readAsDataURL(file);
   
       // Upload automatically
@@ -656,6 +673,14 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
           data: { avatar: url },
         });
         console.log('Avatar uploaded:', url);
+        setProfile(prev =>
+          prev ? { ...prev, avatar: url } : prev
+        );
+  
+        setUser((prev: any) => ({
+          ...prev,
+          avatar: url,
+        }));
       } catch (err) {
         console.error('Avatar upload failed', err);
       }
@@ -704,7 +729,19 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
   
       // Preview immediately
       const reader = new FileReader();
-      reader.onload = () => setProfile(prev => prev ? { ...prev, cover_photo: reader.result as string } : prev);
+      reader.onload = () => {
+        const preview = reader.result as string;
+      
+        setProfile(prev =>
+          prev ? { ...prev, cover_photo: preview } : prev
+        );
+      
+        setUser((prev: any) => ({
+          ...prev,
+          cover_photo: preview,
+        }));
+      };
+      
       reader.readAsDataURL(file);
   
       // Upload automatically
@@ -719,6 +756,14 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
           data: { cover_photo: url },
         });
         console.log('Cover uploaded:', url);
+        setProfile(prev =>
+          prev ? { ...prev, cover_photo: url } : prev
+        );
+  
+        setUser((prev: any) => ({
+          ...prev,
+          cover_photo: url,
+        }));
       } catch (err) {
         console.error('Cover upload failed', err);
       }
@@ -819,7 +864,7 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
         <div className="flex flex-row gap-4 items-center">
           <div className="relative w-24 h-24">
             {profile?.avatar ? (
-              <img src={profile?.avatar} alt={username} className="w-24 h-24 rounded-full object-cover" />
+              <img src={profile?.avatar} alt={name} className="w-24 h-24 rounded-full object-cover" />
             ) : (
               <div className="w-24 h-24 rounded-full bg-gray-400 text-white flex items-center justify-center text-xl font-bold">
                 {username.slice(0,2).toUpperCase()}
@@ -836,12 +881,12 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
           </div>
           <div className="flex-1 flex flex-col gap-1 text-gray-800 dark:text-gray-200">
             <h1 className="text-xl font-medium">{profile?.full_name}</h1>
-            <p className="text-xs font-bold">@{username}</p>
+            <p className="text-xs font-bold">@{name}</p>
             {profile?.bio && <p className="text-gray-500 dark:text-gray-400 text-sm">{profile?.bio}</p>}
             <div className="grid grid-cols-3 gap-2 mt-2 text-sm text-gray-500 dark:text-gray-400">
               <div><span className="font-semibold">{profile?.posts}</span> Posts</div>
-              <AppLink prefetch={false} href={`/main/stars/received`} className="flex items-center gap-1"><Star className="w-4 h-4 text-yellow-400"/><span className="font-semibold">{profile?.stars}</span> Stars</AppLink>
-              <AppLink prefetch={false} href={`/main/stars/sent`}><span className="font-semibold">{profile?.starredBy}</span> Starred</AppLink>
+              <AppLink prefetch={false} href={`/main/stars/received`} className="flex items-center gap-1"><Star className="w-4 h-4 text-yellow-400"/><span className="font-semibold">{formatCount(profile?.stars ?? 0)}</span>{" "}Stars</AppLink>
+              <AppLink prefetch={false} href={`/main/stars/sent`}><span className="font-semibold">{formatCount(profile?.starredBy ?? 0)}</span>{" "}Starred</AppLink>
             </div>
           </div>
         </div>

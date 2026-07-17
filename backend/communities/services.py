@@ -17,7 +17,7 @@ from django.utils.dateparse import parse_datetime
 from post.serializers import PostSerializer, RepostSerializer
 
 
-def build_community_feed(community, user, interests, starred_ids, two_weeks_ago, tribe_id=None,):
+def build_community_feed(community, user, joined_communities, starred_ids, two_weeks_ago, tribe_id=None,):
     """
     Returns unified feed items (posts + reposts)
     """
@@ -80,7 +80,7 @@ def build_community_feed(community, user, interests, starred_ids, two_weeks_ago,
     posts = annotate_features(
         posts,
         user,
-        interests,
+        joined_communities,
         starred_ids,
         two_weeks_ago
     )
@@ -146,7 +146,7 @@ def build_community_feed(community, user, interests, starred_ids, two_weeks_ago,
     reposts = annotate_repost_features(
         reposts,
         user,
-        interests,
+        joined_communities,
         starred_ids,
         two_weeks_ago
     )
@@ -233,7 +233,7 @@ def serialize_community_feed(items, request, starred_ids):
 # -----------------------------
 # FEATURE ENGINE
 # -----------------------------
-def annotate_features(qs, user, interests, starred_ids, two_weeks_ago):
+def annotate_features(qs, user, joined_communities, starred_ids, two_weeks_ago):
 
     return qs.annotate(
         total_views=F("views_count"),
@@ -247,13 +247,13 @@ def annotate_features(qs, user, interests, starred_ids, two_weeks_ago):
             output_field=FloatField()
         ),
 
-        is_interest=Case(
+        is_joined_community=Case(
             When(
-                user__interests__overlap=interests,
+                community_id__in=joined_communities,
                 then=Value(1.0)
             ),
             default=Value(0.0),
-            output_field=FloatField()
+            output_field=FloatField(),
         ),
 
         is_recent=Case(
@@ -284,7 +284,7 @@ def annotate_features(qs, user, interests, starred_ids, two_weeks_ago):
 def annotate_repost_features(
     qs,
     user,
-    interests,
+    joined_communities,
     starred_ids,
     two_weeks_ago
 ):
@@ -302,13 +302,13 @@ def annotate_repost_features(
             output_field=FloatField()
         ),
 
-        is_interest=Case(
+        is_joined_community=Case(
             When(
-                post__user__interests__overlap=interests,
+                post__community_id__in=joined_communities,
                 then=Value(1.0)
             ),
             default=Value(0.0),
-            output_field=FloatField()
+            output_field=FloatField(),
         ),
 
         is_recent=Case(
@@ -385,7 +385,7 @@ def compute_main_feed_score(qs, weights):
             F("views_count") * Value(weights["view"]) +
 
             F("is_starred_by_user") * Value(weights["star"]) +
-            F("is_interest") * Value(weights["interest"]) +
+            F("is_joined_community") * Value(weights["community"]) +
             F("is_recent") * Value(weights["recent"]) +
             F("is_popular") * Value(weights["popular"]) +
             F("is_repost") * Value(weights["repost"])

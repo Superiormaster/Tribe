@@ -2,6 +2,7 @@
 
 import { Share2 } from "lucide-react";
 import { useShare } from "@/lib/useShare";
+import { formatCount } from '@/utils/formatCount';
 
 type Props = {
   post: any;
@@ -41,7 +42,7 @@ export default function ShareButton({
 
       {post.shares_count > 0 && (
         <span className={vertical ? "text-xs" : ""}>
-          {post.shares_count}
+          {formatCount(post.shares_count)}
         </span>
       )}
     </button>

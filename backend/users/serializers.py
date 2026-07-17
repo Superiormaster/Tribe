@@ -104,9 +104,8 @@ class ProfileSerializer(serializers.ModelSerializer):
             "city",
             "country",
             "website",
-            "creator_type",
+            "what_do_you_do",
             "role",
-            "interests",
             "gender",
             "date_of_birth",
 

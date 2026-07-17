@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 import ShareButton from "@/components/ShareButton";
+import { formatCount } from '@/utils/formatCount';
 
 interface ReelActionsProps {
     reel: any;
@@ -78,7 +79,7 @@ export default function ReelActions({
 
                 {reel.likes_count > 0 && (
                     <span className="text-xs">
-                        {reel.likes_count}
+                        {formatCount(reel.likes_count)}
                     </span>
                 )}
             </button>
@@ -96,7 +97,7 @@ export default function ReelActions({
                 <MessageCircle className="w-7 h-7"/>
                 {reel.comments_count > 0 && (
                     <span className="text-xs">
-                        {reel.comments_count}
+                        {formatCount(reel.comments_count)}
                     </span>
                 )}
             </button>
@@ -106,7 +107,7 @@ export default function ReelActions({
                 <Eye className="w-7 h-7"/>
                 {reel.views_count > 0 && (
                     <span className="text-xs">
-                        {reel.views_count}
+                        {formatCount(reel.views_count)}
                     </span>
                 )}
             </div>

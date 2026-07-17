@@ -7,13 +7,6 @@ import { uploadToCloudinary } from '@/utils/cloudinary';
 import { useOnboardingGuard } from '@/utils/useOnboardingGuard';
 import { apiRequest } from '@/utils/api'
 
-interface OnboardingStatus {
-  profileCompleted: boolean
-  interestsCompleted: boolean
-  starCompleted: boolean
-  completed: boolean // all done
-}
-
 export default function ProfileSetup() {
   const { back, push } = useNavigation()
 
@@ -21,8 +14,9 @@ export default function ProfileSetup() {
   const [fullName,setFullName] = useState('')
   const [country, setCountry] = useState('')
   const [city, setCity] = useState('')
-  const [website,setWebsite] = useState('')
-  const [creatorType,setCreatorType] = useState('')
+  const [website, setWebsite] = useState('')
+  const [creatorType, setCreatorType] = useState('')
+  const [whatDoYouDo, setWhatDoYouDo] = useState('')
 
   const [cover,setCover] = useState<File | null>(null)
   const [coverPreview,setCoverPreview] = useState<string | null>(null)
@@ -67,7 +61,7 @@ export default function ProfileSetup() {
         setCountry(profile.country || '')
         setCity(profile.city || '')
         setWebsite(profile.website || '')
-        setCreatorType(profile.creator_type || '')
+        setWhatDoYouDo(profile.what_do_you_do || '')
         setGender(profile.gender || '')
         if (profile.date_of_birth) {
           const [y, m, d] = profile.date_of_birth.split('-')
@@ -190,7 +184,7 @@ export default function ProfileSetup() {
         formData.append('website', formattedWebsite)
       }
   
-      formData.append('creator_type', creatorType)
+      formData.append('what_do_you_do', whatDoYouDo)
       formData.append('gender', gender)
   
       if (dob) formData.append('date_of_birth', dob)
@@ -202,7 +196,7 @@ export default function ProfileSetup() {
         data: formData
       })
   
-      push('/auth/interests')
+      push('/auth/discover')
   
     } catch (err: any) {
   
@@ -214,6 +208,19 @@ export default function ProfileSetup() {
   
     }
   }
+  
+  const suggestions = [
+    "Student",
+    "Software Engineer",
+    "Content Creator",
+    "Business Owner",
+    "Entrepreneur",
+    "Football Writer",
+    "Teacher",
+    "Nurse",
+    "Photographer",
+    "Artist",
+  ];
   
   return (
     <div className="flex justify-center items-center text-gray-700 dark:text-gray-200 rounded-2xl bg-gray-50 dark:bg-gray-950">
@@ -484,20 +491,37 @@ export default function ProfileSetup() {
             className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-100 dark:bg-gray-800"
           />
 
-        {/* Creator Type */}
-
-        <select
-          value={creatorType}
-          onChange={(e)=>setCreatorType(e.target.value)}
-          className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-100 dark:bg-gray-800"
-        >
-          <option value="">Creator Type</option>
-          <option value="journalist">Journalist</option>
-          <option value="analyst">Analyst</option>
-          <option value="blogger">Blogger</option>
-          <option value="news_org">News Organization</option>
-          <option value="community">Community Reporter</option>
-        </select>
+        {/* What do you do */}
+        <div className="flex flex-col">
+          <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">
+            What do you do? <span className="text-gray-500">(Optional)</span>
+          </label>
+        
+          <input
+            type="text"
+            value={whatDoYouDo}
+            onChange={(e) => setWhatDoYouDo(e.target.value)}
+            placeholder="e.g. Software Engineer, Student, Nurse, Football Writer..."
+            maxLength={100}
+            className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-100 dark:bg-gray-800"
+          />
+        
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            Examples:
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {suggestions.map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setWhatDoYouDo(item)}
+                className="px-3 py-1 text-sm rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-indigo-600 hover:text-white transition"
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <button
           type="submit"

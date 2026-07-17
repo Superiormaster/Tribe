@@ -8,10 +8,6 @@ import { useContext } from "react";
 import { UserContext } from "@/components/UserContext"
 import { uploadToCloudinary } from "@/utils/cloudinary"
 
-const interestsList = [
-  'Politics', 'Sports', 'Technology', 'Business', 'Entertainment', 'World News', 'Local News'
-]
-
 export default function EditProfile() {
   const { push } = useNavigation()
   const { user } = useContext(UserContext) || {};
@@ -24,7 +20,7 @@ export default function EditProfile() {
   const [country, setCountry] = useState('')
   const [city, setCity] = useState('')
   const [website, setWebsite] = useState('')
-  const [creatorType, setCreatorType] = useState('')
+  const [whatDoYouDo, setWhatDoYouDo] = useState('')
   const [gender, setGender] = useState('')
   const [day, setDay] = useState('')
   const [month, setMonth] = useState('')
@@ -53,7 +49,7 @@ export default function EditProfile() {
         setCountry(profile.country || '')
         setCity(profile.city || '')
         setWebsite(profile.website || '')
-        setCreatorType(profile.creator_type || '')
+        setWhatDoYouDo(profile.what_do_you_do || '')
         setGender(profile.gender || '')
         if (profile.date_of_birth) {
           const [y, m, d] = profile.date_of_birth.split('-')
@@ -61,7 +57,6 @@ export default function EditProfile() {
           setMonth(m)
           setDay(d)
         }
-        if (profile.interests) setInterests(profile.interests)
         if (profile.avatar) setPreview(profile.avatar)
         if (profile.cover_photo) setCoverPreview(profile.cover_photo)
       } catch {
@@ -94,13 +89,6 @@ export default function EditProfile() {
     }
   }
 
-  // Toggle interests
-  const toggleInterest = (item: string) => {
-    setInterests(prev =>
-      prev.includes(item) ? prev.filter(i => i !== item) : [...prev, item]
-    )
-  }
-
   // Save profile
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -119,7 +107,7 @@ export default function EditProfile() {
         country,
         city,
         website,
-        creator_type: creatorType,
+        what_do_you_do: whatDoYouDo,
         gender,
         date_of_birth: year && month && day ? `${year}-${month}-${day}` : undefined,
         interests,
@@ -143,6 +131,19 @@ export default function EditProfile() {
       setSaving(false)
     }
   }
+  
+  const suggestions = [
+    "Student",
+    "Software Engineer",
+    "Content Creator",
+    "Business Owner",
+    "Entrepreneur",
+    "Football Writer",
+    "Teacher",
+    "Nurse",
+    "Photographer",
+    "Artist",
+  ];
 
   if (loading)
     return (
@@ -279,27 +280,32 @@ export default function EditProfile() {
         </div>
         <input placeholder="Website" value={website} onChange={e => setWebsite(e.target.value)} className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-100 dark:bg-gray-800" />
 
-        {/* Creator Type */}
-        <select
-          value={creatorType}
-          onChange={e => setCreatorType(e.target.value)}
-          className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-100 dark:bg-gray-800"
-        >
-          <option value="">Creator Type</option>
+        {/* What do you do */}
+        <div className="flex flex-col">
+          <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">
+            What do you do? <span className="text-gray-500">(Optional)</span>
+          </label>
         
-          <option value="journalist">Journalist</option>
-          <option value="analyst">Analyst</option>
-          <option value="blogger">Blogger</option>
-          <option value="news_org">News Organization</option>
-          <option value="reporter">Community Reporter</option>
-        </select>
-
-        {/* Interests */}
-        <div>
-          <p className="font-medium mb-2">Interests</p>
-          <div className="flex flex-wrap gap-2">
-            {interestsList.map(item => (
-              <button type="button" key={item} onClick={() => toggleInterest(item)} className={`px-3 py-1 rounded-full text-sm ${interests.includes(item) ? 'bg-indigo-600 text-white' : 'bg-gray-300 dark:bg-gray-600 text-gray-800'}`}>
+          <input
+            type="text"
+            value={whatDoYouDo}
+            onChange={(e) => setWhatDoYouDo(e.target.value)}
+            placeholder="e.g. Software Engineer, Student, Nurse, Football Writer..."
+            maxLength={100}
+            className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-100 dark:bg-gray-800"
+          />
+        
+          <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+            Examples:
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {suggestions.map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setWhatDoYouDo(item)}
+                className="px-3 py-1 text-sm rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-indigo-600 hover:text-white transition"
+              >
                 {item}
               </button>
             ))}

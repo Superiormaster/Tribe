@@ -14,6 +14,7 @@ import { useContext } from 'react'
 import { UserContext } from '@/components/UserContext'
 import { useInView } from '@/components/UseInView'
 import RepostActions from '@/components/repost/RepostActions';
+import { formatCount } from '@/utils/formatCount';
   
 type PostCardProps = {  
   post: {  
@@ -37,6 +38,8 @@ type PostCardProps = {
     liked_by_user: boolean
     community_id?: number
     community_joined?: boolean
+    community_requested?: boolean
+    community_invited?: boolean
     profile_pinned?: boolean
     community_pinned?: boolean
     is_edited?: boolean
@@ -104,8 +107,15 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
   const [reportOpen, setReportOpen] = useState(false)
   const [reportReason, setReportReason] = useState("");
   const [reportDetails, setReportDetails] = useState("");
-  const [joined, setJoined] = useState(false);
-  const alreadyJoined = post.community_joined;
+  const [communityState, setCommunityState] = useState({
+    joined: post.community_joined,
+    requested: post.community_requested,
+    invited: post.community_invited,
+  });
+  const hideJoinButton =
+    communityState.joined ||
+    communityState.requested ||
+    communityState.invited;
   const hasValidCommunity =
     typeof post.community_id === "number" &&
     !!post.community_name;
@@ -154,25 +164,21 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
   };
 
   const handleJoin = async () => {
-
-    setJoined(true);
-
     try {
-  
-      await apiRequest(
+      const res = await apiRequest(
         `api/communities/${post.community_id}/join/`,
-        {
-          method: "POST",
-        }
-      )
+        { method: "POST" }
+      );
   
+      setCommunityState({
+        joined: res.status === "joined" || res.status === "already_joined",
+        requested: res.status === "requested" || res.status === "already_requested",
+        invited: res.status === "invited" || res.status === "already_invited",
+      });
     } catch (err) {
-  
       console.error(err);
-      setJoined(false);
-  
     }
-  }
+  };
   
   const handleStar = async () => {
     const creatorId = post?.user?.id;
@@ -432,7 +438,7 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
               </AppLink>
             )}
             {/* JOIN BUTTON */}
-            {showJoinButton && !isRepostContext && !alreadyJoined && !joined && (
+            {showJoinButton && !isRepostContext && !hideJoinButton && (
               <button
                 onClick={async (e) => {
                   e.stopPropagation();
@@ -443,13 +449,31 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
                 Join
               </button>
             )}
-            
-            {joined && (
+
+            {communityState.joined && (
               <button
                 disabled
                 className="text-xs px-2 py-1 bg-gray-500 text-white rounded-md"
               >
                 Joined
+              </button>
+            )}
+
+            {communityState.requested && (
+              <button
+                disabled
+                className="text-xs px-2 py-1 bg-yellow-500 text-white rounded-md"
+              >
+                Requested
+              </button>
+            )}
+
+            {communityState.invited && (
+              <button
+                disabled
+                className="text-xs px-2 py-1 bg-indigo-500 text-white rounded-md"
+              >
+                Invited
               </button>
             )}
           </div>
@@ -640,7 +664,7 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
         >
           <ThumbsUp className="mr-2" /> 
           {likes > 0 && (
-            <span>{likes}</span>
+            <span>{formatCount(likes)}</span>
           )}  
         </button>  
   
@@ -650,7 +674,7 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
         >  
           <MessageCircle className="mr-2" />
           {post.comments_count > 0 && (
-            <span>{post.comments_count}</span>
+            <span>{formatCount(post.comments_count)}</span>
           )}
         </button>  
   
@@ -658,7 +682,7 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
 
         <span className="flex items-center text-gray-500"> <ChartNoAxesColumn className="mr-2" />
           {post.views_count && post.views_count > 0 && (
-            <span>{post.views_count}</span>
+            <span>{formatCount(post.views_count)}</span>
           )}
         </span>
   
