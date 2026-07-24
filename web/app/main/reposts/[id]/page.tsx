@@ -232,7 +232,7 @@ export default function RepostDetailPage() {
 
               <ChartNoAxesColumn className="mr-2" />
 
-              {post.views_count} views
+              {post.views_count}
 
             </span>
           )}

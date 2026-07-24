@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import AppLink from '@/components/AppLink';
 import { Users } from "lucide-react";
@@ -33,6 +33,10 @@ interface Tribe {
 export default function TribePage() {
 
   const { id } = useParams<{ id: string }>();
+  const loadingRef = useRef(false);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const pageRef = useRef(1);
+  const hasMoreRef = useRef(true);
 
   const [tribe, setTribe] =
     useState<Tribe | null>(null);
@@ -40,18 +44,13 @@ export default function TribePage() {
   const [loading, setLoading] =
     useState(true);
 
-  const [page, setPage] =
-    useState(1);
-
-  const [hasMore, setHasMore] =
-    useState(true);
-
   // LOAD TRIBE
-  const loadTribe = async () => {
+  const loadTribe = useCallback(async () => {
 
-    if (!hasMore) return;
+    if (!hasMoreRef.current || loadingRef.current) return;
 
     setLoading(true);
+    loadingRef.current = true;
 
     try {
 
@@ -65,39 +64,28 @@ export default function TribePage() {
         data.communities
       );
 
-      if (!tribe) {
-
-        setTribe(data);
-
-      } else {
-
+      setTribe(prev => {
+        if (!prev) return data;
+    
         const existingIds = new Set(
-          tribe.communities.map(
-            c => c.id
-          )
+            prev.communities.map(c => c.id)
         );
+    
+        const newCommunities = data.communities.filter(
+            c => !existingIds.has(c.id)
+        );
+    
+        return {
+            ...prev,
+            communities: [
+                ...prev.communities,
+                ...newCommunities,
+            ],
+        };
+      });
 
-        const newCommunities =
-          data.communities.filter(
-            (c: Community) =>
-              !existingIds.has(c.id)
-          );
-
-        setTribe({
-          ...tribe,
-          communities: [
-            ...tribe.communities,
-            ...newCommunities,
-          ],
-        });
-      }
-
-      setHasMore(
-        data.communities.length > 0
-      );
-
-      setPage(prev => prev + 1);
-
+      pageRef.current += 1;
+      hasMoreRef.current = data.communities.length > 0;
     } catch (err) {
 
       console.error(
@@ -108,46 +96,35 @@ export default function TribePage() {
     } finally {
 
       setLoading(false);
+      loadingRef.current = false;
     }
-  };
+  }, [id]);
 
   // INITIAL LOAD
   useEffect(() => {
     loadTribe();
-  }, []);
-
-  // INFINITE SCROLL
+  }, [loadTribe]);
+  
   useEffect(() => {
-
-    const handleScroll = () => {
-
-      if (
-        window.innerHeight +
-          document.documentElement
-            .scrollTop +
-          200 >=
-        document.documentElement
-          .scrollHeight
-      ) {
-
-        if (!loading && hasMore) {
+    if (!loadMoreRef.current) return;
+  
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
           loadTribe();
         }
+      },
+      {
+        rootMargin: "300px",
       }
-    };
-
-    window.addEventListener(
-      "scroll",
-      handleScroll
     );
-
-    return () =>
-      window.removeEventListener(
-        "scroll",
-        handleScroll
-      );
-
-  }, [loading, hasMore]);
+  
+    if (loadMoreRef.current) {
+      observer.observe(loadMoreRef.current);
+    }
+  
+    return () => observer.disconnect();
+  }, [loadTribe]);
 
   // JOIN / REQUEST
   const handleJoinToggle = async (communityId: string) => {
@@ -332,6 +309,8 @@ export default function TribePage() {
           No more communities
         </p>
       )}
+  
+      <div ref={loadMoreRef} />
 
     </div>
   );

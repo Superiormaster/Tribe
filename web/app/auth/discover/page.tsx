@@ -41,7 +41,7 @@ export default function DiscoverCommunities() {
       
       if (
         tribes.length === 0 ||
-        tribes.every(t => t.communities.length === 0)
+        tribes.every((t: any) => t.communities.length === 0)
       ) {
         push("/auth/star");
         return;

@@ -238,11 +238,6 @@ export default function ReelItem({
                 reel.user.username
             );
         }}
-        onCopyLink={()=>
-            reelsState.handleCopyLink(
-                reel.id
-            )
-        }
         onDelete={()=>
             reelsState.handleDelete(
                 reel.id

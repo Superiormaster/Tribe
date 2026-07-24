@@ -8,6 +8,7 @@ export default function BottomNavWrapper() {
 
   const hideBottomNav =
     /^\/main\/home\/\d+/.test(pathname) ||
+    /^\/main\/reposts\/\d+/.test(pathname) ||
     /^\/main\/messages\/chat\/\d+/.test(pathname) ||
     /^\/main\/reels\/\d+/.test(pathname) ||
     /^\/main\/community\/\d+\/chat/.test(pathname)

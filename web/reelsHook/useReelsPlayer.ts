@@ -38,7 +38,7 @@ export function useReelPlayer({
         );
 
     const [muted, setMuted] =
-        useState(true);
+        useState(false);
 
     const [activeId, setActiveId] =
         useState<number | null>(null);

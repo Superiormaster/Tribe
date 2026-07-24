@@ -134,11 +134,6 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
   const { showShare } = useShareSheet();
 
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
-  
-  const handlePlay = (index: number, e: React.MouseEvent) => {
-    e.stopPropagation();
-    videoRefs.current[index]?.play();
-  };
  
   useEffect(() => {
     setLiked(!!post.is_liked || !!post.liked_by_user)
@@ -235,12 +230,6 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
       // rollback
       setStarredUsers(previous);
     }
-  };
-  
-  const handleDoubleClick = (index: number) => {
-    const currentTime = videoRefs.current[index]?.currentTime || 0;
-  
-    push(`/main/home/${post.id}?t=${Math.floor(currentTime)}`);
   };
 
   useEffect(() => {
@@ -661,8 +650,7 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
                 media={media}
                 index={index}
                 videoRefs={videoRefs}
-                handlePlay={handlePlay}
-                handleDoubleClick={handleDoubleClick}
+                onOpen={handleMediaClick}
               />
             ))}
           </div>
@@ -763,16 +751,14 @@ interface MediaItemProps {
   };
   index: number;
   videoRefs: React.MutableRefObject<(HTMLVideoElement | null)[]>;
-  handlePlay: (index: number, e: React.MouseEvent) => void;
-  handleDoubleClick: (index: number) => void;
+  onOpen: () => void;
 }
 
 const MediaItem = ({
   media,
   index,
   videoRefs,
-  handlePlay,
-  handleDoubleClick,
+  onOpen,
 }: MediaItemProps) => {
   const { ref, isVisible } = useInView();
 
@@ -792,8 +778,8 @@ const MediaItem = ({
     <div key={index} ref={ref}>
       {isVisible ? (
         <div
-          onDoubleClick={() => handleDoubleClick(index)}
-          className="relative"
+          onClick={onOpen}
+          className="relative cursor-pointer"
         >
           <video
             ref={(el): void => {
@@ -802,20 +788,17 @@ const MediaItem = ({
             src={media.file_url}
             poster={media.thumbnail_url}
             preload="metadata"
-            onError={() => {}}
-            className="rounded-xl w-full aspect-video max-h-96 object-cover"
+            className="rounded-xl w-full aspect-video max-h-96 object-cover pointer-events-none"
           />
-            {/* PLAY BUTTON */}
-            <button
-              onClick={(e) => handlePlay(index, e)}
-              className="absolute inset-0 flex items-center justify-center text-white text-3xl"
-            >
-              ▶
-            </button>
+        
+          {/* Play icon only */}
+          <div className="absolute inset-0 flex items-center justify-center text-white text-4xl">
+            ▶
           </div>
-        ) : (
-          <div className="rounded-xl w-full aspect-video max-h-96 bg-gray-300 dark:bg-gray-700 animate-pulse" />
-        )}
+        </div>
+      ) : (
+        <div className="rounded-xl w-full aspect-video max-h-96 bg-gray-300 dark:bg-gray-700 animate-pulse" />
+      )}
     </div>
   );
 };

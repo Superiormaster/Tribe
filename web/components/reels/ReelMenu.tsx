@@ -7,7 +7,6 @@ interface Props {
     onReport: () => void;
     onMute: () => void;
     onBlock: () => void;
-    onCopyLink: () => void;
     onDelete: () => void;
     onEdit: () => void;
 }
@@ -19,7 +18,6 @@ export default function ReelMenu({
     onReport,
     onMute,
     onBlock,
-    onCopyLink,
     onDelete,
     onEdit,
 }: Props) {
@@ -60,13 +58,6 @@ export default function ReelMenu({
                     </>
 
                 )}
-
-                <button
-                    className="px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700"
-                    onClick={onCopyLink}
-                >
-                    Copy Link
-                </button>
 
                 {isOwner && (
 

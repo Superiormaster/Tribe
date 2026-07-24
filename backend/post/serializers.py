@@ -3,6 +3,17 @@ from users.models import User, Star
 from communities.models import Community, CommunityMembership, CommunityBan
 from .models import Post, PostMedia, Like, Comment, Feed, Repost
 from users.serializers import UserSerializer
+from django.db.models import Count, Exists, OuterRef
+
+def get_annotated_post_queryset(user):
+    return Post.objects.select_related("user", "community").annotate(
+        likes_count=Count("likes", distinct=True),
+        comments_count=Count("comments", distinct=True),
+        shares_count=Count("shares", distinct=True),
+        is_liked=Exists(
+            Like.objects.filter(post=OuterRef("pk"), user=user)
+        )
+    )
 
 class UserMiniSerializer(serializers.ModelSerializer):
     avatar = serializers.SerializerMethodField()
@@ -222,7 +233,7 @@ class FeedSerializer(serializers.ModelSerializer):
 class RepostSerializer(serializers.ModelSerializer):
 
     user = UserSerializer(read_only=True)
-    post = PostSerializer(read_only=True)
+    post = serializers.SerializerMethodField()
     is_starred_by_user = serializers.SerializerMethodField()
     type = serializers.SerializerMethodField()
 
@@ -241,37 +252,18 @@ class RepostSerializer(serializers.ModelSerializer):
 
     def get_type(self, obj):
         return "repost"
-
-    def to_representation(self, instance):
-        data = super().to_representation(instance)
-
-        if data.get("post"):
-            data["post"]["likes_count"] = getattr(
-                instance,
-                "likes_count",
-                0
-            )
-
-            data["post"]["comments_count"] = getattr(
-                instance,
-                "comments_count",
-                0
-            )
-
-            data["post"]["shares_count"] = getattr(
-                instance,
-                "shares_count",
-                0
-            )
-
-            data["post"]["repost_count"] = getattr(
-                instance,
-                "repost_count",
-                0
-            )
-
-        return data
   
+    def get_post(self, obj):
+        annotated_post = (
+            get_annotated_post_queryset(self.context["request"].user)
+            .filter(id=obj.post_id)
+            .first()
+        )
+        return PostSerializer(
+            annotated_post,
+            context=self.context
+        ).data
+
     def get_is_starred_by_user(self, obj):
         starred_ids = self.context.get("starred_ids", set())
         return obj.user.id in starred_ids
