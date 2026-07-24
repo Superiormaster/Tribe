@@ -56,7 +56,7 @@ export default function TribePage() {
 
       const data = await fetchTribeData(
         id,
-        page
+        pageRef.current
       );
 
       console.log(
@@ -304,7 +304,7 @@ export default function TribePage() {
       )}
 
       {/* END */}
-      {!hasMore && (
+      {!hasMoreRef && (
         <p className="mt-4 text-center text-gray-500">
           No more communities
         </p>
