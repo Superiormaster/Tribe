@@ -75,7 +75,7 @@ export async function sendCommunityMessage({
     : [];
 
   // 🧱 DB SAVE (RAW ONLY)
-  await saveMessage(rawMessage, currentUser.id);
+  await saveCommunityMessage(rawMessage, currentUser.id);
 
   // 🧠 UI DERIVED ONLY
   const uiMessage = rawMessage;
