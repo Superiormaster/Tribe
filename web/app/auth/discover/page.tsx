@@ -60,20 +60,17 @@ export default function DiscoverCommunities() {
   }
 
   async function save() {
-    if (selected.length === 0) {
-      alert("Select at least one community.")
-      return
-    }
-
-    await apiRequest(
-      "api/users/discover-join/",
-      {
-        method: "POST",
-        data: {
-          community_ids: selected
+    if (selected.length > 0) {
+      await apiRequest(
+        "api/users/discover-join/",
+        {
+          method: "POST",
+          data: {
+            community_ids: selected
+          }
         }
-      }
-    )
+      )
+    }
 
     push("/auth/star")
   }
