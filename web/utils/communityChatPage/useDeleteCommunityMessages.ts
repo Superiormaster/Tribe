@@ -105,7 +105,7 @@ export function useDeleteCommunityMessages({
       clearSelection();
       closeDeleteModal();
       
-      if (isLastMessage && chatId !== null) {
+      if (isLastMessage && communityId !== null) {
         await deleteCommunityChatData(
           communityId,
           currentUser.id

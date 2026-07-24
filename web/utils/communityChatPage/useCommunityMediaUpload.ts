@@ -204,7 +204,7 @@ export function useCommunityMediaUpload({
       files: mediaFiles,
     };
   
-    await sendChatMessage({
+    await sendCommunityMessage({
       message: optimistic,
       currentUser,
       socketRef,
