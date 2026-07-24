@@ -22,7 +22,7 @@ export default function NetworkBanner() {
         message = "⚫ Offline";
         color = "bg-red-600";
     } else if (!serverReachable) {
-        message = "🔴 Server Unreachable";
+        message = "🔴 Network Unavailable";
         color = "bg-red-500";
     } else if (!socketConnected) {
         message = "🟡 Connecting...";
