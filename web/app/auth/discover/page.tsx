@@ -35,7 +35,17 @@ export default function DiscoverCommunities() {
         "api/users/discover-communities/"
       )
 
-      setTribes(data.results || data)
+      const tribes = data.results || data;
+
+      setTribes(tribes);
+      
+      if (
+        tribes.length === 0 ||
+        tribes.every(t => t.communities.length === 0)
+      ) {
+        push("/auth/star");
+        return;
+      }
     } finally {
       setLoading(false)
     }

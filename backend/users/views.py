@@ -54,7 +54,7 @@ from django.conf import settings
 from math import radians, sin, cos, sqrt, atan2
 
 from .serializers import RegisterSerializer, ProfileSerializer, GoogleAuthSerializer, CustomTokenObtainPairSerializer, PublicProfileSerializer, MiniUserSerializer, PrivacySettingsSerializer, MutedUserSerializer, BlockedUserSerializer, ChangePasswordSerializer
-from communities.models import Tribe, CommunityMembership
+from communities.models import Tribe, CommunityMembership, Community, CommunityJoinRequest, CommunityBan
 from communities.serializers import TribeDetailSerializer
 
 User = get_user_model()
@@ -1516,13 +1516,18 @@ def discover_communities(request):
     return paginator.get_paginated_response(serializer.data)
 
 def join_community(user, community):
+    ban = CommunityBan.objects.filter(
+        community=community,
+        user=user,
+    ).first()
+  
+    if ban and ban.is_active:
+        return
+
     membership = CommunityMembership.objects.filter(
         user=user,
         community=community,
     ).first()
-
-    if membership and membership.banned:
-        return
 
     if membership:
         return
@@ -1549,7 +1554,7 @@ def join_community(user, community):
           create_notification(
             type="join_request",
             recipient=recipient,
-            actors=[request.user],
+            actors=[user],
             community=community
           )
         return
