@@ -275,8 +275,8 @@ def annotate_features(qs, user, joined_communities, starred_ids, two_weeks_ago):
         ),
 
         is_starred_by_user = Case(
-            When(user_id__in=starred_ids, then=Value(True)),
-            default=Value(False),
+            When(user_id__in=starred_ids, then=Value(1.0)),
+            default=Value(0.0),
             output_field=FloatField()
         )
     )
@@ -336,8 +336,8 @@ def annotate_repost_features(
         ),
 
         is_starred_by_user = Case(
-            When(user_id__in=starred_ids, then=Value(True)),
-            default=Value(False),
+            When(user_id__in=starred_ids, then=Value(1.0)),
+            default=Value(0.0),
             output_field=FloatField()
         )
     )
