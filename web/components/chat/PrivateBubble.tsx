@@ -12,8 +12,6 @@ import {
   Video,
   Forward,
 } from 'lucide-react';
-
-import AudioWaveform from '@/components/AudioWaveform';
 import AudioBubble from "@/components/chat/AudioBubble";
 
 type MediaItem = {
@@ -36,12 +34,12 @@ export default function PrivateBubble({
   toggleSelectMessage,
   clearSelection,
 
-  setReplyingTo,
   previewState,
   setPreviewState,
   onReaction, 
   onOpenDrawer,
   replyingTo,
+  setReplyingTo,
   onForward,
   
   activeReaction,
@@ -147,24 +145,22 @@ export default function PrivateBubble({
         }
       });
     };
-  }, []);
+  }, [mediaItems]);
   
   const isVisualMedia =
     ["image", "video", "gif", "sticker", "gallery"].includes(
       msg.media_type
     );
 
-  const isMediaMessage =
-    msg.media_type ||
-    msg.media_url 
+  const isMediaMessage = !!(msg.media_type || msg.media_url);
   
-  const mediaSrc =
-    msg.media_url?.[0] ||
-    (msg.files?.[0] instanceof File
-      ? URL.createObjectURL(msg.files[0])
-      : msg.files?.[0]?.blob
-        ? URL.createObjectURL(msg.files[0].blob)
-        : null);
+  const mediaSrc = useMemo(() => {
+    if (Array.isArray(msg.media_url) && msg.media_url.length) {
+      return msg.media_url[0];
+    }
+  
+    return mediaItems[0]?.url ?? null;
+  }, [msg.media_url, mediaItems]);
 
   const canPreview = [
     "sent",
@@ -201,12 +197,6 @@ export default function PrivateBubble({
     (msg.reply_to.text?.trim() ||
      msg.reply_to.media_url ||
      msg.reply_to.media_type);
-  
-  const isUploading = msg.status === "uploading";
-  const isPending = msg.status === "pending";
-  const isSending = msg.status === "sending";
-  const isFailed = msg.status === "failed";
-  const isSent = msg.status === "sent";
   
   useEffect(() => {
 
@@ -669,14 +659,6 @@ export default function PrivateBubble({
           );
       
           setDragX(resisted);
-        }
-      
-        if (Math.abs(delta) > 8) {
-          clearTimeout(
-            Number(
-              (e.currentTarget as HTMLElement).dataset.timer
-            )
-          );
         }
       }}
 

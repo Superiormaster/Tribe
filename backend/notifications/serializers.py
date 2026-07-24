@@ -8,6 +8,7 @@ class NotificationSerializer(serializers.ModelSerializer):
     actors = serializers.SerializerMethodField()
     message = serializers.SerializerMethodField()
     community = serializers.SerializerMethodField()
+    post_content_type = serializers.SerializerMethodField()
 
     class Meta:
         model = Notification
@@ -20,6 +21,7 @@ class NotificationSerializer(serializers.ModelSerializer):
             "count",
             "actors",
             "read",
+            "post_content_type",
             "created_at",
             "community"
         ]
@@ -27,6 +29,11 @@ class NotificationSerializer(serializers.ModelSerializer):
     def get_actors(self, obj):
         actors = obj.actors.all()[:3]  # show up to 3 users
         return [{"id": u.id, "username": u.username, "avatar": u.avatar if u.avatar else None} for u in actors]
+
+    def get_post_content_type(self, obj):
+        if obj.post:
+            return obj.post.content_type
+        return None
 
     def get_community(self, obj):
 
@@ -61,14 +68,14 @@ class NotificationSerializer(serializers.ModelSerializer):
         # ---------------------------
         if obj.type == "like":
             if obj.community:
-                return format_text(f"liked your post in {obj.community.name}", "❤️")
+                return format_text(f"liked your post in {obj.community.name} community", "❤️")
             return format_text("liked your post", "❤️")
     
         if obj.type == "comment_like":
 
             if obj.community:
                 return format_text(
-                    f"liked your comment in {obj.community.name}",
+                    f"liked your comment in {obj.community.name} community",
                     "❤️"
                 )
         
@@ -79,13 +86,13 @@ class NotificationSerializer(serializers.ModelSerializer):
 
         if obj.type == "comment":
             if obj.community:
-                return format_text(f"commented on your post in {obj.community.name}", "💬")
+                return format_text(f"commented on your post in {obj.community.name} community", "💬")
             return format_text("commented on your post", "💬")
     
         if obj.type == "reply":
             if obj.community:
                 return format_text(
-                    f"replied to your comment in {obj.community.name}",
+                    f"replied to your comment in {obj.community.name} community",
                     "💬"
                 )
         
@@ -99,12 +106,12 @@ class NotificationSerializer(serializers.ModelSerializer):
 
         if obj.type == "share":
             if obj.community:
-                return format_text(f"shared your post in {obj.community.name}.", "🔁")
+                return format_text(f"shared your post in {obj.community.name} community.", "🔁")
             return format_text(f"shared your post.", "🔁")
     
         if obj.type == "repost":
             if obj.community:
-                return format_text(f"reposted your post in {obj.community.name}", "🔁")
+                return format_text(f"reposted your post in {obj.community.name} community", "🔁")
             return format_text(f"reposted your post", "🔁")
 
         # ---------------------------
@@ -137,50 +144,53 @@ class NotificationSerializer(serializers.ModelSerializer):
         if obj.type == "invite":
             return (
                 f"{first_actor} invited you "
-                f"to join {obj.community.name} 🏘"
+                f"to join {obj.community.name} community 🏘"
             )
 
         if obj.type == "invite_accept":
             return (
                 f"{first_actor} joined "
-                f"{obj.community.name} 🏘"
+                f"{obj.community.name} community 🏘"
             )
 
         if obj.type == "approval":
             return (
                 f"Admin approved your post "
-                f"in {obj.community.name}"
+                f"in {obj.community.name} community"
             )
 
         if obj.type == "join_request":
-            return f"{first_actor} requested to join {obj.community.name}"
+            return f"{first_actor} requested to join {obj.community.name} community"
   
         if obj.type == "join_approved":
-            return f"Your request to join {obj.community.name} was approved 🎉"
+            return f"Your request to join {obj.community.name} community was approved 🎉"
   
         if obj.type == "join_rejected":
-            return f"Your request to join {obj.community.name} was rejected"
+            return f"Your request to join {obj.community.name} community was rejected"
   
         if obj.type == "community_ban":
-            return f"You were removed from {obj.community.name}"
+            return f"You were banned from {obj.community.name} community"
   
         if obj.type == "community_unban":
-            return f"You can join {obj.community.name} again"
+            return f"You can access {obj.community.name} community again"
+
+        if obj.type == "community_removed":
+            return f"You were removed from {obj.community.name} community"
   
         if obj.type == "moderator_added":
-            return f"You were made a moderator in {obj.community.name}"
+            return f"You were made a moderator in {obj.community.name} community"
         
         if obj.type == "admin_added":
-            return f"You were made an admin in {obj.community.name}"
+            return f"You were made an admin in {obj.community.name} community"
   
         if obj.type == "role_removed":
-            return f"Your staff role was removed in {obj.community.name}"
+            return f"Your staff role was removed in {obj.community.name} community"
   
         if obj.type == "post_approved":
-            return f"Your post was approved in {obj.community.name}"
+            return f"Your post was approved in {obj.community.name} community"
   
         if obj.type == "post_rejected":
-            return f"Your post was rejected in {obj.community.name}"
+            return f"Your post was rejected in {obj.community.name} community"
 
         if obj.type == "tribe_request_approved":
             tribe = (

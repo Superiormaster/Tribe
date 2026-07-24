@@ -5,6 +5,7 @@ const {
 const {
   addUserSocket,
   removeUserSocket,
+  setUserState,
 } = require("../servers/presence");
 
 module.exports = async function presenceSocket(
@@ -56,6 +57,10 @@ module.exports = async function presenceSocket(
         );
       }
     }, 15000);
+  
+  socket.on("app_state", ({ state }) => {
+    setUserState(socket.user.id, state);
+  });
 
   socket.on(
     "disconnect",

@@ -23,6 +23,7 @@ export function useGlobalSocket(
     onConnect?: () => void;
     onDelivered?: (data: any) => void;
     onSeen?: (data: any) => void;
+    onSendState?: () => void;
   
     onSocketConnected?: () => void;
     onSocketDisconnected?: () => void;
@@ -110,7 +111,7 @@ export function useGlobalSocket(
       );
     };
   }, [reconnect, currentUser?.id]);
-  
+
   useEffect(() => {
     if (!currentUser?.id) return;
   
@@ -119,7 +120,7 @@ export function useGlobalSocket(
     
       const socket = await getSocket();
     
-      if (!socket.connected) return;
+      if (!socket || !socket.connected) return;
     
       await flushOfflineMessages(socket, currentUser.id);
     }, 120000); 
@@ -147,6 +148,24 @@ export function useGlobalSocket(
 
         socketRef.current =
           socket;
+
+        const sendState = () => {
+          socket.emit("app_state", {
+            state: document.hidden
+              ? "background"
+              : "foreground",
+          });
+        };
+        
+        document.addEventListener(
+          "visibilitychange",
+          sendState
+        );
+        
+        socket.on("connect", sendState);
+        
+        // Send initial state
+        sendState();
   
         const onSocketConnected =
           () => {
@@ -210,6 +229,18 @@ export function useGlobalSocket(
             'seen',
             handlersRef.current
               .onSeen
+          );
+        }
+        
+        if (handlersRef.current.onSendState) {
+          socket.off(
+            "connect",
+            handlersRef.current.onSendState
+          );
+        
+          document.removeEventListener(
+            "visibilitychange",
+            handlersRef.current.onSendState
           );
         }
 
@@ -283,6 +314,7 @@ export function useGlobalSocket(
         };
 
         handlersRef.current = {
+          onSendState: sendState,
           onConnect,
           onDelivered,
           onSeen,
@@ -379,6 +411,18 @@ export function useGlobalSocket(
         h.onSocketDisconnected
       );
       
+      socket?.off(
+        "connect",
+        h.onSendState
+      );
+      
+      if (h.onSendState) {
+        document.removeEventListener(
+          "visibilitychange",
+          h.onSendState
+        );
+      }
+
       socket?.off(
         "delivered",
         h.onDelivered

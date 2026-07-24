@@ -6,24 +6,89 @@ import {
   Mic,
   X,
   Keyboard,
-  File,
   Camera,
-  Sticker,
-  Search,
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import EmojiSection from '@/components/chat/EmojiSection';
-import GifSection from '@/components/chat/GifSection';
-import StickerSection from '@/components/chat/StickerSection';
-import AttachmentSection from "@/components/chat/AttachmentSection";
+  Reply,
+  Lock,
+} from "lucide-react";
+import { isNative } from "@/utils/usePlatform";
+import ChatDrawer from "@/components/chat/ChatDrawer";
+import { getVideoDuration } from "@/utils/chat/videoThumbnail";
+import MediaPickerSheet from "@/components/chat/MediaPickerSheet";
+import PreviewViewer from  "@/components/chat/PreviewViewer";
+import { useChatInputState } from "@/utils/chat/useChatInputState";
 import CameraCaptureModal from '@/components/CameraCaptureModal';
+import { Message } from "@/utils/chat/messageContract";
 
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useMemo, useState } from 'react';
 
-type ReplyData = {
-  id: number;
-  username: string;
-  text?: string;
+type Props = {
+  value: string;
+
+  onChange: (v: string) => void;
+  handleTyping?: (v: string) => void;
+  saveDraftLocal: (v: string) => void;
+  communityId: number;
+  onSend: (payload?: any) => void;
+
+  onFileSelect: (file: MediaFile) => void;
+
+  disabled?: boolean;
+
+  replyingTo?: Message | null;
+
+  onCancelReply?: () => void;
+
+  // 🎤 Voice recording
+  isRecording?: boolean;
+  micPressed?: boolean;
+  isLocked?: boolean;
+  voiceState?: string;
+  duration?: number;
+
+  onMicStart?: (e: any) => void;
+
+  onMicMove?: (e: any) => void;
+
+  onMicEnd?: () => void;
+  drag: {
+    x: number;
+    y: number;
+  }
+  
+  showDrawer: boolean;
+  setShowDrawer: (v: boolean) => void;
+  drawerMode:
+    | "plus"
+    | "emoji"
+    | "gif"
+    | "stickers"
+    | null;
+  setDrawerMode: (
+    v:
+      | "plus"
+      | "emoji"
+      | "gif"
+      | "stickers"
+      | null
+  ) => void;
+  
+  showMediaPicker?: boolean
+  showCaptionBar?: boolean 
+  previewIndex: number | null  
+  
+  selectedFiles: MediaFile[];
+  files: MediaFile[];
+  setSelectedFiles: React.Dispatch<
+    React.SetStateAction<MediaFile[]>
+  >;
+  
+  index?: number;
+  setIndex?: React.Dispatch<React.SetStateAction<number>>;
+  onClose?: () => void;
+  
+  setPreviewIndex: React.Dispatch<
+    React.SetStateAction<number | null>
+  >;
 };
 
 type InputMode =
@@ -32,39 +97,57 @@ type InputMode =
   | "gif"
   | "stickers"
   | "plus";
-
-type Props = {
-  value: string;
-
-  onChange: (v: string) => void;
-
-  onSend: () => void;
-
-  onFileSelect: (file: File) => void;
-
-  disabled?: boolean;
-
-  replyingTo?: ReplyData | null;
-
-  onCancelReply?: () => void;
-};
+  
+export interface MediaFile extends File {
+  thumbnail?: string;
+  duration?: number;
+  preview?: string;
+}
 
 export default function CommunityChatInput({
   value,
+  communityId,
   onChange,
+  handleTyping,
+  saveDraftLocal,
   onSend,
   onFileSelect,
   disabled,
   replyingTo,
   onCancelReply,
+  drag,
+  selectedFiles,
+  setSelectedFiles,
+  previewIndex,
+  setPreviewIndex,
+  setDrawerMode,
+  isRecording,
+  micPressed,
+  isLocked,
+  duration,
+  voiceState,
+  onMicStart,
+  onMicMove,
+  onMicEnd,
+  showDrawer,
+  setShowDrawer,
+  drawerMode,
 }: Props) {
 
   const GIPHY_KEY = process.env.NEXT_PUBLIC_GIPHY_KEY!;
   const fileRef =
     useRef<HTMLInputElement | null>(null);
+  const [showCamera, setShowCamera] = useState(false);
+  const media = useChatInputState();
+
+  const [capturedImage, setCapturedImage] =
+  useState<string | null>(null);
+
+  const textRef =
+    useRef<HTMLTextAreaElement | null>(null);
   
-  const isActiveTab = (tab: string) =>
-  drawerMode === tab;
+  const isActiveTab = (tab: string) => drawerMode === tab;
+  
   const [inputMode, setInputMode] = useState<InputMode>("keyboard");
   const cursorRef = useRef<number>(0);
 
@@ -72,62 +155,94 @@ export default function CommunityChatInput({
   const startY = useRef(0);
   const isDragging = useRef(false);
   
-  const [showDrawer, setShowDrawer] = useState(false);
   const [gifQuery, setGifQuery] = useState("");
+  const [stickerQuery, setStickerQuery] = useState("");
+  const [stickers, setStickers] = useState<any[]>([]);
   const [gifs, setGifs] = useState<any[]>([]);
   const [loadingGifs, setLoadingGifs] = useState(false);
 
-  const [drawerMode, setDrawerMode] = useState<
-    'emoji' | 'gif' | 'stickers' | 'plus' | null
-  >(null);
+  const activeQuery =
+    drawerMode === "gif"
+      ? gifQuery
+      : drawerMode === "stickers"
+      ? stickerQuery
+      : "";
   
-  const [showCamera, setShowCamera] =
-  useState(false);
-
-  const [capturedImage, setCapturedImage] =
-  useState<string | null>(null);
-
-  const textRef = useRef<HTMLTextAreaElement | null>(null);
-
+  const canSend =
+    value?.trim()?.length > 0 ||
+    (selectedFiles?.length ?? 0) > 0;
+  
   useEffect(() => {
     if (!textRef.current) return;
-  
+
     textRef.current.style.height = 'auto';
+
     textRef.current.style.height =
-      Math.min(textRef.current.scrollHeight, 100) + 'px';
+      Math.min(
+        textRef.current.scrollHeight,
+        100
+      ) + 'px';
+
   }, [value]);
   
-   const fetchGifs = async (query = "trending") => {
-    try {
+  const formatTime = (sec: number) => {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+  
+    return `${m}:${s.toString().padStart(2, "0")}`;
+  };
+  
+  const previewUrl = useMemo(() => {
+    const file = selectedFiles?.[0];
+  
+    if (!file) return null;
+  
+    return (
+      file.preview ??
+      URL.createObjectURL(file)
+    );
+  }, [selectedFiles]);
+  
+  const handleFileSelect = (file: File) => {
+    if (typeof onFileSelect === "function") {
+      onFileSelect(file);
+    } else {
+      console.error("onFileSelect is not a function");
+    }
+  };
+  
+  useEffect(() => {
+    if (drawerMode !== "gif") return;
+  
+    const fetchGifsData = async () => {
       setLoadingGifs(true);
   
       const res = await fetch(
-        `https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_KEY}&q=${query}&limit=20`
+        `https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_KEY}&q=${gifQuery}&limit=20`
       );
   
       const data = await res.json();
-      setGifs(data.data);
-    } catch (err) {
-      console.log("GIF error:", err);
-    } finally {
+      setGifs(data.data || []);
       setLoadingGifs(false);
-    }
-  };
+    };
+  
+    fetchGifsData();
+  }, [gifQuery, drawerMode]);
   
   useEffect(() => {
-    if (drawerMode === "gif") {
-      fetchGifs();
-    }
-  }, [drawerMode]);
+    if (drawerMode !== "stickers") return;
   
-  const fetchStickers = async (query = "stickers") => {
-    const res = await fetch(
-      `https://api.giphy.com/v1/stickers/search?api_key=${GIPHY_KEY}&q=${query}&limit=20`
-    );
+    const fetchStickersData = async () => {
+      const res = await fetch(
+        `https://api.giphy.com/v1/stickers/search?api_key=${GIPHY_KEY}&q=${stickerQuery}&limit=20`
+      );
   
-    const data = await res.json();
-    return data.data;
-  };
+      const data = await res.json();
+      setStickers(data.data || []);
+    };
+  
+    fetchStickersData();
+  }, [stickerQuery, drawerMode]);
   
   const onTouchStart = (e: React.TouchEvent) => {
     startY.current = e.touches[0].clientY;
@@ -182,315 +297,231 @@ export default function CommunityChatInput({
       textRef.current?.focus();
     }, 80);
   };
+  
+  const previewItems = useMemo(() => {
+    return selectedFiles.map((file: MediaFile) => ({
+      file,
+      url:
+        file.preview ||
+        URL.createObjectURL(file),
+      type: file.type.startsWith("video/")
+        ? "video"
+        : "image",
+    }));
+  }, [selectedFiles]);
+  
+  const getReplyPreview = (reply: any) => {
+    if (reply.encrypted_text) {
+      return {
+        type: "text",
+        text: reply.encrypted_text,
+      };
+    }
+  
+    switch (reply.media_type) {
+      case "image":
+        return {
+          type: "image",
+          thumb: reply.media_url,
+          text: reply.caption || "Photo",
+        };
+  
+      case "video":
+        return {
+          type: "video",
+          thumb: reply.thumbnail || reply.media_url,
+          text: reply.caption || "Video",
+        };
+  
+      case "gif":
+        return {
+          type: "gif",
+          thumb: reply.media_url,
+          text: "GIF",
+        };
+  
+      case "sticker":
+        return {
+          type: "sticker",
+          thumb: reply.media_url,
+          text: "Sticker",
+        };
+  
+      case "audio":
+        return {
+          type: "audio",
+          text: "Voice message",
+        };
+
+      case "gallery": {
+        const media = Array.isArray(reply.media_url)
+          ? reply.media_url
+          : [];
+      
+        const images = media.filter(
+          (m: any) =>
+            !m.includes(".mp4") &&
+            !m.includes(".mov") &&
+            !m.includes(".webm")
+        ).length;
+      
+        const videos = media.length - images;
+      
+        let text = "";
+      
+        if (images && videos) {
+          text = `${media.length} media`;
+        } else if (images) {
+          text = `${images} photo${images > 1 ? "s" : ""}`;
+        } else {
+          text = `${videos} video${videos > 1 ? "s" : ""}`;
+        }
+      
+        return {
+          type: "gallery",
+          thumb: media[0],
+          text,
+        };
+      }
+  
+      default:
+        return {
+          type: "file",
+          text: "Attachment",
+        };
+    }
+  };
+  
+  const preview = replyingTo
+    ? getReplyPreview(replyingTo)
+    : null;
+  
+  const lockProgress =
+    Math.min(
+        Math.abs(drag.y)/120,
+        1
+    );
+  
+  const progress =
+    Math.max(
+        Math.abs(drag.x),
+        Math.abs(drag.y)
+    )/120;
+  const p=Math.min(progress,1);
+  
+  const showRecorder =
+    voiceState==="recording" ||
+    voiceState==="locked";
 
   return (
     <div className="fixed bottom-0 left-0 right-0 md:left-64 bg-[#111b21] border-t border-gray-800 flex flex-col z-50">
   
-      {/* EXPANDABLE DRAWER */}
-      <AnimatePresence>
-        {showDrawer && (
-          <>
-            {/* BACKDROP */}
-            <div
-              className="fixed inset-0 bg-black/40 z-30"
-              onClick={() => {
-                setShowDrawer(false);
-                setDrawerMode(null);
-              }}
-            />
-
-            <motion.div
-              initial={{ height: 0 }}
-              animate={{ height: 340 }}
-              exit={{ height: 0 }}
-              transition={{
-                type: "spring",
-                damping: 24,
-                stiffness: 240,
-              }}
-              style={{
-                transform: `translateY(${dragY}px)`,
-              }}
-              onTouchStart={onTouchStart}
-              onTouchMove={onTouchMove}
-              onTouchEnd={onTouchEnd}
-              className="
-                flex flex-col
-                overflow-hidden
-                bg-[#111b21] order-2
-                z-40 relative
-              "
-            >
-      
-              {/* HANDLE */}
-              <div className="pt-2 pb-3 flex justify-center">
-                <div className="w-14 h-1.5 rounded-full bg-gray-600" />
-              </div>
-              
-              {/* SEARCH */}
-              <div className="flex items-center gap-2 mx-5 bg-[#202c33] rounded-xl px-3 py-2 mb-2">
-                <Search size={18} className="text-gray-400" />
-            
-                <input
-                  value={gifQuery}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setGifQuery(val);
-                
-                    if (val.trim().length > 2) {
-                      fetchGifs(val);
-                    }
-                  }}
-                  placeholder="Search GIFs or stickers"
-                  className="
-                    bg-transparent
-                    outline-none
-                    text-sm
-                    text-white
-                    flex-1
-                  "
-                />
-              </div>
-      
-              {/* HEADER */}
-              <div className="flex items-center justify-center gap-4 px-4 pb-3 overflow-x-auto">
-  
-                <button
-                  onClick={() => {
-                    if (!showDrawer) setShowDrawer(true);
-                    setDrawerMode("emoji");
-                  }}
-                  className={`
-                    flex flex-col items-center gap-2
-                    px-2 py-1 rounded-xl transition
-                    ${
-                      isActiveTab("emoji")
-                        ? "bg-indigo-600/20"
-                        : "bg-transparent"
-                    }
-                  `}
-                >
-                  <div
-                    className={`
-                      w-10 h-10 rounded-2xl flex items-center justify-center
-                      ${
-                        isActiveTab("emoji")
-                          ? "bg-indigo-600"
-                          : "bg-yellow-500/20"
-                      }
-                    `}
-                  >
-                    😊
-                  </div>
-                
-                  <span
-                    className={`
-                      text-xs
-                      ${
-                        isActiveTab("emoji")
-                          ? "text-white"
-                          : "text-gray-300"
-                      }
-                    `}
-                  >
-                    Emoji
-                  </span>
-                </button>
-      
-                <button
-                  onClick={() => {
-                    setShowDrawer(true);
-                    setDrawerMode("gif");
-                  }}
-                  
-                  className={`
-                    flex flex-col items-center gap-2
-                    px-2 py-1 rounded-xl transition
-                    ${
-                      isActiveTab("gif")
-                        ? "bg-indigo-600/20"
-                        : "bg-transparent"
-                    }
-                  `}
-                >
-                  <div
-                    className={`
-                      w-10 h-10 rounded-2xl flex items-center justify-center
-                      ${
-                        isActiveTab("gif")
-                          ? "bg-indigo-600"
-                          : "bg-green-500/20"
-                      }
-                    `}
-                  >
-                    <File size={16} />
-                  </div>
-                
-                  <span
-                    className={`
-                      text-xs
-                      ${
-                        isActiveTab("gif")
-                          ? "text-white"
-                          : "text-gray-300"
-                      }
-                    `}
-                  >
-                    GIFs
-                  </span>
-                </button>
-      
-                <button
-                  onClick={() => {
-                    setShowDrawer(true);
-                    setDrawerMode("stickers");
-                  }}
-                  className={`
-                    flex flex-col items-center gap-2
-                    px-2 py-1 rounded-xl transition
-                    ${
-                      isActiveTab("stickers")
-                        ? "bg-indigo-600/20"
-                        : "bg-transparent"
-                    }
-                  `}
-                >
-                  <div
-                    className={`
-                      w-10 h-10 rounded-2xl flex items-center justify-center
-                      ${
-                        isActiveTab("stickers")
-                          ? "bg-indigo-600"
-                          : "bg-red-500/20"
-                      }
-                    `}
-                  >
-                    <Sticker size={14} />
-                  </div>
-                
-                  <span
-                    className={`
-                      text-xs
-                      ${
-                        isActiveTab("stickers")
-                          ? "text-white"
-                          : "text-gray-300"
-                      }
-                    `}
-                  >
-                    Stickers
-                  </span>
-                </button>
-              </div>
-      
-              {/* SCROLLABLE CONTENT */}
-              <div className="flex-1 min-h-0 overflow-hidden px-2 pb-2">
-
-                {drawerMode === 'emoji' && (
-                  <EmojiSection
-                    onEmojiSelect={insertEmoji}
-                  />
-                )}
-              
-                {drawerMode === 'gif' && (
-                  <GifSection
-                    query={gifQuery}
-                    onGifSelect={(gif) => {
-                      console.log(gif);
-              
-                      closeDrawer();
-                    }}
-                  />
-                )}
-              
-                {drawerMode === 'stickers' && (
-                  <StickerSection
-                    query={gifQuery}
-                    onStickerSelect={(sticker) => {
-                      console.log(sticker);
-              
-                      closeDrawer();
-                    }}
-                  />
-                )}
-              
-                 {drawerMode === 'plus' && (
-                  <AttachmentSection
-                    onCamera={() => {
-                      setShowDrawer(false);
-                      setShowCamera(true);
-                    }}
-                    onMedia={() => {
-                      fileRef.current?.click();
-                    }}
-                  />
-                )}
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
+      <ChatDrawer
+        showDrawer={showDrawer}
+        setShowDrawer={setShowDrawer}
+        drawerMode={drawerMode}
+        setDrawerMode={setDrawerMode}
+        dragY={dragY}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        gifQuery={gifQuery}
+        stickerQuery={stickerQuery}
+        setGifQuery={setGifQuery}
+        setStickerQuery={setStickerQuery}
+        onSend={onSend}
+        onChange={onChange}
+        insertEmoji={insertEmoji}
+        closeDrawer={closeDrawer}
+        isActiveTab={isActiveTab}
+        media={media}
+        isNative={isNative}
+        fileRef={fileRef}
+        setShowCamera={setShowCamera}
+      />
 
       <div className="w-full z-50 flex flex-col">
-    
-        {/* REPLY PREVIEW */}
-        
-    
         {/* INPUT BAR */}
         <div className="w-full flex gap-2 items-end px-3 py-2 order-1 transition-all duration-300">
     
           <button
-            className="p-2 rounded-full text-gray-300 hover:bg-[#202c33]"
+            className="py-4 px-2 text-gray-700 rounded-full dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-[#202c33]"
             onClick={() => {
               if (showDrawer) {
-                setShowDrawer(false);
-                setDrawerMode(null);
+                closeDrawer();
               } else {
+                setDrawerMode("plus");
                 setShowDrawer(true);
-                setDrawerMode('emoji');
+                setInputMode("plus");
               }
             }}
           >
-            {showDrawer ? (
+            {selectedFiles.length > 0 ? (
+              <div
+                onClick={() => setPreviewIndex(0)}
+                className="relative w-8 h-8 rounded-md overflow-hidden bg-gray-700"
+              >
+                {selectedFiles.length > 0 && (
+                  <div className="flex gap-1 w-8 h-8 rounded-md overflow-hidden bg-gray-700">
+                    {previewItems[0].type === "video" ? (
+                      <video
+                        src={previewItems[0].url}
+                        className="w-full h-full object-cover"
+                        muted
+                      />
+                    ) : (
+                      <img
+                        src={previewItems[0].url}
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                  
+                    {selectedFiles.length > 1 && (
+                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center text-white text-xs">
+                        +{selectedFiles.length}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : showDrawer ? (
               <Keyboard size={20} />
             ) : (
-              <span className="text-xl">😊</span>
+                <Paperclip size={20} />
             )}
           </button>
-  
-          {!value.trim() && (
-            <button
-              onClick={() => fileRef.current?.click()}
-              className="p-2 rounded-full hover:bg-gray-800 text-gray-300 self-end"
-            >
-              <Paperclip size={20} />
-            </button>
-          )}
     
           <input
             ref={fileRef}
             type="file"
             hidden
             multiple
-            accept="image/*,video/*,audio/*"
-            onChange={(e) => {
+            accept="image/*,video/*"
+            onChange={async (e) => {
               const files = e.target.files;
-          
               if (!files) return;
-          
-              Array.from(files).forEach((file) => {
+            
+              for (const rawFile of Array.from(files)) {
+                const file = rawFile as MediaFile;
+              
+                file.preview = URL.createObjectURL(file);
+
+                if (file.type.startsWith("video/")) {
+                  file.duration = await getVideoDuration(file);
+                }
+              
                 onFileSelect(file);
-              });
+              }
             }}
           />
     
-          {/* TEXTAREA EXPANDS FULLY */}
-          <div className="flex-1 bg-[#202c33] rounded-2xl overflow-hidden relative">
-
+          {/* INPUT CONTAINER */}
+          <div className="flex-1 bg-gray-200 dark:bg-[#202c33] rounded-2xl overflow-hidden relative">
+  
             {/* REPLY PREVIEW */}
             <div
               className={`
-                overflow-hidden transition-all duration-300
+                transition-all duration-300 overflow-hidden
                 ${
                   replyingTo
                     ? 'max-h-24 opacity-100'
@@ -499,40 +530,88 @@ export default function CommunityChatInput({
               `}
             >
               {replyingTo && (
-                <div className="flex items-start gap-2 px-3 pt-3 pb-2 border-l-4 border-green-500 bg-[#182229]">
-          
+                <div className="flex items-start gap-2 px-3 pt-3 pb-2 border-l-4 border-green-500 bg-gray-100 dark:bg-[#182229]">
+  
                   <div className="flex-1 overflow-hidden">
-                    <p className="text-xs text-green-400 font-semibold">
-                      ↩ Replying to {replyingTo.username}
+  
+                    <p className="text-xs items-center flex text-gray-900 dark:text-green-400 font-semibold">
+                      <Reply className="mr-2 w-5" /> Replying to {replyingTo.sender_info?.username ?? "Unknown"}
                     </p>
-          
-                    <p className="text-xs text-gray-300 truncate">
-                      {replyingTo.text}
+  
+                    {preview?.thumb && (
+                      <img
+                        src={preview.thumb}
+                        className="w-10 h-10 rounded object-cover"
+                      />
+                    )}
+                    
+                    <p className="text-xs text-gray-600 dark:text-gray-300 truncate">
+                      {preview?.text}
                     </p>
+  
                   </div>
-          
+  
                   <button
                     onClick={onCancelReply}
-                    className="text-gray-400"
+                    className="text-gray-400 hover:text-white"
                   >
                     <X size={16} />
                   </button>
-          
+  
                 </div>
               )}
             </div>
-          
+  
+            {showRecorder && (
+              <div
+                className="
+                  absolute
+                  inset-0
+                  flex
+                  items-center
+                  px-4
+                  bg-white
+                  dark:bg-[#202c33]
+                  rounded-2xl
+                  overflow-hidden
+                "
+              >
+                {/* Counter */}
+                <div className="flex items-center gap-2 min-w-[70px]">
+                  <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+            
+                  <span className="dark:text-white text-gray-600 text-lg">
+                    {formatTime(duration ?? 0)}
+                  </span>
+                </div>
+            
+                {/* Slide text */}
+                {!isLocked && (
+                  <div
+                    className="flex-1 text-center text-gray-400 text-lg transition-all duration-75"
+                    style={{
+                      transform: `translateX(${drag.x}px)`,
+                    }}
+                  >
+                    &lt; Slide to cancel
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* TEXTAREA */}
             <textarea
               ref={textRef}
               value={value}
-              onChange={(e) => onChange(e.target.value)}
-              placeholder={
-                disabled
-                  ? 'Chat locked'
-                  : 'Message'
-              }
+              onChange={(e) => {
+                const val = e.target.value;
               
+                onChange(val);
+              
+                handleTyping?.(val);
+              
+                saveDraftLocal?.(val);
+              }}
               onSelect={(e) => {
                 cursorRef.current = e.currentTarget.selectionStart;
               }}
@@ -540,6 +619,17 @@ export default function CommunityChatInput({
               onClick={(e) => {
                 cursorRef.current = e.currentTarget.selectionStart;
               }}
+              
+              onKeyUp={(e) => {
+                cursorRef.current = e.currentTarget.selectionStart;
+              }}
+              placeholder={
+                selectedFiles.length > 0
+                  ? "Add a caption..."
+                  : disabled
+                    ? "Chat locked"
+                    : "Message"
+              }
               disabled={disabled}
               rows={1}
               className="
@@ -556,7 +646,7 @@ export default function CommunityChatInput({
                 overflow-y-auto
               "
             />
-  
+
             {!value.trim() && (
               <button
                 onClick={() => setShowCamera(true)}
@@ -571,11 +661,30 @@ export default function CommunityChatInput({
               </button>
             )}
           </div>
-    
-          {value.trim() ? (
+
+          {canSend ? (
             <button
-              onClick={onSend}
-              disabled={disabled}
+              onClick={() => {
+                onSend({
+                  encrypted_text: selectedFiles.length
+                    ? ""
+                    : value,
+                  caption: selectedFiles.length
+                    ? value
+                    : "",
+                  files: selectedFiles,
+                  media_source: selectedFiles.length
+                    ? "upload"
+                    : null,
+                });
+              
+                setSelectedFiles([]);
+                setPreviewIndex(null);
+                onChange("");
+                setShowDrawer(false);
+                setDrawerMode(null);
+                setInputMode("keyboard");
+              }}
               className="
                 p-3
                 rounded-full
@@ -586,19 +695,83 @@ export default function CommunityChatInput({
               <Send size={18} />
             </button>
           ) : (
-            <button
-              className="
-                p-2
-                rounded-full
-                hover:bg-gray-800
-                text-gray-300
-                self-end
-              "
-            >
-              <Mic size={20} />
-            </button>
+            <div className="relative flex items-center justify-center w-14 h-14">
+              {/* LOCK */}
+              {voiceState === "recording" && (
+                <div
+                  className="
+                    absolute
+                    bottom-20
+                    right-2
+                    w-12
+                    h-28
+                    rounded-full
+                    bg-white
+                    dark:bg-[#202c33]
+                    flex
+                    items-start
+                    justify-center
+                    p-2
+                    z-50
+                  "
+                >
+                  <div
+                    className="transition-all duration-150"
+                    style={{
+                      transform: `translateY(${
+                        Math.max(drag.y, -80) + 80
+                      }px)`
+                    }}
+                  >
+                    <Lock
+                      size={20}
+                      className={
+                        isLocked
+                          ? "text-green-400"
+                          : "text-gray-400"
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+  
+              {/* MIC BUTTON */}
+              <button
+                onMouseDown={onMicStart}
+                onMouseMove={onMicMove}
+                onMouseUp={onMicEnd}
+                onTouchStart={onMicStart}
+                onTouchMove={onMicMove}
+                onTouchEnd={onMicEnd}
+                className={`
+                  rounded-full
+                  flex z-50
+                  items-center border
+                  justify-center
+                  transition-all
+                  duration-200
+                  shadow-xl
+                  ${
+                    micPressed
+                      ? "bg-gray-500 text-gray-300 w-15 h-15"
+                      : "bg-transparent text-gray-700 dark:text-gray-300 w-10 h-10"
+                  }
+                `}
+                style={{
+                  transform:`
+                  translate(${drag.x}px,${drag.y}px)
+                  scale(${1-0.4*p})
+                  `,
+                  opacity:1-p,
+                  transition: micPressed ? "none" : "all 0.15s ease",
+                }}
+              >
+                <Mic
+                  size={micPressed ? 30 : 20}
+                />
+              </button>
+            </div>
           )}
-    
         </div>
       </div>
   
@@ -610,10 +783,40 @@ export default function CommunityChatInput({
           }}
       
           onCapture={(file) => {
-            onFileSelect(file);
-      
+            handleFileSelect(file);
             setShowCamera(false);
-            setCapturedImage(null);
+          }}
+        />
+      )}
+      
+      {media.showMediaPicker && (
+        <MediaPickerSheet {...media} />
+      )}
+      
+      {previewIndex !== null && (
+        <PreviewViewer
+          files={selectedFiles}
+          index={previewIndex}
+          setIndex={setPreviewIndex}
+          onClose={() => setPreviewIndex(null)}
+          onAddFiles={(newFiles: MediaFile[]) => {
+            setSelectedFiles(prev => [
+              ...prev,
+              ...newFiles,
+            ]);
+          }}
+          onDelete={(index: number) => {
+            setSelectedFiles(prev => {
+              const next = prev.filter((_, i) => i !== index);
+          
+              if (next.length === 0) {
+                setPreviewIndex(null);
+              } else if (previewIndex !== null && previewIndex >= next.length) {
+                setPreviewIndex(next.length - 1);
+              }
+          
+              return next;
+            });
           }}
         />
       )}

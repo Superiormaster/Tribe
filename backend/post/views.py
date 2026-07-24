@@ -462,6 +462,10 @@ class PostViewSet(viewsets.ModelViewSet):
             "user_id",
             flat=True
         )
+      
+        joined_communities = CommunityMembership.objects.filter(
+          user=user
+        ).values_list("community_id", flat=True)
         
         qs = qs.exclude(
             user_id__in=muted_ids
@@ -472,7 +476,7 @@ class PostViewSet(viewsets.ModelViewSet):
         )
     
         # 🔥 REELS SCORING (IMPORTANT)
-        qs = annotate_reels_features(qs, request.user.interests)
+        qs = annotate_reels_features(qs, joined_communities)
         qs = compute_reels_score(qs)
     
         # 🔥 ORDER BY SCORE (TikTok style)

@@ -7,7 +7,7 @@ type Props = {
   onDeleteChat: () => void;
 };
 
-export default function ChatDeleteModal({
+export default function InboxDeleteModal({
   open,
   count,
   onClose,

@@ -1,90 +1,248 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { getSocket } from '@/lib/socket';
-import { apiRequest } from '@/utils/api';
+import { reconnectSocket } from "@/lib/socket";
+import {
+  mergeMessages,
+  sortMessages,
+} from "@/utils/chat/messageMerger";
+import type { Message } from "@/utils/chat/messageContract";
+import type {
+  Dispatch,
+  SetStateAction,
+} from "react";
+
+type CurrentUser = {
+  id: number;
+};
 
 export function useCommunitySocket(
-  communityId: number | null,
-  setMessages: any,
-  setTypingUsers: any,
-  currentUser: any
+  communityId: number |null,
+  currentUser: CurrentUser | null
 ) {
   const socketRef = useRef<any>(null);
+  const mountedRef = useRef(true);
 
   useEffect(() => {
     if (!communityId) return;
 
-    let mounted = true;
+    mountedRef.current = true;
 
     const init = async () => {
       try {
-        const auth = await apiRequest(
-          'api/users/socket-auth/',
-          {
-            method: 'POST',
-          }
-        );
-        console.log("SOCKET AUTH RESPONSE:", auth);
+        const socket = await reconnectSocket();
 
-        if (!mounted) return;
-
-        const socket = await getSocket();
+        if (!mountedRef.current) {
+          return;
+        }
 
         socketRef.current = socket;
 
-        // =========================
+        // ======================
         // CONNECT
-        // =========================
-        if (socket.connected) {
-          socket.emit('join_community', {
-            communityId,
-          });
-        }
-        
-        socket.on('connect', () => {
+        // ======================
+
+        const handleConnect = () => {
           console.log(
-            '✅ community socket connected:',
+            "✅ community socket connected:",
             socket.id
           );
-        
-          socket.emit('join_community', {
+
+          socket.emit("join_community", {
             communityId,
           });
-        });
+        };
 
-        // =========================
-        // RECEIVE MESSAGE
-        // =========================
         socket.on(
-          'community_message',
-          (message: any) => {
-            setMessages((prev: any[]) => {
-              const exists = prev.some(
-                (m) => m.id === message.id
-              );
-
-              if (exists) return prev;
-
-              return [...prev, message];
-            });
-          }
+          "connect",
+          handleConnect
         );
 
-        // =========================
-        // TYPING
-        // =========================
+        if (socket.connected) {
+          handleConnect();
+        }
+
+        // ======================
+        // RECEIVE MESSAGE
+        // ======================
+
+        const handleMessage = (
+          message: Message
+        ) => {
+          if (
+            Number(
+              message.community ??
+              message.communityId
+            ) !== Number(communityId)
+          ) {
+            return;
+          }
+
+          socketRef.current?.onMessage?.(
+            message
+          );
+        };
+
         socket.on(
-          'community_typing',
-          ({ userId, username }) => {
-            if (userId === currentUser.id) return;
+          "community_message",
+          handleMessage
+        );
 
-            setTypingUsers((prev: any[]) => {
-              const exists = prev.find(
-                (u) => u.userId === userId
-              );
+        // ======================
+        // TYPING
+        // ======================
 
-              if (exists) return prev;
+        const handleTyping = (
+          data: any
+        ) => {
+          socketRef.current?.onTyping?.(
+            data
+          );
+        };
+
+        socket.on(
+          "community_typing",
+          handleTyping
+        );
+
+        // ======================
+        // REACTION
+        // ======================
+
+        const handleReaction = (
+          data: any
+        ) => {
+          socketRef.current?.onReaction?.(
+            data
+          );
+        };
+
+        socket.on(
+          "community_reaction",
+          handleReaction
+        );
+
+        // ======================
+        // DELETE
+        // ======================
+
+        const handleDelete = (
+          data: any
+        ) => {
+          socketRef.current?.onDelete?.(
+            data
+          );
+        };
+
+        socket.on(
+          "community_delete",
+          handleDelete
+        );
+
+        // ======================
+        // PIN
+        // ======================
+
+        const handlePin = (
+          data: any
+        ) => {
+          socketRef.current?.onPin?.(
+            data
+          );
+        };
+
+        socket.on(
+          "community_pin",
+          handlePin
+        );
+
+        // ======================
+        // PRESENCE
+        // ======================
+
+        const handlePresence = (
+          data: any
+        ) => {
+          socketRef.current?.onPresence?.(
+            data
+          );
+        };
+
+        socket.on(
+          "community_presence_update",
+          handlePresence
+        );
+
+        // ======================
+        // ERROR
+        // ======================
+
+        const handleError = (
+          err: any
+        ) => {
+          console.error(
+            "community socket error:",
+            err
+          );
+        };
+
+        socket.on(
+          "connect_error",
+          handleError
+        );
+
+        // ======================
+        // HANDLERS
+        // ======================
+
+        socketRef.current.setHandlers = ({
+          setMessages,
+          setTypingUsers,
+        }: {
+          setMessages: Dispatch<
+            SetStateAction<Message[]>
+          >;
+
+          setTypingUsers: Dispatch<
+            SetStateAction<any[]>
+          >;
+        }) => {
+          if (!socketRef.current)
+            return;
+
+          socketRef.current.onMessage = (
+            message: Message
+          ) => {
+            setMessages(prev =>
+              sortMessages(
+                mergeMessages(
+                  prev,
+                  [message]
+                )
+              )
+            );
+          };
+
+          socketRef.current.onTyping = ({
+            userId,
+            username,
+          }: any) => {
+            if (
+              userId === currentUser?.id
+            ) {
+              return;
+            }
+
+            setTypingUsers(prev => {
+              const exists =
+                prev.some(
+                  u =>
+                    u.userId ===
+                    userId
+                );
+
+              if (exists)
+                return prev;
 
               return [
                 ...prev,
@@ -96,167 +254,35 @@ export function useCommunitySocket(
             });
 
             setTimeout(() => {
-              setTypingUsers((prev: any[]) =>
+              setTypingUsers(prev =>
                 prev.filter(
-                  (u) => u.userId !== userId
+                  u =>
+                    u.userId !==
+                    userId
                 )
               );
             }, 2000);
-          }
-        );
-
-        // =========================
-        // REACTIONS
-        // =========================
-        socket.on(
-          'community_reaction',
-          (data) => {
-            setMessages((prev: any[]) =>
-              prev.map((msg) => {
-                if (
-                  msg.id !== data.messageId
-                ) {
-                  return msg;
-                }
-
-                const reactions =
-                  msg.reactions || [];
-
-                const existing =
-                  reactions.find(
-                    (r: any) =>
-                      r.userId ===
-                      data.userId
-                  );
-
-                let updated;
-
-                if (existing) {
-                  updated =
-                    reactions.map(
-                      (r: any) =>
-                        r.userId ===
-                        data.userId
-                          ? data
-                          : r
-                    );
-                } else {
-                  updated = [
-                    ...reactions,
-                    data,
-                  ];
-                }
-
-                return {
-                  ...msg,
-                  reactions: updated,
-                };
-              })
-            );
-          }
-        );
-
-        // =========================
-        // DELETE MESSAGE
-        // =========================
-        socket.on(
-          'community_delete',
-          ({
-            messageId,
-            deletedByAdmin,
-          }) => {
-            setMessages((prev: any[]) =>
-              prev.map((msg) => {
-                if (
-                  msg.id !== messageId
-                ) {
-                  return msg;
-                }
-
-                return {
-                  ...msg,
-                  deleted: true,
-                  deleted_by_admin:
-                    deletedByAdmin,
-                };
-              })
-            );
-          }
-        );
-
-        // =========================
-        // PIN MESSAGE
-        // =========================
-        socket.on(
-          'community_pin',
-          ({ messageId, pinned }) => {
-            setMessages((prev: any[]) =>
-              prev.map((msg) => {
-                if (
-                  msg.id !== messageId
-                ) {
-                  return msg;
-                }
-
-                return {
-                  ...msg,
-                  is_pinned: pinned,
-                };
-              })
-            );
-          }
-        );
-
-        // =========================
-        // PRESENCE
-        // =========================
-        socket.on(
-          'community_presence_update',
-          (data) => {
-            console.log(
-              'presence:',
-              data
-            );
-          }
-        );
-
-        // =========================
-        // VISIBILITY RECONNECT
-        // =========================
-        const handleVisibility = () => {
-          if (!socketRef.current) return;
-        
-          if (document.hidden) {
-            socketRef.current.emit('app_hidden', {
-              communityId,
-            });
-          } else {
-            socketRef.current.emit('app_visible', {
-              communityId,
-            });
-          }
+          };
         };
-        
-        document.addEventListener(
-          'visibilitychange',
-          handleVisibility
-        );
 
-        // =========================
-        // ERRORS
-        // =========================
-        socket.on(
-          'connect_error',
-          (err) => {
-            console.error(
-              'community socket error:',
-              err
-            );
-          }
-        );
+        // ======================
+        // STORE HANDLERS
+        // ======================
+
+        socketRef.current.__handlers = {
+          handleConnect,
+          handleMessage,
+          handleTyping,
+          handleReaction,
+          handleDelete,
+          handlePin,
+          handlePresence,
+          handleError,
+        };
+
       } catch (err) {
         console.error(
-          'community socket init failed:',
+          "Community socket init failed:",
           err
         );
       }
@@ -265,93 +291,79 @@ export function useCommunitySocket(
     init();
 
     return () => {
-      mounted = false;
+      mountedRef.current = false;
 
-      if (socketRef.current) {
-        socketRef.current.emit(
-          'leave_community',
+      const socket =
+        socketRef.current;
+
+      const h =
+        socket?.__handlers;
+
+      if (!socket || !h) {
+        return;
+      }
+
+      if (
+        socket.connected &&
+        communityId
+      ) {
+        socket.emit(
+          "leave_community",
           {
             communityId,
           }
         );
-
-        socketRef.current.off();
-
-        socketRef.current.disconnect();
       }
+
+      socket.off(
+        "connect",
+        h.handleConnect
+      );
+
+      socket.off(
+        "community_message",
+        h.handleMessage
+      );
+
+      socket.off(
+        "community_typing",
+        h.handleTyping
+      );
+
+      socket.off(
+        "community_reaction",
+        h.handleReaction
+      );
+
+      socket.off(
+        "community_delete",
+        h.handleDelete
+      );
+
+      socket.off(
+        "community_pin",
+        h.handlePin
+      );
+
+      socket.off(
+        "community_presence_update",
+        h.handlePresence
+      );
+
+      socket.off(
+        "connect_error",
+        h.handleError
+      );
+
+      socket.__handlers =
+        undefined;
+
+      socketRef.current = null;
     };
-  }, [communityId]);
+  }, [
+    communityId,
+    currentUser?.id,
+  ]);
 
-  // =========================
-  // ACTIONS
-  // =========================
-
-  const sendMessage = (
-    payload: any
-  ) => {
-    socketRef.current?.emit(
-      'community_message',
-      {
-        communityId,
-        ...payload,
-      }
-    );
-  };
-
-  const sendTyping = () => {
-    socketRef.current?.emit(
-      'community_typing',
-      {
-        communityId,
-      }
-    );
-  };
-
-  const reactToMessage = (
-    messageId: number,
-    emoji: string
-  ) => {
-    socketRef.current?.emit(
-      'community_reaction',
-      {
-        communityId,
-        messageId,
-        emoji,
-      }
-    );
-  };
-
-  const deleteMessage = (
-    messageId: number
-  ) => {
-    socketRef.current?.emit(
-      'community_delete',
-      {
-        communityId,
-        messageId,
-      }
-    );
-  };
-
-  const pinMessage = (
-    messageId: number
-  ) => {
-    socketRef.current?.emit(
-      'community_pin',
-      {
-        communityId,
-        messageId,
-      }
-    );
-  };
-
-  return {
-    socketRef,
-
-    sendMessage,
-    sendTyping,
-    reactToMessage,
-    deleteMessage,
-    pinMessage,
-  };
+  return socketRef;
 }

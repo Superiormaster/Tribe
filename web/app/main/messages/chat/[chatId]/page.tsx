@@ -12,6 +12,15 @@ import ChatSelectionBar from '@/components/chat/ChatSelectionBar';
 import DeleteModal from '@/components/chat/DeleteModal';
 import { UserContext } from '@/components/UserContext'
 import { apiRequest } from '@/utils/api';
+import { formatLastSeen } from '@/utils/chat/formatLastSeen';
+import { formatMutedUntil } from '@/utils/chat/formatMutedUntil';
+import { useSendMessage } from "@/utils/chatPage/useSendMessage";
+import { useChatActions } from "@/utils/chatPage/useChatActions";
+import { usePreview } from "@/utils/chatPage/usePreview";
+import { useDelivered } from "@/utils/chatPage/useDelivered";
+import { useDeleteMessages } from "@/utils/chatPage/useDeleteMessages";
+import { useChatStatus } from "@/utils/chatPage/useChatStatus";
+import { useVoiceGestures } from "@/utils/chatPage/useVoiceGestures";
 import { useChatDrafts } from '@/hooks/useChatDrafts';
 import { useMessageSelection } from '@/hooks/useMessageSelection';
 import { useTypingIndicator } from '@/hooks/useTypingIndicator';
@@ -21,10 +30,9 @@ import { useMediaUpload } from '@/hooks/useMediaUpload';
 import { getMessageKey } from '@/utils/chat/messageMerger';
 import type { MessageStatus } from "@/utils/chat/messageContract";
 import {
-  saveMessage, getMessagesByChat, saveMessages, saveDraft, saveChatMeta, updateMessage, deleteChatData
+  saveMessage, getMessagesByChat, saveMessages, saveChatMeta, updateMessage, deleteChatData
 } from "@/lib/messageDB";
 import type { ChatUser } from "@/components/chat/chat";
-import { muteChat, unmuteChat } from '@/utils/chat/MessageClientApi';
 import { useChatSocket } from '@/lib/useChatSocket';
 import { useVoiceRecorder } from '@/lib/useVoiceRecorder';
 import VoiceRecorderUI from '@/components/VoiceRecorder';
@@ -32,7 +40,6 @@ import { useNetwork } from '@/components/networkConnection/NetworkContext';
 import { useCallManager } from '@/lib/useCallManager';
 import { getLivekitToken, startCall } from "@/lib/calls";
 import CallUI from '@/components/CallUI';
-import { motion, AnimatePresence } from 'framer-motion';
 import ChatInput from '@/components/ChatInput';
 import { useNavigation } from "@/utils/useNavigation";
 import { Message } from "@/utils/chat/messageContract";
@@ -68,23 +75,10 @@ export default function ChatPage() {
   const { chatId } = useParams<{ chatId: string }>();
   
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  
-  const [previewIndex, setPreviewIndex] =
-    useState<number | null>(null);
-  const [previewState, setPreviewState] = useState<{
-    files: any[];
-    index: number;
-    msg: any;
-    isMine: boolean;
-    onReply?: (msg: Message) => void;
-  } | null>(null);
-  const isPreviewOpen = previewState !== null;
 
   const chatIdNum = chatId ? Number(chatId) : null;
   const [chatUser, setChatUser] = useState<ChatUser | null>(null);
 
-  const [lastMessageStatus, setLastMessageStatus] =
-  useState<MessageStatus | null>(null);
   const [showDrawer, setShowDrawer] = useState(false);
   const [drawerMode, setDrawerMode] = useState<
     "plus" | "emoji" | "gif" | "stickers" | null
@@ -98,23 +92,19 @@ export default function ChatPage() {
   const [mutedUntil, setMutedUntil] =
     useState<string | null>(null);
 
-  const startXRef = useRef(0);
-  const startYRef = useRef(0);
-  
-  const [drag, setDrag] = useState({ x: 0, y: 0 });
-  const draggingRef = useRef(false);
-  const isDraggingMicRef = useRef(false);
-  const gestureRef = useRef<"none"|"lock"|"cancel">("none");
-  const [isLocked, setIsLocked] = useState(false);
-  const [isCancelling, setIsCancelling] = useState(false);
-  const isCancellingRef = useRef(false);
   const [page, setPage] = useState(1);
   const [replyingTo, setReplyingTo] = useState<any | null>(null);
-  const [voiceState, setVoiceState] = useState<voiceState>("idle");
-  const [micPressed, setMicPressed] = useState(false);
   if (chatIdNum === null) {
     return null; 
   }
+  
+  const {
+    previewIndex,
+    setPreviewIndex,
+    previewState,
+    setPreviewState,
+    isPreviewOpen,
+  } = usePreview();
   
   useEffect(() => {
     if (!chatIdNum) return;
@@ -124,10 +114,7 @@ export default function ChatPage() {
         `api/chats/${chatIdNum}/detail/`
       );
 
-      const other =
-        chatRes.members.find(
-          (m: ChatUser) => m.id !== currentUser.id
-        ) ?? ({} as ChatUser);
+      const other = chatRes.other_user;
     
       const presence =
         await apiRequest(
@@ -166,180 +153,6 @@ export default function ChatPage() {
     chatUser?.is_message_blocked ||
     chatUser?.blocked_me;
   
-  const STATUS_PRIORITY: Record<MessageStatus, number> = {
-    sending: 0,
-    pending: 0,
-    uploading: 1,
-    failed: 0,
-    sent: 1,
-    delivered: 2,
-    seen: 3,
-  };
-  
-  const updateStatus = (
-    oldStatus: MessageStatus | undefined,
-    newStatus: MessageStatus
-  ): MessageStatus => {
-    const current = oldStatus ?? "pending";
-  
-    return STATUS_PRIORITY[newStatus] >
-      STATUS_PRIORITY[current]
-        ? newStatus
-        : current;
-  };
-  
-  const updateConversationStatus = (
-    status: MessageStatus
-  ): void => {
-    setLastMessageStatus((prev: MessageStatus | null) =>
-      prev ? updateStatus(prev, status) : status
-    );
-  };
-
-  useEffect(() => {
-    const onDelivered: EventListener = (event) => {
-      const e = event as CustomEvent<{
-        chatId: number;
-      }>;
-    
-      if (e.detail.chatId === chatIdNum) {
-        updateConversationStatus("delivered");
-      }
-    };
-  
-    const onSeen: EventListener = (event) => {
-      const e = event as CustomEvent<{
-        chatId: number;
-      }>;
-    
-      if (e.detail.chatId === chatIdNum) {
-        updateConversationStatus("seen");
-      }
-    };
-  
-    window.addEventListener(
-      "message-delivered",
-      onDelivered
-    );
-  
-    window.addEventListener(
-      "message-seen",
-      onSeen
-    );
-  
-    return () => {
-      window.removeEventListener(
-        "message-delivered",
-        onDelivered
-      );
-  
-      window.removeEventListener(
-        "message-seen",
-        onSeen
-      );
-    };
-  }, [chatIdNum]);
-  
-  const handleSeen = useCallback(({
-    messageIds = [],
-    userId,
-    chatId,
-  }: {
-    messageIds?: number[];
-    userId: number;
-    chatId: number;
-  }) => {
-    if (
-      userId === currentUser.id ||
-      chatId !== chatIdNum ||
-      !messageIds.length
-    ) {
-      return;
-    }
-  
-    setMessages(prev => {
-      const updated = prev.map(msg => {
-        if (
-          messageIds.includes(Number(msg.id))
-        ) {
-          return {
-            ...msg,
-            status: updateStatus(
-              msg.status,
-              "seen"
-            ),
-          };
-        }
-  
-        return msg;
-      });
-  
-      const last =
-        updated[updated.length - 1];
-  
-      if (
-        last?.sender === currentUser.id &&
-        last.status === "seen"
-      ) {
-        setLastMessageStatus(
-          "seen"
-        );
-      }
-  
-      return updated;
-    });
-  }, [chatIdNum, currentUser?.id]);
-  
-  const handleDelivered = useCallback(({
-    messageIds = [],
-    userId,
-    chatId,
-  }: {
-    messageIds?: number[];
-    userId: number;
-    chatId: number;
-  }) => {
-    if (
-      userId === currentUser.id ||
-      chatId !== chatIdNum ||
-      !messageIds.length
-    ) {
-      return;
-    }
-  
-    setMessages(prev => {
-      const updated = prev.map(msg => {
-        if (
-          messageIds.includes(Number(msg.id))
-        ) {
-          return {
-            ...msg,
-            status: updateStatus(
-              msg.status,
-              "delivered"
-            ),
-          };
-        }
-  
-        return msg;
-      });
-  
-      const last =
-        updated[updated.length - 1];
-  
-      if (
-        last?.sender === currentUser.id &&
-        last.status === "delivered"
-      ) {
-        setLastMessageStatus(
-          "delivered"
-        );
-      }
-  
-      return updated;
-    });
-  }, [chatIdNum, currentUser?.id]);
-  
   const getSenderId = (m: any) => m.sender;
   
   const {
@@ -357,15 +170,15 @@ export default function ChatPage() {
     saveDraftLocal,
   } = useChatDrafts(chatIdNum);
   
-  const socketRef = useChatSocket(
-    chatIdNum,
-    currentUser,
-    {
-      onSeen: handleSeen,
-      onDelivered: handleDelivered,
-    }
-  );
-  
+  const {
+      lastMessageStatus,
+      updateConversationStatus,
+      setLastMessageStatus,
+  } = useChatStatus({
+      chatId: chatIdNum,
+      currentUser: currentUser.id,
+  });
+
   const {
     messages,
     setMessages,
@@ -377,11 +190,11 @@ export default function ChatPage() {
     loadNewer,
     hasMore,
     hasNewer,
+    setSocketRef,
   } = useChatMessages({
     chatId: chatIdNum,
     currentUser,
     chatUser,
-    socketRef,
     input,
     setInput,
     replyingTo,
@@ -391,21 +204,30 @@ export default function ChatPage() {
   });
   
   const {
+    handleSeen,
+    handleDelivered,
+  } = useDelivered({
+    chatId: chatIdNum,
+    currentUser: currentUser.id,
+    setMessages,
+  });
+  
+  const socketRef = useChatSocket(
+    chatIdNum,
+    currentUser,
+    {
+      onSeen: handleSeen,
+      onDelivered: handleDelivered,
+    }
+  );
+  
+  const {
     handleTyping,
   } = useTypingIndicator({
     chatId: chatIdNum,
     socketRef,
     setInput,
-  
-    saveDraft: (value: string) => {
-      if (chatIdNum == null) return;
-    
-      saveDraft({
-        chatId: chatIdNum,
-        text: value,
-        updated_at: new Date().toISOString(),
-      });
-    },
+    saveDraft: saveDraftLocal,
   });
   
   useEffect(() => {
@@ -416,6 +238,12 @@ export default function ChatPage() {
       setIsTyping,
     });
   }, [socketRef, setMessages]);
+  
+  useEffect(() => {
+    if (socketRef.current) {
+        setSocketRef(socketRef.current);
+    }
+  }, [socketRef, setSocketRef]);
   
   const {
     isRecording,
@@ -440,16 +268,19 @@ export default function ChatPage() {
   const hasSelection = selectedMessages.size > 1;
   
   const {
-    forwardMode,
-    forwardMessages,
-    forwardCaption,
-    setForwardCaption,
-    users,
-    selectedForwardUsers,
-    setSelectedForwardUsers,
-    openForward,
-    closeForward,
-    sendForward,
+  forwardMode,
+  forwardMessages,
+  forwardCaption,
+  setForwardCaption,
+  handleScroll,
+
+  destinations,
+  selectedDestinations,
+  setSelectedDestinations,
+
+  openForward,
+  closeForward,
+  sendForward,
   } = useForwardMessages({
     socketRef,
     chatUser,
@@ -473,75 +304,22 @@ export default function ChatPage() {
     setMessages,
   });
   
-  const handleSendMessage =
-    async (payload?: any) => {
-      if (!chatIdNum) {
-        return;
-      }
-      console.log("SEND BUTTON PRESSED");
+  const {
+    handleSendMessage,
+  } = useSendMessage({
+    chatIdNum,
+    input,
+    files,
+    caption,
+    replyingTo,
   
-      // gif / sticker
-      if (
-        payload?.media_type ===
-          "gif" ||
-        payload?.media_type ===
-          "sticker"
-      ) {
-        await handleSendExternalMedia(
-          payload
-        );
-        return;
-      }
+    sendMessage,
+    handleSendMedia,
+    handleSendExternalMedia,
   
-      const text =
-        payload?.encrypted_text ??
-        input;
-  
-      const mediaCaption =
-        payload?.caption ??
-        caption;
-  
-      const mediaFiles =
-        payload?.files ??
-        files;
-  
-      const hasMedia =
-        mediaFiles.length > 0;
-  
-      const hasText =
-        text.trim().length > 0;
-  
-      const hasCaption =
-        mediaCaption.trim()
-          .length > 0;
-  
-      //
-      // MEDIA MESSAGE
-      //
-      if (hasMedia) {
-        await handleSendMedia({
-          message: {
-            chat: chatIdNum,
-            files: mediaFiles,
-            caption: mediaCaption,
-            encrypted_text: mediaCaption,
-            media_source: "upload",
-            reply_to: replyingTo,
-          },
-        });
-      
-        setSelectedFiles([]);
-        setReplyingTo(null);
-        return;
-      }
-  
-      //
-      // TEXT MESSAGE
-      //
-      if (hasText) {
-        await sendMessage(text);
-      }
-    };
+    setSelectedFiles,
+    setReplyingTo,
+  });
 
   const handleStartCall = async () => {
     const roomId = String(chatIdNum);
@@ -552,437 +330,36 @@ export default function ChatPage() {
     await connectRoom(url, token);
   };
   
-  const formatLastSeen = (date?: string | null) => {
-    if (!date) return "";
+  const {
+    getSelectedMessages,
+    canDeleteForEveryone,
+    handleDeleteForMe,
+    handleDeleteForEveryone,
+  } = useDeleteMessages({
+    chatId: chatIdNum,
+    messages,
+    setMessages,
+    selectedMessages,
+    currentUser,
+    clearSelection,
+    closeDeleteModal: () =>
+      setShowDeleteModal(false),
+    replace,
+  });
   
-    const lastSeen = new Date(date);
-    const now = new Date();
-  
-    const diff =
-      now.getTime() - lastSeen.getTime();
-  
-    const seconds = Math.floor(diff / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-  
-    // under a minute
-    if (seconds < 60) {
-      return "Just now";
-    }
-  
-    // under an hour
-    if (minutes < 60) {
-      return `${minutes} min${
-        minutes > 1 ? "s" : ""
-      } ago`;
-    }
-  
-    // today
-    if (
-      lastSeen.toDateString() ===
-      now.toDateString()
-    ) {
-      return `${lastSeen.toLocaleTimeString(
-        [],
-        {
-          hour: "numeric",
-          minute: "2-digit",
-        }
-      )}`;
-    }
-  
-    // yesterday
-    const yesterday = new Date();
-    yesterday.setDate(now.getDate() - 1);
-  
-    if (
-      lastSeen.toDateString() ===
-      yesterday.toDateString()
-    ) {
-      return `Yesterday, ${lastSeen.toLocaleTimeString(
-        [],
-        {
-          hour: "numeric",
-          minute: "2-digit",
-        }
-      )}`;
-    }
-  
-    // older dates
-    return `${lastSeen.toLocaleDateString(
-      [],
-      {
-        day: "numeric",
-        month: "short",
-        year:
-          lastSeen.getFullYear() !==
-          now.getFullYear()
-            ? "numeric"
-            : undefined,
-      }
-    )}`;
-  };
-  
-  const getSelectedMessages = () => {
-    return messages.filter(m =>
-      selectedMessages.has(getMessageKey(m))
-    );
-  };
-  
-  const selected = getSelectedMessages();
-  
-  const handleDeleteForMe = async () => {
-    const selected = getSelectedMessages();
-  
-    try {
-      await apiRequest(
-        `api/chats/chats/${chatIdNum}/messages/hide/`,
-        {
-          method: "POST",
-          data: {
-            message_ids: selected.map(
-              m => Number(m.id)
-            ),
-          },
-        }
-      );
-  
-      for (const msg of selected) {
-        const messageKey = msg.client_id ?? msg.id;
-
-        if (messageKey == null) continue;
-        
-        await updateMessage(
-          String(messageKey),
-          currentUser.id,
-          {
-            hidden_for: [
-              ...(msg.hidden_for || []),
-              currentUser.id,
-            ],
-          }
-        );
-      }
-  
-      setMessages(prev =>
-        prev.filter(
-          m =>
-            !selected.some(
-              s => Number(s.id) === Number(m.id)
-            )
-        )
-      );
-  
-      clearSelection();
-      setShowDeleteModal(false);
-    
-      const remainingMessages =
-        messages.filter(
-          m =>
-            !selected.some(
-              s =>
-                getMessageKey(s) ===
-                getMessageKey(m)
-            )
-        );
-
-      const isLastMessage =
-        remainingMessages.length === 0;
-      
-      setMessages(remainingMessages);
-      
-      clearSelection();
-      setShowDeleteModal(false);
-      
-      if (isLastMessage && chatIdNum !== null) {
-        await deleteChatData(
-          chatIdNum,
-          currentUser.id
-        );
-      
-        window.dispatchEvent(
-          new CustomEvent("chat-deleted", {
-            detail: { chatId: chatIdNum },
-          })
-        );
-      
-        replace("/main/messages");
-      }
-  
-    } catch (err) {
-      console.error(err);
-    }
-  };
-  
-  const canDeleteForEveryone =
-    selected.length > 0 &&
-    selected.every(m => {
-      const isMine =
-        getSenderId(m) === currentUser.id;
-  
-      const alreadyDeleted =
-        m.is_deleted === true;
-  
-      return isMine && !alreadyDeleted;
-    });
-  
-  const handleDeleteForEveryone = async () => {
-    const selected = getSelectedMessages();
-
-    if (
-      !selected.every(
-        m => getSenderId(m) === currentUser.id
-      )
-    ) {
-      return;
-    }
-  
-    try {
-      await apiRequest(
-        `api/chats/chats/${chatIdNum}/messages/delete/`,
-        {
-          method: "POST",
-          data: {
-            message_ids: selected.map(
-              m => Number(m.id)
-            ),
-          },
-        }
-      );
-  
-      for (const msg of selected) {
-        const messageKey = msg.client_id ?? msg.id;
-      
-        if (messageKey == null) continue;
-      
-        await updateMessage(
-          String(messageKey),
-          currentUser.id,
-          {
-            is_deleted: true,
-            text: "Deleted message",
-            encrypted_text: "Deleted message",
-            media_url: [],
-            media_type: "text",
-            thumbnail: [],
-            duration: [],
-            waveform: [],
-            preview: null,
-          }
-        );
-      }
-  
-      for (const message of messages) {
-        const repliedToDeleted =
-          selected.some(
-            s =>
-              Number(s.id) ===
-              Number(message.reply_to?.id)
-          );
-      
-        if (!repliedToDeleted) continue;
-      
-        const messageKey = message.client_id ?? message.id;
-
-        if (messageKey == null) continue;
-  
-        await updateMessage(
-          String(messageKey),
-          currentUser.id,
-          {
-            reply_to: {
-              ...message.reply_to,
-              text: "Deleted message",
-              is_deleted: true,
-            },
-          }
-        );
-      }
-
-      setMessages(prev =>
-        prev.map(m => {
-          const deleted =
-            selected.some(
-              s => Number(s.id) === Number(m.id)
-            );
-      
-          const repliedToDeleted =
-            selected.some(
-              s =>
-                Number(s.id) ===
-                Number(m.reply_to)
-            );
-      
-          if (deleted) {
-            return {
-              ...m,
-              is_deleted: true,
-              text: "Deleted message",
-              encrypted_text: "Deleted message",
-              media_url: [],
-              media_type: "text",
-              thumbnail: [],
-              duration: [],
-              waveform: [],
-              preview: null,
-            };
-          }
-      
-          if (repliedToDeleted && m.reply_to) {
-            return {
-                ...m,
-                reply_to: {
-                    ...m.reply_to,
-                    text: "Deleted message",
-                    is_deleted: true,
-                },
-            };
-          }
-      
-          return m;
-        })
-      );
-  
-      clearSelection();
-      setShowDeleteModal(false);
-  
-    } catch (err) {
-      console.error(err);
-    }
-  };
-  
-  const handleBlock = async () => {
-    if (!chatUser) return;
-  
-    try {
-      if (
-        chatUser.is_message_blocked
-      ) {
-        await apiRequest(
-          `api/chats/message-unblock/${chatUser.id}/`,
-          {
-            method: "POST",
-          }
-        );
-  
-        setChatUser(prev =>
-          prev
-            ? {
-                ...prev,
-                is_message_blocked:
-                  false,
-              }
-            : prev
-        );
-      } else {
-        await apiRequest(
-          `api/chats/message-block/${chatUser.id}/`,
-          {
-            method: "POST",
-          }
-        );
-  
-        setChatUser(prev =>
-          prev
-            ? {
-                ...prev,
-                is_message_blocked:
-                  true,
-              }
-            : prev
-        );
-      }
-    } finally {
-      setShowChatOptions(false);
-    }
-  };
-  
-  const handleMute = async (
-    duration: "8h" | "1w" | "forever"
-  ) => {
-    const res = await muteChat(
-      chatIdNum,
-      duration
-    );
-  
-    setIsMuted(true);
-    setMutedUntil(
-      res.muted_until
-    );
-  
-    setShowMuteModal(false);
-    setShowChatOptions(false);
-  };
-  
-  const handleUnmute = async () => {
-    await unmuteChat(chatIdNum);
-  
-    setIsMuted(false);
-    setMutedUntil(null);
-  
-    setShowChatOptions(false);
-  };
-  
-  const formatMutedUntil = (
-    date?: string | null
-  ) => {
-    if (!date) return "";
-  
-    const mutedDate =
-      new Date(date);
-  
-    const now = new Date();
-  
-    const tomorrow = new Date();
-    tomorrow.setDate(
-      now.getDate() + 1
-    );
-  
-    if (
-      mutedDate.toDateString() ===
-      tomorrow.toDateString()
-    ) {
-      return `Muted until tomorrow, ${mutedDate.toLocaleTimeString(
-        [],
-        {
-          hour: "numeric",
-          minute: "2-digit",
-        }
-      )}`;
-    }
-  
-    if (
-      mutedDate.toDateString() ===
-      now.toDateString()
-    ) {
-      return `Muted until today, ${mutedDate.toLocaleTimeString(
-        [],
-        {
-          hour: "numeric",
-          minute: "2-digit",
-        }
-      )}`;
-    }
-  
-    return `Muted until ${mutedDate.toLocaleDateString(
-      [],
-      {
-        month: "short",
-        day: "numeric",
-        year:
-          mutedDate.getFullYear() !==
-          now.getFullYear()
-            ? "numeric"
-            : undefined,
-      }
-    )}, ${mutedDate.toLocaleTimeString(
-      [],
-      {
-        hour: "numeric",
-        minute: "2-digit",
-      }
-    )}`;
-  };
+  const {
+    handleBlock,
+    handleMute,
+    handleUnmute,
+  } = useChatActions({
+    chatIdNum,
+    chatUser,
+    setChatUser,
+    setIsMuted,
+    setMutedUntil,
+    setShowMuteModal,
+    setShowChatOptions,
+  });
   
   useEffect(() => {
     if (!socketRef.current) return;
@@ -1016,238 +393,29 @@ export default function ChatPage() {
     };
   }, [chatUser?.id]);
   
-  const handleSwipe = (currentX: number) => {
-    const diff = startXRef.current - currentX;
-  
-    if (diff > 80) {
-      // swipe left = cancel
-      isCancellingRef.current = true;
-      cancelRecording();
-    }
-  };
-  
-  const vibrate = (pattern: number | number[]) => {
-    if (navigator.vibrate) {
-      navigator.vibrate(pattern);
-    }
-  };
-  
-  const handleStart = async (e: any) => {
-    e.preventDefault();
-    setMicPressed(true);
-    draggingRef.current = true;
-    isDraggingMicRef.current = true;
-    const touch = e.touches?.[0] || e;
-  
-    startXRef.current = touch.clientX;
-    startYRef.current = touch.clientY;
-  
-    setIsLocked(false);
-    setIsCancelling(false);
-    setDrag({ x: 0, y: 0 });
-    gestureRef.current = "none";
-
-    setVoiceState("recording");
-  
-    await startRecording();
-    vibrate(30); 
-  };
-  
-  const handleMove = (e: any) => {
-    e.preventDefault();
-    if (isLocked) return;
-    if (!draggingRef.current && !isDraggingMicRef.current) return;
-
-    isDraggingMicRef.current = false;
-
-    const touch = e.touches?.[0] || e;
-  
-    const dx = touch.clientX - startXRef.current;
-    const dy = touch.clientY - startYRef.current;
-  
-    const absX = Math.abs(dx);
-    const absY = Math.abs(dy);
-  
-    if (gestureRef.current === "none") {
-
-    if (absX > 18 || absY > 18) {
-
-          gestureRef.current =
-              absX > absY
-                  ? "cancel"
-                  : "lock";
-      }
-    }
-  
-    if (gestureRef.current === "cancel") {
-
-        setDrag({
-            x: Math.max(dx, -120),
-            y: 0,
-        });
-  
-    } else if (gestureRef.current === "lock") {
-    
-        setDrag({
-            x: 0,
-            y: Math.max(dy, -120),
-        });
-    }
-  
-    if(
-        gestureRef.current==="cancel" &&
-        absY>20
-    ){
-        handleSend();
-        return;
-    }
-
-    if(
-        gestureRef.current==="lock" &&
-        absX>20
-    ){
-        handleSend();
-        return;
-    }
-  
-    if (dx < -100 && !isCancelling) {
-      setIsCancelling(true);
-      vibrate(50);
-      setVoiceState("cancelling");
-    } else {
-      setIsCancelling(false);
-    }
-
-    if (isCancelling) {
-      setDrag({ x: -120, y: 0 });
-    }
-
-    if (dy <= -100 && !isLocked) {
-      setIsLocked(true);
-      setVoiceState("locked");
-  
-      draggingRef.current = false;
-      isDraggingMicRef.current = false;
-  
-      gestureRef.current = "none";
-  
-      setMicPressed(false);
-  
-      // Snap mic back
-      setDrag({ x: 0, y: 0 });
-  
-      vibrate([20, 40, 20]);
-  
-      return;
-    }
-  };
-  
-  const handleEnd = () => {
-    // Locked?
-    if (isLocked) {
-        draggingRef.current = false;
-        isDraggingMicRef.current = false;
-        return;
-    }
-
-    setMicPressed(false);
-    draggingRef.current = false;
-    isDraggingMicRef.current = false;
-    setDrag({ x:0,y:0 });
-
-    if (isCancelling) {
-        handleCancelVoice();
-        setVoiceState("idle");
-        return;
-    }
-
-    handleSend();
-  };
-  
-  const handleStop = () => {
-    if (voiceState === "locked") {
-      stopRecording();
-      setVoiceState("preview");
-    }
-  };
-  
-  const handleSend = () => {
-    sendRecording();
-
-    setMicPressed(false);
-    setIsLocked(false);
-    setIsCancelling(false);
-
-    setDrag({ x: 0, y: 0 });
-
-    gestureRef.current = "none";
-
-    setVoiceState("idle");
-  };
-  
-  const handleCancelVoice = () => {
-    cancelRecording();
-
-    setMicPressed(false);
-    setIsLocked(false);
-    setIsCancelling(false);
-
-    setDrag({ x: 0, y: 0 });
-
-    gestureRef.current = "none";
-
-    setVoiceState("idle");
-  };
-  
-  useEffect(() => {
-    if (!isRecording && !isDraggingMicRef.current && voiceState === ("idle")) return;
-  
-    const move = (e: any) => handleMove(e);
-    const end = (e: any) => {
-      if (!micPressed) return;
-      handleEnd();
-    }
-  
-    window.addEventListener("mousemove", move);
-  
-    window.addEventListener("mouseup", end);
-  
-    window.addEventListener(
-      "touchmove",
-      move,
-      {
-        passive: false,
-      }
-    );
-  
-    window.addEventListener("touchend", end);
-  
-    return () => {
-      window.removeEventListener("mousemove", move);
-  
-      window.removeEventListener("mouseup", end);
-  
-      window.removeEventListener("touchmove", move);
-  
-      window.removeEventListener("touchend", end);
-    };
-  }, [isRecording, voiceState, micPressed]);
+  const voice = useVoiceGestures({
+    startRecording,
+    stopRecording,
+    cancelRecording,
+    sendRecording,
+    isRecording,
+  });
 
   // =========================
   // UI
   // =========================
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-gray-300 dark:bg-[#0b141a]">
-      {voiceState === "locked" && (
+      {voice.voiceState === "locked" && (
         <VoiceRecorderUI
-          voiceState={voiceState}
+          voiceState={voice.voiceState}
           waveform={waveform}
           duration={duration}
-          drag={drag}
-          isLocked={isLocked}
+          drag={voice.drag}
+          isLocked={voice.isLocked}
           previewBlob={previewBlob}
-          onCancel={handleCancelVoice}
-          onSend={handleSend}
+          onCancel={voice.handleCancelVoice}
+          onSend={voice.handleSend}
           isPaused={isPaused}
           onPauseToggle={togglePause}
         />
@@ -1365,14 +533,14 @@ export default function ChatPage() {
             }
   
             isRecording={isRecording}
-            micPressed={micPressed}
+            micPressed={voice.micPressed}
             duration={duration}
-            isLocked={isLocked}
-            voiceState={voiceState}
-            onMicStart={handleStart}
-            onMicMove={handleMove}
-            onMicEnd={handleEnd}
-            drag={drag}
+            isLocked={voice.isLocked}
+            voiceState={voice.voiceState}
+            onMicStart={voice.handleStart}
+            onMicMove={voice.handleMove}
+            onMicEnd={voice.handleEnd}
+            drag={voice.drag}
           />
       )}
     
@@ -1418,14 +586,29 @@ export default function ChatPage() {
   
       <ForwardDrawer
         open={forwardMode}
-        chatUser={chatUser}
-        users={users}
-        selectedUsers={selectedForwardUsers}
-        setSelectedUsers={setSelectedForwardUsers}
+        destinations={destinations}
+        selectedDestinations={selectedDestinations}
+        setSelectedDestinations={setSelectedDestinations}
+    
         selectedMessages={forwardMessages}
+    
         forwardCaption={forwardCaption}
         setForwardCaption={setForwardCaption}
+        currentDestination={
+          chatUser
+              ? {
+                    id: chatUser.id,
+                    name: chatUser.username,
+                    avatar: chatUser.avatar,
+                    type: "private",
+                    chatId: chatIdNum,
+                }
+              : undefined
+        }
+        handleScroll={handleScroll}
+    
         getMessageKey={getMessageKey}
+    
         onClose={closeForward}
         onSend={sendForward}
       />

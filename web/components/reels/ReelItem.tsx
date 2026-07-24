@@ -176,9 +176,7 @@ export default function ReelItem({
         muted={player.muted}
         videoRefs={player.videoRefs}
         handleLike={reelsState.handleLike}
-        setOpenCommentsPostId={
-            reelsState.setOpenCommentsPostId
-        }
+        setOpenCommentsPostId={reelsState.setOpenCommentsPostId}
       />
       <ReelControls
         show={showControls}

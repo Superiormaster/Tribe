@@ -1,6 +1,5 @@
 from datetime import timedelta
-
-from django.db.models import Count, Q
+from django.db.models import Count, F, Q, Exists, OuterRef
 from django.utils.timezone import now
 
 from rest_framework.views import APIView
@@ -12,14 +11,13 @@ from rest_framework.exceptions import NotFound
 from .models import SearchQuery
 from users.models import BlockedUser, User
 from communities.models import Community, Tribe
-from post.models import Post, Repost
+from post.models import Post, Like, Repost
+from post.serializers import PostSerializer, RepostSerializer
 
 from .serializers import (
     UserSearchSerializer,
-    PostSearchSerializer,
     TribeSearchSerializer,
     CommunitySearchSerializer,
-    RepostSearchSerializer,
 )
 
 def get_block_filters(user):
@@ -203,6 +201,18 @@ class GlobalSearchView(APIView):
                     "user",
                     "community"
                 )
+                .annotate(
+                    likes_count=Count("likes", distinct=True),
+                    comments_count=Count("comments", distinct=True),
+                    shares_count=Count("shares", distinct=True),
+                    repost_count=Count("reposts", distinct=True),
+                    is_liked=Exists(
+                        Like.objects.filter(
+                            post=OuterRef("pk"),
+                            user=user
+                        )
+                    )
+                )
                 .prefetch_related(
                     "media_files"
                 )
@@ -224,34 +234,66 @@ class GlobalSearchView(APIView):
                     "post__user",
                     "post__community"
                 )
+                .annotate(
+                    likes_count=Count(
+                        "post__likes",
+                        distinct=True
+                    ),
+                    comments_count=Count(
+                        "post__comments",
+                        distinct=True
+                    ),
+                    shares_count=Count(
+                        "post__shares",
+                        distinct=True
+                    ),
+                    repost_count=Count(
+                        "post__reposts",
+                        distinct=True
+                    ),
+                    is_liked=Exists(
+                        Like.objects.filter(
+                            post=OuterRef("post_id"),
+                            user=user
+                        )
+                    ),
+                    views_count=F(
+                        "post__views_count"
+                    ),
+                    skipped_views=F(
+                        "post__skipped_views"
+                    ),
+                )
                 .prefetch_related(
                     "post__media_files"
                 )
                 .order_by("-created_at")
             )
 
-            posts_data = PostSearchSerializer(
-                posts_qs,
-                many=True
+            posts = PostSerializer(
+              posts_qs,
+              many=True,
+              context={"request": request}
             ).data
 
-            reposts_data = RepostSearchSerializer(
-                reposts_qs,
-                many=True
+            reposts = RepostSerializer(
+              reposts_qs,
+              many=True,
+              context={"request": request}
             ).data
 
             # MARK TYPES
-            for p in posts_data:
+            for p in posts:
                 p["feed_type"] = "post"
 
-            for r in reposts_data:
+            for r in reposts:
                 r["feed_type"] = "repost"
 
             # MERGE
             combined_posts = (
-                list(posts_data)
+                list(posts)
                 +
-                list(reposts_data)
+                list(reposts)
             )
 
             # SORT
@@ -324,6 +366,18 @@ class GlobalSearchView(APIView):
                 "user",
                 "community"
             )
+            .annotate(
+                likes_count=Count("likes", distinct=True),
+                comments_count=Count("comments", distinct=True),
+                shares_count=Count("shares", distinct=True),
+                repost_count=Count("reposts", distinct=True),
+                is_liked=Exists(
+                    Like.objects.filter(
+                        post=OuterRef("pk"),
+                        user=user
+                    )
+                )
+            )
             .prefetch_related(
                 "media_files"
             )
@@ -345,20 +399,52 @@ class GlobalSearchView(APIView):
                 "post__user",
                 "post__community"
             )
+            .annotate(
+                likes_count=Count(
+                    "post__likes",
+                    distinct=True
+                ),
+                comments_count=Count(
+                    "post__comments",
+                    distinct=True
+                ),
+                shares_count=Count(
+                    "post__shares",
+                    distinct=True
+                ),
+                repost_count=Count(
+                    "post__reposts",
+                    distinct=True
+                ),
+                is_liked=Exists(
+                    Like.objects.filter(
+                        post=OuterRef("post_id"),
+                        user=user
+                    )
+                ),
+                views_count=F(
+                    "post__views_count"
+                ),
+                skipped_views=F(
+                    "post__skipped_views"
+                ),
+            )
             .prefetch_related(
                 "post__media_files"
             )
             .order_by("-created_at")[:5]
         )
 
-        posts = PostSearchSerializer(
-            posts_qs,
-            many=True
+        posts = PostSerializer(
+          posts_qs,
+          many=True,
+          context={"request": request}
         ).data
 
-        reposts = RepostSearchSerializer(
-            reposts_qs,
-            many=True
+        reposts = RepostSerializer(
+          reposts_qs,
+          many=True,
+          context={"request": request}
         ).data
 
         # MARK TYPES

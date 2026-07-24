@@ -81,7 +81,7 @@ export default function DiscoverPage() {
   };
 
   return (
-    <div className="p-4 max-w-2xl mx-auto">
+    <div className="p-4 my-20 max-w-2xl mx-auto">
 
       {/* HEADER */}
       <h1 className="text-xl font-bold mb-4">Discover People</h1>

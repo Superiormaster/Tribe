@@ -22,7 +22,7 @@ import PostCard from '@/components/PostCard';
 import ReelCard from '@/components/ReelCard';
 import RepostCard from '@/components/repost/RepostCard';
 import SortablePinnedPost from '@/components/SortablePinnedPost';
-import ShareButton from '@/components/ShareButton'
+import ShareButton from '@/components/share/ShareButton'
 import {
   connectUser,
   removeConnection,

@@ -1,11 +1,10 @@
 'use client';
-import { useState, useRef, useMemo, useEffect } from 'react';
+import { useState, useRef, useMemo, useEffect, useContext } from 'react';
 import { useNavigation } from "@/utils/useNavigation"
 import PostCard from '@/components/PostCard';
 import ReelCard from '@/components/ReelCard';
 import RepostCard from '@/components/repost/RepostCard';
 import Skeleton from '@/components/Skeleton';
-import { useContext } from "react";
 import { UserContext } from "@/components/UserContext";
 import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import { apiRequest } from '@/utils/api';

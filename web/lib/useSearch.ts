@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useContext } from "react";
+import { UserContext } from "@/components/UserContext";
 import { apiRequest } from '@/utils/api';
 
 type TrendingItem = {
@@ -12,6 +13,7 @@ type TrendingItem = {
 export default function useSearch() {
 
   const [query, setQuery] = useState('');
+  const { user } = useContext(UserContext) || {};
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -198,6 +200,7 @@ export default function useSearch() {
 
     history,
     trending,
+    user,
 
     clearHistory,
   };

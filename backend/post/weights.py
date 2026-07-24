@@ -5,7 +5,7 @@ DEFAULT_WEIGHTS = {
     "comment": 3.0,
     "view": 0.2,
     "star": 6.0,
-    "interest": 5.0,
+    "community": 6.0,
     "recent": 2.0,
     "popular": 3.0,
     "repost": 2.5,

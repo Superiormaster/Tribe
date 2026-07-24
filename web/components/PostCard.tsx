@@ -8,7 +8,8 @@ import { apiRequest } from '@/utils/api';
 import { starCreator } from '@/lib/api'
 import { Share2, ThumbsUp, AlarmClock, MessageCircle, ChartNoAxesColumn, Edit, Trash2, Repeat, MoreHorizontal } from 'lucide-react';  
 import { timeAgo } from '@/utils/timeAgo'  
-import ShareButton from '@/components/ShareButton'
+import ShareButton from '@/components/share/ShareButton'
+import { useShareSheet } from '@/components/share/ShareContext'
 import { useSmartPostView } from '@/lib/useSmartPostView'
 import { useContext } from 'react'  
 import { UserContext } from '@/components/UserContext'
@@ -16,6 +17,12 @@ import { useInView } from '@/components/UseInView'
 import RepostActions from '@/components/repost/RepostActions';
 import { formatCount } from '@/utils/formatCount';
   
+type CardContext =
+  | "feed"
+  | "profile"
+  | "community"
+  | "search";
+
 type PostCardProps = {  
   post: {  
     id: number  
@@ -60,6 +67,7 @@ type PostCardProps = {
   showJoinButton?: boolean
   
   isMyProfile?: boolean
+  context?: CardContext
 
   canEdit?: boolean;
   canDelete?: boolean;
@@ -95,11 +103,12 @@ type PostCardProps = {
   showPinnedLabel?: boolean
 }  
   
-function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyProfile, canPin, setSelectMode, isPinnedDraggable, onToggleProfilePin, onLongPress, onToggleCommunityPin, canBulkSelect, canEdit, canRepost, canReport, onApprove, onReject, canDelete, onSelect, isSelected, isEmbedded, isRepostContext, repostId, repostOwnerId, starredUserIds, setStarredUsers,
+function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyProfile, canPin, setSelectMode, isPinnedDraggable, onToggleProfilePin, onLongPress, onToggleCommunityPin, canBulkSelect, canEdit, canRepost, canReport, onApprove, onReject, canDelete, onSelect, isSelected, isEmbedded, isRepostContext, repostId, repostOwnerId, starredUserIds, setStarredUsers, context = "feed",
   handlePostAction, hideCommunityName = false, hideStarButton = false, showJoinButton = false, showManageButtons = false, showPinnedLabel=true }: PostCardProps) {
   const [liked, setLiked] = useState(!!post.is_liked || !!post.liked_by_user)
   const [likes, setLikes] = useState(post.likes_count || 0)
   const isStarred = starredUserIds?.has(post.user.id);
+  const isSearch = context === "search";
   const [menuOpen, setMenuOpen] = useState(false);
   const { user: currentUser } = useContext(UserContext)!
   const { push } = useNavigation()
@@ -107,15 +116,9 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
   const [reportOpen, setReportOpen] = useState(false)
   const [reportReason, setReportReason] = useState("");
   const [reportDetails, setReportDetails] = useState("");
-  const [communityState, setCommunityState] = useState({
-    joined: post.community_joined,
-    requested: post.community_requested,
-    invited: post.community_invited,
-  });
-  const hideJoinButton =
-    communityState.joined ||
-    communityState.requested ||
-    communityState.invited;
+  const [joinStatus, setJoinStatus] = useState<
+    "none" | "joined" | "requested" | "invited"
+  >("none");
   const hasValidCommunity =
     typeof post.community_id === "number" &&
     !!post.community_name;
@@ -128,6 +131,7 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
     canDelete ||
     canEdit ||
     canRepost;
+  const { showShare } = useShareSheet();
 
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
   
@@ -170,11 +174,22 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
         { method: "POST" }
       );
   
-      setCommunityState({
-        joined: res.status === "joined" || res.status === "already_joined",
-        requested: res.status === "requested" || res.status === "already_requested",
-        invited: res.status === "invited" || res.status === "already_invited",
-      });
+      if (
+        res.status === "joined" ||
+        res.status === "already_joined"
+      ) {
+        setJoinStatus("joined");
+      } else if (
+        res.status === "requested" ||
+        res.status === "already_requested"
+      ) {
+        setJoinStatus("requested");
+      } else if (
+        res.status === "invited" ||
+        res.status === "already_invited"
+      ) {
+        setJoinStatus("invited");
+      }
     } catch (err) {
       console.error(err);
     }
@@ -438,7 +453,7 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
               </AppLink>
             )}
             {/* JOIN BUTTON */}
-            {showJoinButton && !isRepostContext && !hideJoinButton && (
+            {showJoinButton && !isRepostContext && joinStatus === "none" && (
               <button
                 onClick={async (e) => {
                   e.stopPropagation();
@@ -450,7 +465,7 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
               </button>
             )}
 
-            {communityState.joined && (
+            {joinStatus === "joined" && (
               <button
                 disabled
                 className="text-xs px-2 py-1 bg-gray-500 text-white rounded-md"
@@ -459,7 +474,7 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
               </button>
             )}
 
-            {communityState.requested && (
+            {joinStatus === "requested" && (
               <button
                 disabled
                 className="text-xs px-2 py-1 bg-yellow-500 text-white rounded-md"
@@ -468,7 +483,7 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
               </button>
             )}
 
-            {communityState.invited && (
+            {joinStatus === "invited" && (
               <button
                 disabled
                 className="text-xs px-2 py-1 bg-indigo-500 text-white rounded-md"
@@ -678,7 +693,10 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
           )}
         </button>  
   
-        <ShareButton post={post} />
+        <ShareButton
+            post={post}
+            onOpen={showShare}
+        />
 
         <span className="flex items-center text-gray-500"> <ChartNoAxesColumn className="mr-2" />
           {post.views_count && post.views_count > 0 && (

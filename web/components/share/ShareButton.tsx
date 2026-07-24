@@ -1,35 +1,25 @@
-// components/ShareButton.tsx
-
 import { Share2 } from "lucide-react";
-import { useShare } from "@/lib/useShare";
-import { formatCount } from '@/utils/formatCount';
+import { formatCount } from "@/utils/formatCount";
 
 type Props = {
   post: any;
   vertical?: boolean;
   dark?: boolean;
+  onOpen: (post: any) => void;
 };
 
 export default function ShareButton({
   post,
   vertical = false,
   dark = false,
+  onOpen,
 }: Props) {
-  const { sharePost, openShareSheet } = useShare();
-
-  const handleShare = async (e: any) => {
-    e.stopPropagation();
-
-    const url = `${window.location.origin}/post/${post.id}`;
-
-    await sharePost(post.id);
-
-    openShareSheet(url, post.caption);
-  };
-
   return (
     <button
-      onClick={handleShare}
+      onClick={(e) => {
+        e.stopPropagation();
+        onOpen(post);
+      }}
       className={`font-medium ${
         vertical
           ? "flex flex-col items-center gap-1"

@@ -78,13 +78,41 @@ export const cancelConnection = async (id: number) => {
 /* =========================
    CONNECTED USERS
 ========================= */
-export const getConnectedUsers = async () => {
-  try {
-    return await apiRequest("api/users/connected/", {
-      method: "GET",
-    });
-  } catch (err) {
-    console.error("Connected users error:", err);
-    return [];
-  }
+export const getConnectedUsers = async (
+    page = 1
+) => {
+    try {
+        return await apiRequest(
+            `api/users/connected/?page=${page}`
+        );
+    } catch (err) {
+        console.error(err);
+
+        return {
+            results: [],
+            next: null,
+            previous: null,
+        };
+    }
+};
+
+/* =========================
+   JOINED COMMUNITIES
+========================= */
+export const getJoinedCommunities = async (
+    page = 1
+) => {
+    try {
+        return await apiRequest(
+            `api/joined-communities/?page=${page}`
+        );
+    } catch (err) {
+        console.error(err);
+
+        return {
+            results: [],
+            next: null,
+            previous: null,
+        };
+    }
 };

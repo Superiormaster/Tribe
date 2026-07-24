@@ -7,7 +7,7 @@ const sendNotificationPush =
   require("../servers/pushNotification");
 
 const {
-  isUserOnline,
+  getUserState,
 } = require(
   "../servers/presence"
 );
@@ -22,12 +22,16 @@ router.post(
         recipientId,
       } = req.body;
 
-      const online =
-        isUserOnline(
-          recipientId
-        );
+      const state =
+        getUserState(recipientId);
 
-      if (!online && token) {
+      if (
+        token &&
+        (
+          state === "background" ||
+          state === "offline"
+        )
+      ) {
         await sendNotificationPush(
           token,
           notification
@@ -36,6 +40,7 @@ router.post(
 
       res.json({
         success: true,
+        state,
       });
 
     } catch (err) {

@@ -6,10 +6,12 @@ import { useInView } from '@/components/UseInView'
 
 function ReelCard({
   post,
+  context = "feed",
   showEntertainment = false,
 }: any) {
   const { push } = useNavigation();
   const { ref, isVisible } = useInView();
+  const isSearch = context === "search";
 
   const goToReel = (e?: React.MouseEvent) => {
     e?.stopPropagation();

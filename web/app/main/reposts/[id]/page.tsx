@@ -6,7 +6,8 @@ import Avatar from '@/components/Avatar'
 import Skeleton from '@/components/Skeleton'
 import CommentList from '@/components/CommentList'
 import CommentInput from '@/components/CommentInput'
-import ShareButton from '@/components/ShareButton'
+import ShareButton from '@/components/share/ShareButton'
+import { useShareSheet } from '@/components/share/ShareContext'
 
 import { apiRequest } from '@/utils/api'
 import { timeAgo } from '@/utils/timeAgo'
@@ -30,6 +31,7 @@ export default function RepostDetailPage() {
   const repostId = Number(params.id)
 
   const [repost, setRepost] = useState<any>(null)
+  const { showShare } = useShareSheet();
   const [comments, setComments] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null)
 
@@ -103,7 +105,7 @@ export default function RepostDetailPage() {
   const post = repost.post
 
   return (
-    <div className="max-w-3xl mx-auto pb-28">
+    <div className="max-w-3xl mx-auto my-24">
 
       {/* REPOST HEADER */}
       <div className="flex items-center gap-2 px-4 py-3 text-gray-500">
@@ -220,7 +222,10 @@ export default function RepostDetailPage() {
             )}
           </button>
 
-          <ShareButton post={post} />
+          <ShareButton
+            post={post}
+            onOpen={(post) => showShare(post)}
+          />
 
           {post.views_count !== undefined && (
             <span className="ml-auto flex items-center text-gray-400">

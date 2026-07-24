@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { apiRequest } from '@/utils/api';
 import { useNetwork } from '@/components/networkConnection/NetworkContext';
 import { sendChatMessage } from "@/utils/chat/sendChatMessage";
@@ -26,7 +26,6 @@ type Props = {
   chatId: number | null;
   currentUser: any;
   chatUser: any;
-  socketRef: any;
   input: string;
   setInput: (v: string) => void;
   replyingTo: any;
@@ -62,7 +61,6 @@ export function useChatMessages({
   chatId,
   currentUser,
   chatUser,
-  socketRef,
   input,
   setInput,
   replyingTo,
@@ -78,7 +76,12 @@ export function useChatMessages({
     useState(false);
   const [hasNewer, setHasNewer] = useState(false);
   const [loadingNewer, setLoadingNewer] = useState(false);
+  const socketRef = useRef<any>(null);
   const { canCommunicate } = useNetwork();
+  
+  const setSocketRef = useCallback((socket: any) => {
+      socketRef.current = socket;
+  }, []);
 
   // =========================
   // INIT LOAD
@@ -560,5 +563,6 @@ export function useChatMessages({
     hasMore,
     hasNewer,
     reactToMessage,
+    setSocketRef,
   };
 }

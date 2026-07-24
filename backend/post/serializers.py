@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from users.models import User, Star
-from communities.models import Community, CommunityMembership
+from communities.models import Community, CommunityMembership, CommunityBan
 from .models import Post, PostMedia, Like, Comment, Feed, Repost
 from users.serializers import UserSerializer
 
@@ -135,17 +135,21 @@ class PostSerializer(serializers.ModelSerializer):
       ).exists()
 
     def get_community_joined(self, obj):
-
-      user = self.context["request"].user
-  
-      if not user.is_authenticated:
-          return False
-  
-      return CommunityMembership.objects.filter(
-          community=obj.community,
-          user=user,
-          banned=False
-      ).exists()
+        request = self.context.get("request")
+    
+        if not request or not request.user.is_authenticated:
+            return False
+    
+        if not CommunityMembership.objects.filter(
+            community=obj.community,
+            user=request.user,
+        ).exists():
+            return False
+    
+        return not CommunityBan.objects.filter(
+            community=obj.community,
+            user=request.user,
+        ).exists()
 
     def get_is_reposted(self, obj):
         user = self.context["request"].user

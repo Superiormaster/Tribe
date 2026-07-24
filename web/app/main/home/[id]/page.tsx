@@ -4,10 +4,11 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation';
 import Skeleton from '@/components/Skeleton';
 import Avatar from '@/components/Avatar';
-import { Share2, AlarmClock, ThumbsUp, ChartNoAxesColumn, MessageCircle } from 'lucide-react';
+import { AlarmClock, ThumbsUp, ChartNoAxesColumn, MessageCircle } from 'lucide-react';
 import CommentList from '@/components/CommentList'
 import CommentInput from '@/components/CommentInput'
-import ShareButton from '@/components/ShareButton'
+import ShareButton from '@/components/share/ShareButton'
+import { useShareSheet } from '@/components/share/ShareContext'
 import { apiRequest } from '@/utils/api'
 import { timeAgo } from '@/utils/timeAgo'
 
@@ -45,6 +46,7 @@ export default function PostPage() {
   const startTime = Number(searchParams.get("t")) || 0;
   const postId = Number(params.id)
   const [post, setPost] = useState<Post | null>(null)
+  const { showShare } = useShareSheet();
   const [newComment, setNewComment] = useState("");
   const [comments, setComments] = useState<any[]>([]);
   const [openCommentsPostId, setOpenCommentsPostId] = useState<number | null>(null);
@@ -135,7 +137,7 @@ export default function PostPage() {
     if (!post) return null;
   
     return (
-      <div className="flex items-center gap-3 mb-6 mt-4">
+      <div className="flex items-center gap-3 mt-24 mb-8">
         <Avatar username={post.user.username} avatarUrl={post.user.avatar} size={12} />
     
         <div className="flex flex-col">
@@ -221,7 +223,10 @@ export default function PostPage() {
             <span>{post.comments_count}</span>
           )}
         </button>
-        <ShareButton post={post} />
+        <ShareButton
+          post={post}
+          onOpen={(post) => showShare(post)}
+        />
     
         {post.views_count !== undefined && (
           <span className="text-gray-400 ml-auto flex items-center">

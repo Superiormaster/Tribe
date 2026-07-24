@@ -8,14 +8,15 @@ function addUserSocket(
   socketId
 ) {
   if (!onlineUsers.has(userId)) {
-    onlineUsers.set(
-      userId,
-      new Set()
-    );
+    onlineUsers.set(userId, {
+      sockets: new Set(),
+      state: "foreground",
+    });
   }
 
   onlineUsers
     .get(userId)
+    .sockets
     .add(socketId);
 }
 
@@ -26,28 +27,45 @@ function removeUserSocket(
   userId,
   socketId
 ) {
-  const sockets =
-    onlineUsers.get(userId);
+  const user = onlineUsers.get(userId);
 
-  if (!sockets) return false;
+  if (!user) return true;
 
-  sockets.delete(socketId);
+  user.sockets.delete(socketId);
 
-  if (sockets.size === 0) {
+  if (user.sockets.size === 0) {
     onlineUsers.delete(userId);
-    return true; // user fully offline
+    return true;
   }
 
   return false;
 }
 
-/**
- * Is user online?
- */
-function isUserOnline(
-  userId
-) {
-  return onlineUsers.has(userId);
+function setUserState(userId, state) {
+  const user = onlineUsers.get(userId);
+
+  if (!user) return;
+
+  if (
+    state !== "foreground" &&
+    state !== "background"
+  ) {
+    return;
+  }
+
+  user.state = state;
+}
+
+function getUserState(userId) {
+  const user = onlineUsers.get(userId);
+
+  if (!user) return "offline";
+
+  return user.state;
+}
+
+function isUserOnline(userId) {
+  return getUserState(userId) !== "offline";
 }
 
 /**
@@ -56,10 +74,10 @@ function isUserOnline(
 function getUserSockets(
   userId
 ) {
-  return (
-    onlineUsers.get(userId) ||
-    new Set()
-  );
+  const user = onlineUsers.get(userId);
+  if (!user) return new Set();
+
+  return user.sockets;
 }
 
 module.exports = {
@@ -68,4 +86,6 @@ module.exports = {
   removeUserSocket,
   isUserOnline,
   getUserSockets,
+  setUserState,
+  getUserState,
 };

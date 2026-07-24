@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useRef } from 'react';
-import { apiRequest } from '@/utils/api';
-import { getConnectedUsers } from '@/lib/api';
+import { useState, useEffect } from 'react';
+import { getConnectedUsers, getJoinedCommunities } from '@/lib/api';
 import { useNavigation } from "@/utils/useNavigation"
-import { saveMessage } from '@/lib/messageDB';
 import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import { sendChatMessage } from "@/utils/chat/sendChatMessage";
+import { sendCommunityMessage } from "@/utils/communityChatPage/sendCommunityMessage";
 import type { MediaSource } from "@/utils/chat/messageContract";
 
 type Props = {
@@ -15,6 +14,17 @@ type Props = {
   currentUser: any;
   setMessages: any;
   clearSelection?: () => void;
+};
+
+export type ForwardDestination = {
+  id: number;
+  name: string;
+  avatar?: string;
+
+  type: "private" | "community";
+
+  chatId?: number;
+  communityId?: number;
 };
 
 export function useForwardMessages({
@@ -30,29 +40,94 @@ export function useForwardMessages({
   const [forwardCaption, setForwardCaption] =
     useState("");
 
-  const [selectedForwardUsers, setSelectedForwardUsers] =
-    useState<Set<number>>(new Set());
+  const [selectedDestinations, setSelectedDestinations] =
+    useState<ForwardDestination[]>([]);
 
   const [connectedUsers, setConnectedUsers] =
+    useState<any[]>([]);
+  
+  const [joinedCommunities, setJoinedCommunities] =
     useState<any[]>([]);
 
   const [forwardMessages, setForwardMessages] =
     useState<any[]>([]);
+  const [userPage, setUserPage] = useState(1);
+  const [communityPage, setCommunityPage] = useState(1);
+  
+  const [hasMoreUsers, setHasMoreUsers] = useState(true);
+  const [hasMoreCommunities, setHasMoreCommunities] = useState(true);
 
-  const fetchConnectedUsers = async () => {
+  const fetchForwardDestinations = async () => {
     try {
-      const res = await getConnectedUsers();
-      setConnectedUsers(res.results || []);
+        const usersRes =
+          await getConnectedUsers(userPage);
+      
+        const communitiesRes =
+          await getJoinedCommunities(
+              communityPage
+          );
+
+        setConnectedUsers(prev => {
+          const ids = new Set(prev.map((u: any) => u.id));
+      
+          return [
+              ...prev,
+              ...usersRes.results.filter(
+                  (u: any) => !ids.has(u.id)
+              ),
+          ];
+        });
+      
+        setJoinedCommunities(prev => {
+          const ids = new Set(prev.map((u: any) => u.id));
+      
+          return [
+              ...prev,
+              ...communitiesRes.results.filter(
+                  (u: any) => !ids.has(u.id)
+              ),
+          ];
+        });
+        setHasMoreUsers(!!usersRes.next);
+        setHasMoreCommunities(!!communitiesRes.next);
+
     } catch (err) {
-      console.error('Failed to load users', err);
+        console.error(err);
+    }
+  };
+  
+  useEffect(() => {
+    fetchForwardDestinations();
+  }, [userPage, communityPage]);
+  
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+
+    if (
+        el.scrollTop + el.clientHeight >=
+        el.scrollHeight - 100
+    ) {
+        if (hasMoreUsers) {
+            setUserPage(p => p + 1);
+        }
+
+        if (hasMoreCommunities) {
+            setCommunityPage(p => p + 1);
+        }
     }
   };
 
   const openForward = async (messages: any[]) => {
     try {
+      setUserPage(1);
+      setCommunityPage(1);
+  
+      setConnectedUsers([]);
+      setJoinedCommunities([]);
+
       setForwardMessages(messages);
 
-      await fetchConnectedUsers();
+      await fetchForwardDestinations();
 
       setForwardMode(true);
     } catch (err) {
@@ -62,10 +137,45 @@ export function useForwardMessages({
 
   const closeForward = () => {
     setForwardMode(false);
-    setSelectedForwardUsers(new Set());
+    setSelectedDestinations([]);
     setForwardMessages([]);
     setForwardCaption("");
   };
+  
+  const privateCount =
+    selectedDestinations.filter(
+        d => d.type === "private"
+    ).length;
+
+  const communityCount =
+    selectedDestinations.filter(
+        d => d.type === "community"
+    ).length;
+
+  const total =
+    selectedDestinations.length;
+  
+  const destinations: ForwardDestination[] = [
+    ...connectedUsers.map(
+      (user): ForwardDestination => ({
+        id: user.id,
+        name: user.username,
+        avatar: user.avatar,
+        type: "private",
+        chatId: user.chat_id,
+      })
+    ),
+  
+    ...joinedCommunities.map(
+      (community): ForwardDestination => ({
+        id: community.id,
+        name: community.name,
+        avatar: community.cover_image,
+        type: "community",
+        communityId: community.id,
+      })
+    ),
+  ];
 
   const createForwardPayload = (
     msg: any,
@@ -131,111 +241,77 @@ export function useForwardMessages({
   
     if (
       forwardMessages.length === 0 ||
-      selectedForwardUsers.size === 0
+      selectedDestinations.length === 0
     ) {
       return;
     }
   
     try {
       // SINGLE USER
-      if (selectedForwardUsers.size === 1) {
-        const userId = [...selectedForwardUsers][0];
-  
-        const chat = await apiRequest(
-          "api/chats/get-or-create/",
-          {
-            method: "POST",
-            data: {
-              user_id: userId,
-            },
-          }
-        );
-  
-        closeForward();
-        clearSelection?.();
-  
-        push(`/main/messages/chat/${chat.chat_id}`);
-  
-        for (const msg of messagesToForward) {
-          const payload =
-            createForwardPayload(
-              msg,
-              chat.chat_id,
-              caption,
-              currentUser
-            );
-        
-          await sendChatMessage({
-            message: payload,
-            currentUser,
-            socketRef,
-            setMessages,
-            canCommunicate,
-          });
-        }
-  
-        return;
-      }
-  
-      // MULTIPLE USERS
-      for (const userId of selectedForwardUsers) {
-        const chat = await apiRequest(
-          "api/chats/get-or-create/",
-          {
-            method: "POST",
-            data: {
-              user_id: userId,
-            },
-          }
-        );
-      
-        for (const msg of messagesToForward) {
-          const payload =
-            createForwardPayload(
-              msg,
-              chat.chat_id,
-              caption,
-              currentUser
-            );
-      
-          await sendChatMessage({
-            message: payload,
-            currentUser,
-            socketRef,
-            setMessages,
-            canCommunicate,
-          });
+      for (const destination of selectedDestinations) {
+
+        for (const msg of forwardMessages) {
+    
+            const payload =
+                createForwardPayload(
+                    msg,
+                    destination.type === "private"
+                        ? destination.chatId!
+                        : destination.communityId!,
+                    caption,
+                    currentUser
+                );
+    
+            if (destination.type === "private") {
+    
+                await sendChatMessage({
+                    message: payload,
+                    currentUser,
+                    socketRef,
+                    setMessages,
+                    canCommunicate,
+                });
+            } else {
+                await sendCommunityMessage({
+                    message: payload,
+                    currentUser,
+                    socketRef,
+                    setMessages,
+                    canCommunicate,
+                });
+            }
         }
       }
   
-      closeForward();
-      clearSelection?.();
-  
-      push("/main/messages");
+      if (total === 1) {
+        const destination =
+          selectedDestinations[0];
+    
+        if (destination.type === "private") {
+            push(`/main/messages/chat/${destination.chatId}`);
+        } else {
+            push(`/main/community/${destination.communityId}/chat`);
+        }
+      } else {
+        push("/main/messages");
+      }
   
     } catch (err) {
       console.error(err);
     }
   };
-  
-  const filteredUsers = Array.isArray(
-    connectedUsers
-  )
-    ? connectedUsers.filter(
-        u => u.id !== chatUser?.id
-      )
-    : [];
 
   return {
     forwardMode,
-    selectedForwardUsers,
-    setSelectedForwardUsers,
+    selectedDestinations,
+    setSelectedDestinations,
 
     forwardMessages,
     forwardCaption,
     setForwardCaption,
 
-    users: filteredUsers,
+    destinations,
+    handleScroll,
 
     openForward,
     closeForward,

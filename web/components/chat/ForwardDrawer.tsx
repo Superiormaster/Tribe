@@ -3,27 +3,28 @@
 import { X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
-
-type User = {
-  id: number;
-  username: string;
-  avatar?: string;
-};
+import type{ ForwardDestination } from '@/hooks/useForwardMessages';
 
 type Props = {
   open: boolean;
-  users: User[];
-  chatUser?: User | null;
+  currentDestination?: ForwardDestination;
+  handleScroll: (
+    e: React.UIEvent<HTMLDivElement>
+  ) => void;
 
-  selectedUsers: Set<number>;
-  setSelectedUsers: React.Dispatch<
-    React.SetStateAction<Set<number>>
-  >;
   forwardCaption: string;
   setForwardCaption:
     React.Dispatch<
       React.SetStateAction<string>
     >;
+
+  destinations: ForwardDestination[];
+
+  selectedDestinations: ForwardDestination[];
+
+  setSelectedDestinations: React.Dispatch<
+      React.SetStateAction<ForwardDestination[]>
+  >;
 
   selectedMessages: any[];
   getMessageKey: (msg: any) => string;
@@ -34,10 +35,11 @@ type Props = {
 
 export default function ForwardDrawer({
   open,
-  users,
-  chatUser,
-  selectedUsers,
-  setSelectedUsers,
+  destinations,
+  handleScroll,
+  currentDestination,
+  selectedDestinations,
+  setSelectedDestinations,
   selectedMessages,
   getMessageKey,
   forwardCaption,
@@ -45,17 +47,27 @@ export default function ForwardDrawer({
   onClose,
   onSend,
 }: Props) {
-  const toggleUser = (id: number) => {
-    setSelectedUsers(prev => {
-      const next = new Set(prev);
+  const toggleDestination = (
+    destination: ForwardDestination
+  ) => {
+    setSelectedDestinations(prev => {
+        const exists = prev.some(
+            d =>
+                d.id === destination.id &&
+                d.type === destination.type
+        );
 
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
+        if (exists) {
+            return prev.filter(
+                d =>
+                    !(
+                        d.id === destination.id &&
+                        d.type === destination.type
+                    )
+            );
+        }
 
-      return next;
+        return [...prev, destination];
     });
   };
   
@@ -150,169 +162,193 @@ export default function ForwardDrawer({
             animate={{ x: 0 }}
             exit={{ x: 400 }}
           >
-            {/* HEADER */}
-            <div className="flex items-center justify-between p-4 border-b">
-              <h3 className="font-semibold">
-                Forward To
-              </h3>
-
-              <button onClick={onClose}>
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* CURRENT CHAT */}
-            {chatUser && (
-              <>
-                <div className="p-3">
-                  <p className="text-xs text-gray-500 mb-2">
-                    Current Chat
-                  </p>
-
+            <div
+              onScroll={handleScroll}
+              className="flex-1 overflow-y-auto p-3 space-y-2"
+            >
+              {/* HEADER */}
+              <div className="flex items-center justify-between p-4 border-b">
+                <h3 className="font-semibold">
+                  Forward To
+                </h3>
+  
+                <button onClick={onClose}>
+                  <X size={20} />
+                </button>
+              </div>
+  
+              {/* CURRENT CHAT */}
+              {currentDestination && (
+                <>
+                  <div className="p-3">
+                    <p className="text-xs text-gray-500 mb-2">
+                      Current Chat
+                    </p>
+  
+                    <div
+                      onClick={() => toggleDestination(currentDestination)}
+                      className={`
+                        flex items-center gap-3
+                        p-2 rounded-lg cursor-pointer
+                        ${
+                          selectedDestinations.some(
+                        d =>
+                            d.id === currentDestination.id &&
+                            d.type === currentDestination.type
+                      )
+                            ? 'bg-indigo-100 dark:bg-indigo-900'
+                            : 'hover:bg-gray-100 dark:hover:bg-gray-800'
+                        }
+                      `}
+                    >
+                      {currentDestination.avatar ? (
+                        <img
+                            src={currentDestination.avatar}
+                            className="w-10 h-10 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-gray-400 flex items-center justify-center">
+                            {currentDestination.type === "private" ? "👤" : "👥"}
+                        </div>
+                      )}
+  
+                      <span className="font-medium">
+                        {currentDestination.name}
+                      </span>
+                      <p className="text-xs text-gray-500 mb-2">
+                        {currentDestination.type === "private"
+                            ? "Current Chat"
+                            : "Current Community"}
+                      </p>
+                    </div>
+                  </div>
+  
+                  <div className="border-t border-gray-200 dark:border-gray-700" />
+                </>
+              )}
+  
+              {/* USERS */}
+              <div className="flex-1 overflow-y-auto p-3 space-y-2">
+                {destinations.map(destination => (
                   <div
-                    onClick={() => toggleUser(chatUser.id)}
+                    key={`${destination.type}-${destination.id}`}
+                    onClick={() => toggleDestination(destination)}
                     className={`
-                      flex items-center gap-3
-                      p-2 rounded-lg cursor-pointer
-                      ${
-                        selectedUsers.has(chatUser.id)
-                          ? 'bg-indigo-100 dark:bg-indigo-900'
-                          : 'hover:bg-gray-100 dark:hover:bg-gray-800'
-                      }
+                        flex items-center gap-3 p-2 rounded-lg cursor-pointer
+                        ${
+                            selectedDestinations.some(
+                                d =>
+                                    d.id === destination.id &&
+                                    d.type === destination.type
+                            )
+                                ? "bg-indigo-100 dark:bg-indigo-900"
+                                : "hover:bg-gray-100 dark:hover:bg-gray-800"
+                        }
                     `}
-                  >
-                    {chatUser.avatar ? (
+                >
+                    {destination.avatar ? (
                       <img
-                        src={chatUser.avatar}
-                        className="w-10 h-10 rounded-full object-cover"
-                        alt=""
+                          src={destination.avatar}
+                          className="w-10 h-10 rounded-full object-cover"
                       />
                     ) : (
-                      <div className="w-10 h-10 rounded-full bg-gray-400 flex items-center justify-center text-white">
-                        {chatUser.username
-                          .slice(0, 2)
-                          .toUpperCase()}
-                      </div>
+                      destination.type === "private" ? (
+                          <div className="w-10 h-10 rounded-full bg-gray-400 flex items-center justify-center">
+                              👤
+                          </div>
+                      ) : (
+                          <div className="w-10 h-10 rounded-full bg-indigo-500 flex items-center justify-center">
+                              👥
+                          </div>
+                      )
                     )}
-
-                    <span className="font-medium">
-                      {chatUser.username}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="border-t border-gray-200 dark:border-gray-700" />
-              </>
-            )}
-
-            {/* USERS */}
-            <div className="flex-1 overflow-y-auto p-3 space-y-2">
-              {users.map(user => (
-                <div
-                  key={user.id}
-                  onClick={() => toggleUser(user.id)}
-                  className={`
-                    flex items-center gap-3
-                    p-2 rounded-lg
-                    cursor-pointer transition
-                    ${
-                      selectedUsers.has(user.id)
-                        ? 'bg-indigo-100 dark:bg-indigo-900'
-                        : 'hover:bg-gray-100 dark:hover:bg-gray-800'
-                    }
-                  `}
-                >
-                  {user.avatar ? (
-                    <img
-                      src={user.avatar}
-                      className="w-10 h-10 rounded-full object-cover"
-                      alt=""
-                    />
-                  ) : (
-                    <div className="w-10 h-10 rounded-full bg-gray-400 flex items-center justify-center text-white">
-                      {user.username
-                        .slice(0, 2)
-                        .toUpperCase()}
-                    </div>
-                  )}
-
-                  <span>{user.username}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* FOOTER */}
-            <div className="border-t p-3">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="flex gap-2 overflow-x-auto">
-                  {selectedMessages.map(msg => {
-                    const preview = getPreview(msg);
                 
-                    return (
-                      <div
-                        key={getMessageKey(msg)}
-                        className="
-                          flex items-center gap-2
-                          bg-gray-200 dark:bg-gray-700
-                          rounded-lg
-                          px-2 py-2
-                          shrink-0
-                          max-w-[220px]
-                        "
-                      >
-                        {(preview.type === "image" ||
-                          preview.type === "video" ||
-                          preview.type === "gif" ||
-                          preview.type === "sticker") &&
-                          preview.thumb && (
-                            <img
-                              src={preview.thumb}
-                              className="
-                                w-9 h-9
-                                rounded-lg
-                                object-cover
-                              "
-                            />
-                          )}
+                    <div className="flex flex-col">
+                        <span>{destination.name}</span>
                 
-                        <span className="text-xs truncate">
-                          {preview.text}
+                        <span className="text-xs text-gray-500">
+                            {destination.type === "private"
+                                ? "Private Chat"
+                                : "Community"}
                         </span>
-                      </div>
-                    );
-                  })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+  
+              {/* FOOTER */}
+              <div className="border-t p-3">
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="flex gap-2 overflow-x-auto">
+                    {selectedMessages.map(msg => {
+                      const preview = getPreview(msg);
+                  
+                      return (
+                        <div
+                          key={getMessageKey(msg)}
+                          className="
+                            flex items-center gap-2
+                            bg-gray-200 dark:bg-gray-700
+                            rounded-lg
+                            px-2 py-2
+                            shrink-0
+                            max-w-[220px]
+                          "
+                        >
+                          {(preview.type === "image" ||
+                            preview.type === "video" ||
+                            preview.type === "gif" ||
+                            preview.type === "sticker") &&
+                            preview.thumb && (
+                              <img
+                                src={preview.thumb}
+                                className="
+                                  w-9 h-9
+                                  rounded-lg
+                                  object-cover
+                                "
+                              />
+                            )}
+                  
+                          <span className="text-xs truncate">
+                            {preview.text}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+    
+                  {canAddCaption && (
+                    <input
+                      value={forwardCaption}
+                      onChange={(e) =>
+                        setForwardCaption(
+                          e.target.value
+                        )
+                      }
+                      placeholder="Add a message..."
+                      className="
+                        px-4 py-3 flex-1 min-w-0 rounded-full bg-gray-100 dark:bg-gray-800 outline-none
+                      "
+                    />
+                  )}
                 </div>
   
-                {canAddCaption && (
-                  <input
-                    value={forwardCaption}
-                    onChange={(e) =>
-                      setForwardCaption(
-                        e.target.value
-                      )
-                    }
-                    placeholder="Add a message..."
-                    className="
-                      px-4 py-3 flex-1 min-w-0 rounded-full bg-gray-100 dark:bg-gray-800 outline-none
-                    "
-                  />
-                )}
+                <button
+                  onClick={onSend}
+                  disabled={selectedDestinations.length === 0}
+                  className="
+                    w-full
+                    bg-indigo-600
+                    text-white
+                    py-2
+                    rounded-lg
+                    disabled:opacity-50
+                  "
+                >
+                  Forward ({selectedDestinations.length})
+                </button>
               </div>
-
-              <button
-                onClick={onSend}
-                disabled={!selectedUsers.size}
-                className="
-                  w-full
-                  bg-indigo-600
-                  text-white
-                  py-2
-                  rounded-lg
-                  disabled:opacity-50
-                "
-              >
-                Forward ({selectedUsers.size})
-              </button>
             </div>
           </motion.div>
         </motion.div>

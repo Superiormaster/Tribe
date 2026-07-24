@@ -140,7 +140,18 @@ export default function NotificationsPage() {
       }
   
       if (notification.post) {
-        push(`/main/home/${notification.post}`);
+
+        if (notification.post_content_type === "short_video") {
+            push(`/main/reels/${notification.post}`);
+        } else {
+            push(`/main/home/${notification.post}`);
+        }
+    
+        return;
+      }
+
+      if (notification.community) {
+        push(`/main/community/${notification.community}`);
         return;
       }
   

@@ -2,32 +2,40 @@
 import { useState, useEffect, useContext, useRef } from 'react';
 import { UserContext } from './UserContext';
 import { apiRequest } from '@/utils/api';
-import { uploadToCloudinary } from '@/utils/cloudinary';
+import { useMessageSelection } from '@/hooks/useMessageSelection';
+import ForwardDrawer from '@/components/chat/ForwardDrawer';
 import { useCommunitySocket } from '@/lib/useCommunitySocket';
-import { Phone, Video } from 'lucide-react';
-import CommunityMessageBubbles from '@/components/communityChat/CommunityMessageBubble';
+import CommunityChatBody from '@/components/communityChat/CommunityChatBody';
 import CommunityPinnedBar from '@/components/communityChat/CommunityPinnedBar';
+import { usePreview } from "@/utils/chatPage/usePreview";
 import CommunityChatInput from '@/components/communityChat/CommunityChatInput';
-import CommunityMediaPreview from '@/components/communityChat/CommunityMediaPreview';
+import CommunityChatHeader from '@/components/communityChat/CommunityChatHeader';
+import { useCommunityDrafts } from '@/hooks/communityChat/useCommunityDrafts';
+import { useCommunityMessages } from '@/hooks/communityChat/useCommunityMessages';
+import { useVoiceRecorder } from '@/lib/useVoiceRecorder';
+import VoiceRecorderUI from '@/components/VoiceRecorder';
+import PreviewViewer from '@/components/chat/ChatPreview';
+import { useTypingIndicator } from '@/hooks/useTypingIndicator';
+import { useForwardMessages } from '@/hooks/useForwardMessages';
+import { useCommunityMediaUpload } from '@/utils/communityChatPage/useCommunityMediaUpload';
+import { useDeleteCommunityMessages } from '@/utils/communityChatPage/useDeleteCommunityMessages';
+import { useSendCommunityMessage } from '@/utils/communityChatPage/useSendCommunityMessage';
+import { useVoiceGestures } from '@/utils/chatPage/useVoiceGestures';
+import { getMessageKey } from '@/utils/chat/messageMerger';
+import type { MessageStatus } from "@/utils/chat/messageContract";
+import { useNetwork } from '@/components/networkConnection/NetworkContext';
+import { useCallManager } from '@/lib/useCallManager';
+import { getLivekitToken, startCall } from "@/lib/calls";
+import CallUI from '@/components/CallUI';
+import { useNavigation } from "@/utils/useNavigation";
+import { Message } from "@/utils/chat/messageContract";
 
-type UserRole = "owner" | "admin" | "moderator" | "member";
-
-type ChatMessage = {
-  id: number;
-  text?: string;
-  media_url?: string;
-  media_type?: string;
-  created_at: string;
-  sender: number;
-  sender_username: string;
-  sender_avatar?: string;
-  sender_role?: UserRole;
-  is_pinned?: boolean;
-  deleted?: boolean;
-  deleted_by_admin?: boolean;
-  reactions?: any[];
-  reply_to?: any;
-};
+type voiceState =
+  | "idle"
+  | "recording"
+  | "locked"
+  | "cancelling"
+  | "preview";
 
 type Props = {
   communityId: number;
@@ -35,25 +43,34 @@ type Props = {
 
 export default function CommunityChat({ communityId }: Props) {
   const { user: currentUser } = useContext(UserContext)!;
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<string | null>(null);
+  const { canCommunicate } = useNetwork();
+  const { replace } = useNavigation();
+  
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  
+  const [showDrawer, setShowDrawer] = useState(false);
+  const [drawerMode, setDrawerMode] = useState<
+    "plus" | "emoji" | "gif" | "stickers" | null
+  >(null);
+  const [isTyping, setIsTyping] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  
+  const [showChatOptions, setShowChatOptions] = useState(false);
+  const [showMuteModal, setShowMuteModal] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [mutedUntil, setMutedUntil] =
+    useState<string | null>(null);
+  
+  const [page, setPage] = useState(1);
+  const [replyingTo, setReplyingTo] = useState<any | null>(null);
+  
   const [loading, setLoading] = useState(false);
   const [communityData, setCommunityData] = useState<any>(null);
-  const [replyingTo, setReplyingTo] =
-  useState<any>(null);
   const [onlineCount, setOnlineCount] = useState(0);
   const [chatLocked, setChatLocked] = useState(false);
-  const [typingUsers, setTypingUsers] =
-  useState<any[]>([]);
-  const [text, setText] = useState('');
+  const [typingUsers, setTypingUsers] = useState<any[]>([]);
 
   const chatEndRef = useRef<HTMLDivElement>(null);
-
-  // Fetch messages periodically
-  useEffect(() => {
-    fetchMessages();
-  }, [communityId]);
   
   useEffect(() => {
     const loadCommunity = async () => {
@@ -71,120 +88,194 @@ export default function CommunityChat({ communityId }: Props) {
   
     loadCommunity();
   }, [communityId]);
-
+  
   const {
-    socketRef,
-    sendMessage,
-    sendTyping,
-    reactToMessage,
-    deleteMessage,
-    pinMessage,
-  } = useCommunitySocket(
+    previewIndex,
+    setPreviewIndex,
+    previewState,
+    setPreviewState,
+    isPreviewOpen,
+  } = usePreview();
+
+  const socketRef = useCommunitySocket(
     communityId,
-    setMessages,
-    setTypingUsers,
     currentUser
   );
+  
+  const {
+    input,
+    setInput,
+    drafts,
+    clearDraft,
+    saveCommunityDraftLocal,
+  } = useCommunityDrafts(communityId);
 
-  const fetchMessages = async () => {
-    try {
-      setLoading(true);
-      const data = await apiRequest(`api/communities/${communityId}/chat/`);
-      setMessages(data || []);
-      scrollToBottom();
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
+  const {
+      messages,
+      setMessages,
+      sendMessage,
+      reactToMessage,
+      deleteMessage,
+      pinMessage,
+      loadMore,
+      loadNewer,
+      resendPendingMessage,
+      retryFailedMessage,
+      hasMore,
+      hasNewer,
+  } = useCommunityMessages({
+      communityId,
+      currentUser,
+      socketRef,
+      input,
+      setInput,
+      replyingTo,
+      setReplyingTo,
+      clearDraft,
+  });
+  const pinnedMessages = messages.filter(
+    (m) => m.is_pinned
+  );
+  
+  useEffect(() => {
+      if (!socketRef.current) return;
+  
+      socketRef.current.setHandlers?.({
+          setMessages,
+          setTypingUsers,
+      });
+  }, [socketRef]);
+  
+  const {
+    handleTyping,
+  } = useTypingIndicator({
+    chatId: communityId,
+    socketRef,
+    setInput,
+    saveDraft: saveCommunityDraftLocal,
+  });
+  
+  const {
+    isRecording,
+    duration,
+    startRecording,
+    stopRecording,
+    resendMessage: resendVoiceMessage,
+    cancelRecording,
+    waveform,
+    previewBlob,
+    sendRecording,
+    isPaused,
+    togglePause,
+  } = useVoiceRecorder(socketRef, communityId, currentUser, setMessages);
+  
+  const scrollToMessage = (messageId: number) => {
+    const element = document.getElementById(
+      `message-${messageId}`
+    );
+  
+    if (!element) return;
+  
+    element.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  
+    element.classList.add("ring-2", "ring-yellow-400");
+  
+    setTimeout(() => {
+      element.classList.remove(
+        "ring-2",
+        "ring-yellow-400"
+      );
+    }, 1800);
   };
   
-  const pinnedMessages = messages.filter((m) => m.is_pinned);
-
-  const scrollToMessage = (id: number) => {
-    document.getElementById(`message-${id}`)?.scrollIntoView({
-      behavior: 'smooth',
-    });
-  };
-
-  const scrollToBottom = () => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  const handleSend = async () => {
-    if (!text && !file) return;
-
-    const temp = {
-      id: Date.now(),
-    
-      text,
-    
-      created_at: new Date().toISOString(),
-    
-      sender: currentUser.id,
-    
-      sender_username: currentUser.username,
-    
-      sender_avatar: currentUser.avatar,
-    
-      sender_role: currentUser?.role || 'member',
-    
-      reactions: [],
-    
-      deleted: false,
-    
-      is_pinned: false,
-
-      reply_to: replyingTo
-        ? {
-            id: replyingTo.id,
-            username: replyingTo.username,
-            text: replyingTo.text,
-          }
-        : null,
-    };
-
-    setMessages((prev) => [...prev, temp]);
-    setText('');
-    setFile(null);
-    setPreview(null);
-    setReplyingTo(null);
-
-    sendMessage({
-      text,
-      sender: currentUser.id,
-      sender_username:
-        currentUser.username,
-    
-      sender_avatar:
-        currentUser.avatar,
-    
-      sender_role:
-        currentUser?.role || 'member',
-    
-      reply_to: replyingTo
-        ? {
-            id: replyingTo.id,
-            username:
-              replyingTo.username,
-            text: replyingTo.text,
-          }
-        : null,
-    });
-  };
-
-  const handleFile = (f: File) => {
-    setFile(f);
-    setPreview(URL.createObjectURL(f));
-  };
+  const {
+    callState,
+    connectRoom,
+    disconnect,
+    setCallState,
+  } = useCallManager();
   
-  // Handle file selection
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    setFile(f);
-    setPreview(URL.createObjectURL(f));
-  };
+  const {
+    selectedMessages,
+    toggleSelectMessage,
+    clearSelection,
+  } = useMessageSelection();
+  const selectionMode = selectedMessages.size > 1;
+  const hasSelection = selectedMessages.size > 1;
+  
+  const {
+    forwardMode,
+    forwardMessages,
+    forwardCaption,
+    setForwardCaption,
+    handleScroll,
+  
+    destinations,
+  
+    selectedDestinations,
+    setSelectedDestinations,
+  
+    openForward,
+    closeForward,
+    sendForward,
+  } = useForwardMessages({
+    socketRef,
+    currentUser,
+    setMessages,
+    clearSelection,
+  });
+
+  const {
+    files,
+    caption,
+    setCaption,
+    resendMedia,
+    handleFileSelect,
+    handleSendMedia,
+    handleSendExternalMedia,
+  } = useCommunityMediaUpload({
+    chatId: communityId,
+    currentUser,
+    socketRef,
+    setMessages,
+  });
+  
+  const {
+    getSelectedMessages,
+    canDeleteForEveryone,
+    handleDeleteForMe,
+    handleDeleteForEveryone,
+  } = useDeleteCommunityMessages({
+    communityId,
+    messages,
+    setMessages,
+    selectedMessages,
+    currentUser,
+    clearSelection,
+    closeDeleteModal: () =>
+      setShowDeleteModal(false),
+    replace,
+  });
+  
+  const {
+    handleSendMessage,
+  } = useSendCommunityMessage({
+    communityId,
+    input,
+    files,
+    caption,
+    replyingTo,
+  
+    sendMessage,
+    handleSendMedia,
+    handleSendExternalMedia,
+  
+    setSelectedFiles,
+    setReplyingTo,
+  });
   
   useEffect(() => {
     if (replyingTo) {
@@ -248,66 +339,51 @@ export default function CommunityChat({ communityId }: Props) {
     }
   };
   
+  const voice = useVoiceGestures({
+    startRecording,
+    stopRecording,
+    cancelRecording,
+    sendRecording,
+    isRecording,
+  });
+  
   return (
     <div className="flex flex-col h-full bg-white dark:bg-gray-900 overflow-hidden">
   
+      {voice.voiceState === "locked" && (
+        <VoiceRecorderUI
+          voiceState={voice.voiceState}
+          waveform={waveform}
+          duration={duration}
+          drag={voice.drag}
+          isLocked={voice.isLocked}
+          previewBlob={previewBlob}
+          onCancel={voice.handleCancelVoice}
+          onSend={voice.handleSend}
+          isPaused={isPaused}
+          onPauseToggle={togglePause}
+        />
+      )}
+
+      <CallUI
+        callState={callState}
+        onAccept={() => {}}
+        onReject={disconnect}
+      />
+
       {/* HEADER */}
-      <div className="flex fixed top-0 left-0 right-0 md:left-64 bg-white dark:bg-gray-900 gap-3 justify-between px-3 py-2 border-b items-center z-40">
-      
-        {/* LEFT */}
-        <div className="flex items-center gap-3">
-      
-          {/* Back button */}
-          <button
-            onClick={() => window.history.back()}
-            className="text-xl px-2"
-          >
-            ←
-          </button>
-      
-          {/* Community Avatar */}
-          <div className="w-9 h-9 rounded-full overflow-hidden bg-gray-300 flex items-center justify-center">
-            {communityData?.cover_image ? (
-              <img
-                src={communityData.cover_image}
-                className="w-9 h-9 object-cover"
-              />
-            ) : (
-              <div className="text-xs font-bold text-white">
-                {communityData?.name?.slice(0, 2)?.toUpperCase() || "CM"}
-              </div>
-            )}
-          </div>
-      
-          {/* NAME + STATUS */}
-          <div className="flex flex-col leading-tight">
-            <span className="font-semibold">
-              {communityData?.name || "Community"}
-            </span>
-      
-            <span className="text-xs text-gray-500">
-              {communityData?.members_count || 0} members • {onlineCount} online
-            </span>
-      
-            {chatLocked && (
-              <span className="text-xs text-red-500">
-                locked
-              </span>
-            )}
-          </div>
-        </div>
-      
-        {/* RIGHT ACTIONS */}
-        <div className="flex items-center gap-3">
-      
-          <button className="p-2 rounded-full bg-green-600 text-white">
-            <Phone size={18} />
-          </button>
-      
-          <button className="p-2 rounded-full bg-blue-600 text-white">
-            <Video size={18} />
-          </button>
-      
+      <CommunityChatHeader
+        communityData={communityData}
+        onlineCount={onlineCount}
+        chatLocked={chatLocked}
+        isTyping={typingUsers.length > 0}
+        typingUsers={typingUsers}
+        typingCount={typingUsers.length}
+        onAudioCall={() => {}}
+        onVideoCall={() => {}}
+        onMore={() => setShowChatOptions(true)}
+      />
+  
           {isModerator && (
             <button
               onClick={toggleChatLock}
@@ -316,9 +392,6 @@ export default function CommunityChat({ communityId }: Props) {
               🔒
             </button>
           )}
-        </div>
-      
-      </div>
   
       {/* PINNED BAR */}
       <CommunityPinnedBar
@@ -328,52 +401,139 @@ export default function CommunityChat({ communityId }: Props) {
   
       {/* MESSAGES */}
       <div className="flex-1 overflow-y-auto">
-        <CommunityMessageBubbles
+        <CommunityChatBody
+          communityId={communityId}
           messages={messages}
-          currentUserId={currentUser.id}
-          onDelete={(id, ownerId) =>
-            handleDeleteMessage(id, ownerId)
-          }
-          onPin={togglepinMessage}
-          isModerator={isModerator}
-          onReply={(message) => {
+          currentUser={currentUser}
         
-            setReplyingTo({
-              id: message.id,
-              username:
-                message.sender_username,
-              text: message.text,
-            });
+          showDrawer={showDrawer}
+          setShowDrawer={setShowDrawer}
+          setDrawerMode={setDrawerMode}
+        
+          page={page}
+          hasMore={hasMore}
+          hasNewer={hasNewer}
+          loadMore={() => {
+            if (!hasMore) return;
+          
+            setPage((p) => p + 1);
+            loadMore();
           }}
+          loadNewer={() => {
+            if (!hasNewer) return;
+          
+            setPage((p) => p + 1);
+            loadNewer();
+          }}
+        
+          selectedMessages={selectedMessages}
+        
+          previewState={previewState}
+          setPreviewState={setPreviewState}
+        
+          resendPendingMessage={resendPendingMessage}
+          retryFailedMessage={retryFailedMessage}
+          resendMedia={resendMedia}
+          onForward={openForward}
+        
+          toggleSelectMessage={toggleSelectMessage}
+          clearSelection={clearSelection}
+        
+          replyingTo={replyingTo}
+          setReplyingTo={setReplyingTo}
+    
+          onReaction={reactToMessage}
         />
         <div ref={chatEndRef} />
       </div>
   
-      {/* PREVIEW */}
-      <CommunityMediaPreview
-        file={file}
-        previewUrl={preview}
-        onClear={() => {
-          setFile(null);
-          setPreview(null);
-        }}
-      />
-  
       {/* INPUT */}
-      <CommunityChatInput
-        value={text}
-        onChange={(value) => {
-          setText(value);
-        
-          sendTyping();
-        }}
-        onSend={handleSend}
-        onFileSelect={handleFile}
-        disabled={chatLocked}
-        replyingTo={replyingTo}
-        onCancelReply={() =>
-          setReplyingTo(null)
+          <CommunityChatInput
+            value={input}
+            onChange={handleTyping}
+            communityId={communityId}
+            saveDraftLocal={saveCommunityDraftLocal}
+            onSend={handleSendMessage}
+            onFileSelect={(file) => {
+              setSelectedFiles(prev => [...prev, file]);
+              handleFileSelect(file);
+            }}
+            files={files}
+            selectedFiles={selectedFiles}
+            setSelectedFiles={setSelectedFiles}
+            previewIndex={previewIndex}
+            setPreviewIndex={setPreviewIndex}
+            showDrawer={showDrawer}
+            setShowDrawer={setShowDrawer}
+            drawerMode={drawerMode}
+            setDrawerMode={setDrawerMode}
+            disabled={false}
+            replyingTo={replyingTo}
+            onCancelReply={() =>
+              setReplyingTo(null)
+            }
+  
+            isRecording={isRecording}
+            micPressed={voice.micPressed}
+            duration={duration}
+            isLocked={voice.isLocked}
+            voiceState={voice.voiceState}
+            onMicStart={voice.handleStart}
+            onMicMove={voice.handleMove}
+            onMicEnd={voice.handleEnd}
+            drag={voice.drag}
+          />
+  
+      {previewState && (
+        <PreviewViewer
+          files={previewState.files}
+          index={previewState.index}
+          setIndex={(value: number) => {
+            setPreviewState(prev => {
+              if (!prev) return null;
+          
+              return {
+                ...prev,
+                index: value,
+              };
+            });
+          }}
+          msg={previewState.msg}
+          isMine={previewState.isMine}
+          onClose={() => setPreviewState(null)}
+          onReply={previewState.onReply}
+        />
+      )}
+
+      <ForwardDrawer
+        open={forwardMode}
+        destinations={destinations}
+        selectedDestinations={selectedDestinations}
+        setSelectedDestinations={setSelectedDestinations}
+    
+        selectedMessages={forwardMessages}
+        handleScroll={handleScroll}
+    
+        forwardCaption={forwardCaption}
+        setForwardCaption={setForwardCaption}
+        currentDestination={
+          communityData
+              ? {
+                    id: communityData.id,
+                    name: communityData.name,
+                    avatar:
+                        communityData.cover_image ??
+                        communityData.avatar,
+                    type: "community",
+                    communityId,
+                }
+              : undefined
         }
+    
+        getMessageKey={getMessageKey}
+    
+        onClose={closeForward}
+        onSend={sendForward}
       />
     </div>
   );

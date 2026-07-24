@@ -14,22 +14,12 @@ import ChatDrawer from "@/components/chat/ChatDrawer";
 import { getVideoDuration } from "@/utils/chat/videoThumbnail";
 import MediaPickerSheet from "@/components/chat/MediaPickerSheet";
 import PreviewViewer from  "@/components/chat/PreviewViewer";
+import { Message } from "@/utils/chat/messageContract";
 import { useChatInputState } from "@/utils/chat/useChatInputState";
 import CameraCaptureModal
 from '@/components/CameraCaptureModal';
-import EmojiPicker from 'emoji-picker-react';
 
 import { useRef, useEffect, useMemo, useState } from 'react';
-
-type ReplyData = {
-  id: number;
-  username: string;
-  text?: string;
-  media_type?: string;
-  media_url?: string;
-  caption?: string;
-  thumbnail?: string;
-};
 
 type Props = {
   value: string;
@@ -45,7 +35,7 @@ type Props = {
 
   disabled?: boolean;
 
-  replyingTo?: ReplyData | null;
+  replyingTo?: Message | null;
 
   onCancelReply?: () => void;
 
@@ -148,8 +138,7 @@ export default function ChatInput({
   const GIPHY_KEY = process.env.NEXT_PUBLIC_GIPHY_KEY!;
   const fileRef =
     useRef<HTMLInputElement | null>(null);
-  const [showCamera, setShowCamera] =
-  useState(false);
+  const [showCamera, setShowCamera] = useState(false);
   const media = useChatInputState();
 
   const [capturedImage, setCapturedImage] =
@@ -158,8 +147,7 @@ export default function ChatInput({
   const textRef =
     useRef<HTMLTextAreaElement | null>(null);
   
-  const isActiveTab = (tab: string) =>
-  drawerMode === tab;
+  const isActiveTab = (tab: string) => drawerMode === tab;
   
   const [inputMode, setInputMode] = useState<InputMode>("keyboard");
   const cursorRef = useRef<number>(0);
@@ -549,7 +537,7 @@ export default function ChatInput({
                   <div className="flex-1 overflow-hidden">
   
                     <p className="text-xs items-center flex text-gray-900 dark:text-green-400 font-semibold">
-                      <Reply className="mr-2 w-5" /> Replying to {replyingTo.username}
+                      <Reply className="mr-2 w-5" /> Replying to {replyingTo.sender_info?.username ?? "Unknown"}
                     </p>
   
                     {preview?.thumb && (

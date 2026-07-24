@@ -30,6 +30,7 @@ class Notification(models.Model):
         ("join_request", "Join Request"),
         ("community_ban", "Community Ban"),
         ("community_unban", "Community Unban"),
+        ("community_removed", "Community Removed"),
         ("moderator_added", "Moderator Added"),
         ("admin_added", "Admin Added"),
         ("role_removed", "Role Removed"),
@@ -66,7 +67,8 @@ class Notification(models.Model):
         "communities.Community",
         null=True,
         blank=True,
-        on_delete=models.CASCADE
+        on_delete=models.CASCADE,
+        related_name="notifications"
     )
     
     tribe_request = models.ForeignKey(

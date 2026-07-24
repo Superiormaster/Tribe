@@ -1,10 +1,44 @@
 from rest_framework import serializers
-from .models import Community, Tribe, CommunityMembership, TribeRequest, CommunityJoinRequest, CommunityInvite
+from .models import Community, Tribe, CommunityMembership, TribeRequest, CommunityJoinRequest, CommunityMute, CommunityBan, CommunityInvite
 from users.models import User
 
 class TribeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Tribe
+        fields = "__all__"
+
+class JoinedCommunitySerializer(serializers.ModelSerializer):
+    id = serializers.IntegerField(
+        source="community.id",
+        read_only=True,
+    )
+    name = serializers.CharField(
+        source="community.name",
+        read_only=True,
+    )
+    cover_image = serializers.CharField(
+        source="community.cover_image",
+        read_only=True,
+    )
+
+    class Meta:
+        model = CommunityMembership
+        fields = [
+            "id",
+            "name",
+            "cover_image",
+        ]
+
+class CommunityMuteSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = CommunityMute
+        fields = "__all__"
+
+class CommunityBanSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = CommunityBan
         fields = "__all__"
 
 class CommunityNestedSerializer(serializers.ModelSerializer):
@@ -25,9 +59,14 @@ class CommunityNestedSerializer(serializers.ModelSerializer):
         }
 
     def get_members_count(self, obj):
+      banned_users = CommunityBan.objects.filter(
+          community=obj
+      ).values_list("user_id", flat=True)
+      
       count = CommunityMembership.objects.filter(
-          community=obj,
-          banned=False
+          community=obj
+      ).exclude(
+          user_id__in=banned_users
       ).count()
   
       owner_exists = CommunityMembership.objects.filter(
@@ -42,14 +81,19 @@ class CommunityNestedSerializer(serializers.ModelSerializer):
 
     def get_joined(self, obj):
         request = self.context.get("request")
-
+    
         if not request or not request.user.is_authenticated:
             return False
-
-        return CommunityMembership.objects.filter(
+    
+        if not CommunityMembership.objects.filter(
             community=obj,
             user=request.user,
-            banned=False
+        ).exists():
+            return False
+    
+        return not CommunityBan.objects.filter(
+            community=obj,
+            user=request.user,
         ).exists()
   
     def get_invited(self, obj):
@@ -124,9 +168,14 @@ class CommunitySerializer(serializers.ModelSerializer):
         ]
 
     def get_members_count(self, obj):
+      banned_users = CommunityBan.objects.filter(
+          community=obj
+      ).values_list("user_id", flat=True)
+      
       count = CommunityMembership.objects.filter(
-          community=obj,
-          banned=False
+          community=obj
+      ).exclude(
+          user_id__in=banned_users
       ).count()
   
       owner_exists = CommunityMembership.objects.filter(
@@ -148,12 +197,21 @@ class CommunitySerializer(serializers.ModelSerializer):
       if request.user == obj.owner:
           return "owner"
   
-      membership = CommunityMembership.objects.filter(
+      if CommunityBan.objects.filter(
+          community=obj,
           user=request.user,
-          community=obj
+      ).exists():
+          return "member"
+  
+      membership = CommunityMembership.objects.filter(
+          community=obj,
+          user=request.user,
       ).first()
   
-      return membership.role if membership else "member"
+      if membership:
+          return membership.role
+  
+      return "member"
 
     def get_invited(self, obj):
         request = self.context.get("request")
@@ -168,14 +226,19 @@ class CommunitySerializer(serializers.ModelSerializer):
 
     def get_joined(self, obj):
         request = self.context.get("request")
-
+    
         if not request or not request.user.is_authenticated:
             return False
-
-        return CommunityMembership.objects.filter(
+    
+        if not CommunityMembership.objects.filter(
             community=obj,
             user=request.user,
-            banned=False
+        ).exists():
+            return False
+    
+        return not CommunityBan.objects.filter(
+            community=obj,
+            user=request.user,
         ).exists()
 
     def get_requested(self, obj):

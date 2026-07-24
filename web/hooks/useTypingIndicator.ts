@@ -6,7 +6,6 @@ type Props = {
   chatId: number | null;
   socketRef: any;
   setInput: (value: string) => void;
-
   saveDraft?: (value: string) => void;
 };
 

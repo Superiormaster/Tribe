@@ -15,8 +15,8 @@ from post.models import Repost, Post
 from feedback.models import Report
 from post.serializers import RepostSerializer, PostSerializer
 from .permissions import IsSuperUser
-from .models import Community, Tribe, CommunityMembership, CommunityInvite, CommunityJoinRequest, TribeRequest
-from .serializers import TribeRequestSerializer, CommunitySerializer, InviteUserSerializer, CommunityInviteSerializer, TribeDetailSerializer, TribeSerializer
+from .models import Community, Tribe, CommunityMembership, CommunityInvite, CommunityJoinRequest, CommunityMute, CommunityBan, TribeRequest
+from .serializers import TribeRequestSerializer, CommunitySerializer, CommunityMuteSerializer, CommunityBanSerializer, InviteUserSerializer, CommunityInviteSerializer, TribeDetailSerializer, TribeSerializer, JoinedCommunitySerializer
 from users.models import Star
 from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
@@ -31,6 +31,9 @@ class InvitePagination(PageNumberPagination):
     page_size = 20
     page_size_query_param = "page_size"
     max_page_size = 20
+
+class JoinedCommunityPagination(PageNumberPagination):
+    page_size = 20
 
 class FeedPagination(PageNumberPagination):
     page_size = 10
@@ -54,11 +57,23 @@ def get_user_role(user, community):
 
     return membership.role
 
+def can_moderate(actor, target, community):
+    actor_role = get_user_role(actor, community)
+    target_role = get_user_role(target, community)
 
-def can_moderate(user, community):
-    role = get_user_role(user, community)
-    return role in ["owner", "admin", "moderator"]
+    # Owner
+    if actor == community.owner:
+        return target != community.owner
 
+    # Admin
+    if actor_role == "admin":
+        return target_role == "member"
+
+    # Moderator
+    if actor_role == "moderator":
+        return target_role == "member"
+
+    return False
 
 def can_manage_settings(user, community):
     return user == community.owner or get_user_role(user, community) == "admin"
@@ -121,19 +136,23 @@ class CommunityViewSet(viewsets.ModelViewSet):
             community=community
         ).first()
     
-        # BANNED
-        if membership and membership.banned:
-            return Response(
-                {"error": "You are banned"},
-                status=403
-            )
-    
         # ALREADY MEMBER
         if membership:
             return Response({
                 "status": "already_joined"
             })
     
+        ban = CommunityBan.objects.filter(
+            community=community,
+            user=request.user,
+        ).first()
+        
+        if ban and ban.is_active:
+            return Response(
+                {"error": "You are banned"},
+                status=403
+            )
+
         existing_invite = CommunityInvite.objects.filter(
             community=community,
             receiver=request.user
@@ -204,9 +223,16 @@ class CommunityViewSet(viewsets.ModelViewSet):
         community = self.get_object()
         q = request.GET.get("q", "").strip()
     
+        muted_ids = CommunityMute.objects.filter(
+            community=community,
+        ).values_list("user_id", flat=True)
+        
+        banned_ids = CommunityBan.objects.filter(
+            community=community
+        ).values_list("user_id", flat=True)
+
         memberships = CommunityMembership.objects.filter(
             community=community,
-            banned=False
         ).select_related("user")
     
         # 🔥 SEARCH FILTER (LIVE TYPING)
@@ -224,8 +250,6 @@ class CommunityViewSet(viewsets.ModelViewSet):
                 "username": community.owner.username,
                 "avatar": getattr(community.owner, "avatar", None),
                 "role": "owner",
-                "muted": False,
-                "banned": False,
             })
     
         for m in memberships:
@@ -239,8 +263,8 @@ class CommunityViewSet(viewsets.ModelViewSet):
                 "username": m.user.username,
                 "avatar": getattr(m.user, "avatar", None),
                 "role": m.role,
-                "muted": m.muted,
-                "banned": m.banned,
+                "muted": m.user_id in muted_ids,
+                "banned": m.user_id in banned_ids,
             })
     
         return Response(data)
@@ -423,7 +447,13 @@ class CommunityViewSet(viewsets.ModelViewSet):
 
         # GET SETTINGS
         if request.method == "GET":
-            memberships = CommunityMembership.objects.filter(community=community, banned=False).select_related("user")
+            memberships = CommunityMembership.objects.filter(community=community).select_related("user")
+            banned_ids = CommunityBan.objects.filter(
+                community=community
+            ).values_list("user_id", flat=True)
+            memberships = memberships.exclude(
+                user_id__in=banned_ids
+            )
 
             moderators = memberships.filter(role="moderator")[:5]
             admins = memberships.filter(role="admin")
@@ -852,58 +882,290 @@ class CommunityViewSet(viewsets.ModelViewSet):
             "updated": updated_posts
         })
 
-    @action(detail=True, methods=["post"])
-    def ban_user(self, request, pk=None):
-        community = self.get_object()
-    
-        if request.user != community.owner:
-            return Response({"error": "Only owner"}, status=403)
-    
-        membership = CommunityMembership.objects.get(
-            community=community,
-            user_id=request.data["user_id"]
-        )
-    
-        membership.banned = True
-        membership.save()
-
-        create_notification(
-            type="community_ban",
-            recipient=membership.user,
-            actors=[request.user],
-            community=community
-        )
-    
-        return Response({"status": "banned"})
-
-    @action(detail=True, methods=["post"])
-    def restore_user(self, request, pk=None):
-        community = self.get_object()
-
-        if request.user != community.owner:
-            return Response({"error": "Only owner"}, status=403)
-
-        membership = CommunityMembership.objects.get(
-            community=community,
-            user_id=request.data["user_id"]
-        )
-
-        membership.banned = False
-        membership.save()
-
-        create_notification(
-            type="community_unban",
-            recipient=membership.user,
-            actors=[request.user],
-            community=community
-        )
-
-        return Response({"status": "restored"})
-
     def get_permissions(self):
         if self.action in ['destroy']:
             return [IsAuthenticated(), IsOwner()]
         return [IsAuthenticated()]
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def mute_community_user(request, community_id):
+    community = get_object_or_404(
+        Community,
+        id=community_id,
+    )
+    
+    target = get_object_or_404(
+        User,
+        id=request.data["user"],
+    )
+    
+    if not can_moderate_target(
+        request.user,
+        target,
+        community,
+    ):
+        return Response(
+            {"error": "Permission denied."},
+            status=403,
+        )
+
+    serializer = CommunityMuteSerializer(
+        data=request.data
+    )
+
+    serializer.is_valid(raise_exception=True)
+
+    mute = serializer.save(
+        muted_by=request.user
+    )
+
+    CommunityAuditLog.objects.create(
+        community=mute.community,
+        actor=request.user,
+        target_user=mute.user,
+        action="mute",
+        details={
+            "reason": mute.reason,
+            "muted_until": mute.muted_until.isoformat(),
+        },
+    )
+
+    return Response(
+        CommunityMuteSerializer(mute).data
+    )
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def unmute_community_user(request, community_id):
+    community = get_object_or_404(
+        Community,
+        id=community_id,
+    )
+
+    target = get_object_or_404(
+        User,
+        id=request.data.get("user"),
+    )
+  
+    if not can_moderate_target(
+        request.user,
+        target,
+        community,
+    ):
+        return Response(
+            {"error": "Permission denied."},
+            status=403,
+        )
+
+    mute = CommunityMute.objects.filter(
+        community=community,
+        user=user,
+    ).first()
+
+    if not mute:
+        return Response(
+            {"detail": "User is not muted."},
+            status=404,
+        )
+
+    mute.delete()
+
+    CommunityAuditLog.objects.create(
+        community=community,
+        actor=request.user,
+        target_user=user,
+        action="mute",
+        details={
+            "action": "unmute",
+        },
+    )
+
+    return Response({
+        "success": True,
+        "message": "User unmuted successfully.",
+    })
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def ban_community_user(request, community_id):
+    community = get_object_or_404(
+        Community,
+        id=community_id,
+    )
+    
+    target = get_object_or_404(
+        User,
+        id=request.data["user"],
+    )
+    
+    if not can_moderate_target(
+        request.user,
+        target,
+        community,
+    ):
+        return Response(
+            {"error": "Permission denied."},
+            status=403,
+        )
+
+    serializer = CommunityBanSerializer(
+        data=request.data,
+    )
+
+    serializer.is_valid(raise_exception=True)
+
+    ban = serializer.save(
+        banned_by=request.user,
+    )
+
+    CommunityMembership.objects.filter(
+        community=ban.community,
+        user=ban.user,
+    ).delete()
+
+    CommunityAuditLog.objects.create(
+        community=ban.community,
+        actor=request.user,
+        target_user=ban.user,
+        action="ban",
+        details={
+            "reason": ban.reason,
+            "permanent": ban.permanent,
+            "banned_until": (
+                ban.banned_until.isoformat()
+                if ban.banned_until
+                else None
+            ),
+        },
+    )
+
+    create_notification(
+        type="community_ban",
+        recipient=ban.user,
+        actors=[request.user],
+        community=ban.community,
+    )
+
+    return Response(
+        CommunityBanSerializer(ban).data
+    )
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def unban_community_user(request, community_id):
+    community = get_object_or_404(
+        Community,
+        id=community_id,
+    )
+
+    target = get_object_or_404(
+        User,
+        id=request.data.get("user"),
+    )
+  
+    if not can_moderate_target(
+        request.user,
+        target,
+        community,
+    ):
+        return Response(
+            {"error": "Permission denied."},
+            status=403,
+        )
+
+    ban = CommunityBan.objects.filter(
+        community=community,
+        user=user,
+    ).first()
+
+    if not ban:
+        return Response(
+            {"detail": "User is not banned."},
+            status=404,
+        )
+
+    ban.delete()
+
+    CommunityAuditLog.objects.create(
+        community=community,
+        actor=request.user,
+        target_user=user,
+        action="ban",
+        details={
+            "action": "unban",
+        },
+    )
+
+    create_notification(
+        type="community_unban",
+        recipient=user,
+        actors=[request.user],
+        community=community,
+    )
+
+    return Response({
+        "success": True,
+        "message": "User unbanned successfully.",
+    })
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def remove_community_user(request, community_id):
+    community = get_object_or_404(
+        Community,
+        id=community_id,
+    )
+
+    target = get_object_or_404(
+        User,
+        id=request.data["user"],
+    )
+    
+    if not can_moderate(
+        request.user,
+        target,
+        community,
+    ):
+        return Response(
+            {"error": "Permission denied."},
+            status=403,
+        )
+
+    membership = CommunityMembership.objects.filter(
+        community=community,
+        user=user,
+    ).first()
+
+    if not membership:
+        return Response(
+            {"detail": "User is not a member."},
+            status=404,
+        )
+
+    membership.delete()
+
+    CommunityAuditLog.objects.create(
+        community=community,
+        actor=request.user,
+        target_user=user,
+        action="role_update",
+        details={
+            "action": "remove_member",
+        },
+    )
+
+    create_notification(
+        type="community_removed",
+        recipient=user,
+        actors=[request.user],
+        community=community,
+    )
+
+    return Response({
+        "success": True,
+        "message": "User removed successfully.",
+    })
 
 class TribeViewSet(viewsets.ModelViewSet):
     queryset = Tribe.objects.all()
@@ -1111,6 +1373,17 @@ def send_community_invite(request, community_id):
             status=400
         )
 
+    ban = CommunityBan.objects.filter(
+        community=community,
+        user=receiver
+    ).first()
+    
+    if ban and ban.is_active:
+        return Response(
+            {"error": "User is banned"},
+            status=400
+        )
+  
     # 🔥 ALREADY MEMBER
     membership = CommunityMembership.objects.filter(
         community=community,
@@ -1118,12 +1391,6 @@ def send_community_invite(request, community_id):
     ).first()
     
     if membership:
-        if membership.banned:
-            return Response(
-                {"error": "User is banned"},
-                status=400
-            )
-    
         return Response(
             {"error": "Already a member"},
             status=400
@@ -1318,4 +1585,29 @@ def tribe_request_detail(request, pk):
 
     return Response(
         TribeRequestSerializer(tribe_request).data
+    )
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def joined_communities(request):
+    queryset = (
+        CommunityMembership.objects
+        .filter(user=request.user)
+        .select_related("community")
+        .order_by("-joined_at")
+    )
+
+    paginator = JoinedCommunityPagination()
+    page = paginator.paginate_queryset(
+        queryset,
+        request
+    )
+
+    serializer = JoinedCommunitySerializer(
+        page,
+        many=True,
+    )
+
+    return paginator.get_paginated_response(
+        serializer.data
     )

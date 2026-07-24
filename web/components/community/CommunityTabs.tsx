@@ -28,12 +28,12 @@ export default function CommunityTabs({
         </button>
       ))}
 
-      <button
+      {/*<button
         onClick={onChat}
         className="px-3 py-1 bg-indigo-600 text-white rounded"
       >
         Chat
-      </button>
+      </button>*/}
 
     </div>
   );

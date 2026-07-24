@@ -11,7 +11,7 @@ from .cache import *
 from django.db.models.functions import Least, Cast
 from users.utils import redis_client
 from users.models import Star
-from django.db.models import Avg, Count, Sum, Case, When, Value, FloatField, ExpressionWrapper, IntegerField, F
+from django.db.models import Avg, Count, Sum, Case, When, Value, FloatField, Exists, OuterRef, ExpressionWrapper, IntegerField, F
 from itertools import chain
 from django.utils.dateparse import parse_datetime
 from post.serializers import PostSerializer, RepostSerializer

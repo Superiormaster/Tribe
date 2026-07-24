@@ -14,12 +14,13 @@ export default function BottomNav() {
 
   const navItems = [
     { name: "Home", path: "/main/home", icon: Home },
-    { name: "Messages", path: "/main/messages", icon: MessageSquare },
+    
     { name: "Notifications", path: "/main/notification", icon: Bell },
     { name: "Create", path: "/main/create-post", icon: PlusCircle },
   ];
 
   const profileActive = pathname.startsWith("/main/profile");
+  //{ name: "Messages", path: "/main/messages", icon: MessageSquare },
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 flex justify-around items-center h-16 z-40">

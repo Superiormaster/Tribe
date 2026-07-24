@@ -10,7 +10,7 @@ from .weights import get_user_weights
 from .cache import *
 from django.db.models.functions import Least, Cast
 from users.utils import redis_client
-from django.db.models import Avg, Count, Sum, Case, When, Value, FloatField, ExpressionWrapper, IntegerField, F
+from django.db.models import Avg, Count, Sum, Case, When, Value, FloatField, ExpressionWrapper, IntegerField, F, Q, Exists, OuterRef
 
 # -----------------------------
 # BASE QUERYSET
@@ -395,7 +395,7 @@ def finalize_feed(items, user):
 
     return sorted(items, key=lambda x: x["final_score"], reverse=True)
 
-def annotate_reels_features(qs, interests):
+def annotate_reels_features(qs, joined_communities):
     return qs.annotate(
         skip_rate=Case(
             When(views_count=0, then=Value(0.0)),

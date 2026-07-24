@@ -1,6 +1,6 @@
 from rest_framework.routers import DefaultRouter
 from django.urls import path
-from .views import CommunityViewSet, TribeViewSet, PublicTribeViewSet, invite_users, send_community_invite, accept_community_invite, decline_community_invite, tribe_requests, tribe_request_detail, get_my_invites, SuggestedCommunityView
+from .views import CommunityViewSet, TribeViewSet, PublicTribeViewSet, invite_users, send_community_invite, accept_community_invite, decline_community_invite, mute_community_user, unmute_community_user, ban_community_user, unban_community_user, remove_community_user, tribe_requests, tribe_request_detail, get_my_invites, SuggestedCommunityView, joined_communities
 
 router = DefaultRouter()
 router.register(r'communities', CommunityViewSet, basename='community')
@@ -17,6 +17,12 @@ urlpatterns = [
         "tribe-requests/",
         tribe_requests,
         name="tribe-requests",
+    ),
+
+    path(
+        "joined-communities/",
+        joined_communities,
+        name="joined-communities",
     ),
   
     path(
@@ -45,6 +51,26 @@ urlpatterns = [
         get_my_invites
     ),
   
+    path(
+        "communities/<int:community_id>/mute/",
+        mute_community_user,
+    ),
+    path(
+        "communities/<int:community_id>/unmute/",
+        unmute_community_user,
+    ),
+    path(
+        "communities/<int:community_id>/ban/",
+        ban_community_user,
+    ),
+    path(
+        "communities/<int:community_id>/unban/",
+        unban_community_user,
+    ),
+    path(
+        "communities/<int:community_id>/remove-user/",
+        remove_community_user,
+    ),
     path(
         "communities/<int:community_id>/suggested/",
         SuggestedCommunityView.as_view(),

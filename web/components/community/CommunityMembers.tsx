@@ -192,7 +192,7 @@ export default function CommunityMembers({
   
           <button 
             onClick={() =>
-              action("ban_user", selectedMember.id)
+              action("ban", selectedMember.id)
             } 
             className="text-xs px-2 py-1 bg-red-500 text-white rounded">
             Ban
@@ -200,7 +200,7 @@ export default function CommunityMembers({
 
           <button 
             onClick={() =>
-              action("restore_user", selectedMember.id)
+              action("unban", selectedMember.id)
             }
             className="text-xs px-2 py-1 bg-red-500 text-white rounded">
             Restore ban

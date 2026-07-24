@@ -21,7 +21,7 @@ type Props = {
   onDeleteChat: () => void;
 };
 
-export default function MessageSelection({
+export default function InboxSelectionBar({
   selectedCount,
   hasMultiple,
   allPinned,
@@ -43,7 +43,7 @@ export default function MessageSelection({
         left-0
         right-0
         md:left-64
-        z-50
+        z-[99999]
         h-14
         text-gray-700
         dark:text-white

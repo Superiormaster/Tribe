@@ -1,30 +1,29 @@
-// lib/useShare.ts
 import { apiRequest } from "@/utils/api";
 
 export const useShare = () => {
-  const sharePost = async (postId: number) => {
+  const recordShare = async (
+    postId: number,
+    platform: string
+  ) => {
     try {
-      await apiRequest(`api/post/${postId}/share/`, {
-        method: "POST",
-        data: { platform: "whatsapp" }
-      });
+      const res = await apiRequest(
+        `api/post/${postId}/share/`,
+        {
+          method: "POST",
+          data: {
+            platform,
+          },
+        }
+      );
+
+      return res;
     } catch (err) {
-      console.error("Share failed", err);
+      console.error(err);
+      return null;
     }
   };
 
-  const openShareSheet = (url: string, text?: string) => {
-    if (navigator.share) {
-      navigator.share({
-        title: "Check this out",
-        text,
-        url,
-      });
-    } else {
-      navigator.clipboard.writeText(url);
-      alert("Link copied!");
-    }
+  return {
+    recordShare,
   };
-
-  return { sharePost, openShareSheet };
 };

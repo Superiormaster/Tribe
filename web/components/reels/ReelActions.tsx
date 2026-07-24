@@ -8,7 +8,8 @@ import {
     VolumeX,
 } from "lucide-react";
 
-import ShareButton from "@/components/ShareButton";
+import ShareButton from "@/components/share/ShareButton";
+import { useShareSheet } from "@/components/share/ShareContext";
 import { formatCount } from '@/utils/formatCount';
 
 interface ReelActionsProps {
@@ -30,6 +31,8 @@ export default function ReelActions({
     handleLike,
     setOpenCommentsPostId,
 }: ReelActionsProps) {
+
+    const { showShare } = useShareSheet();
 
     const toggleMute = (
         e: React.MouseEvent
@@ -117,6 +120,7 @@ export default function ReelActions({
                 post={reel}
                 vertical
                 dark
+                onOpen={showShare}
             />
 
             {/* Mute */}

@@ -5,10 +5,13 @@ import SearchSkeleton from "./SearchSkeleton";
 import { useState, useRef, useEffect } from 'react' 
 import { useInView } from '@/components/UseInView'
 import ReelCard from '@/components/ReelCard'
+import PostCard from "@/components/PostCard"
+import RepostCard from "@/components/repost/RepostCard"
 
 type Props = {
   query: string;
   results: any;
+  currentUser: any;
   loading: boolean;
   activeTab: string;
   setActiveTab: (v: string) => void;
@@ -20,6 +23,7 @@ export default function SearchResults({
   loading,
   activeTab,
   setActiveTab,
+  currentUser,
 }: Props) {
 
   if (!query) return null;
@@ -193,80 +197,40 @@ export default function SearchResults({
       {(activeTab === "all" || activeTab === "posts") &&
         results.posts?.length > 0 && (
           <div className="space-y-4">
-      
-            <h2 className="text-sm text-gray-700 dark:text-gray-200 font-bold">
+            <h2 className="text-sm font-bold text-gray-700 dark:text-gray-200">
               📝 Posts
             </h2>
       
             {visiblePosts.map((p: any) => (
-              <div
-                key={p.id}
-                className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden bg-white dark:bg-gray-900"
-              >
-      
-                {/* REELS */}
-                {p.content_type === "short_video" ? (
-      
-                  <ReelCard post={p} />
-      
+              <div key={p.id}>
+                {p.feed_type === "repost" ? (
+                  <RepostCard
+                    repost={p}
+                    context="search"
+                    currentUser={currentUser}
+                    handlePostAction={() => {}}
+                    hideStarButton
+                  />
+                ) : p.content_type === "short_video" ? (
+                  <ReelCard
+                    post={p}
+                    context="search"
+                    showEntertainment
+                  />
                 ) : (
-      
-                  <AppLink
-                    prefetch={false}
-                    href={
-                      p.feed_type === "repost"
-                        ? `/main/reposts/${p.id}`
-                        : `/main/home/${p.id}`
-                    }
-                  >
-      
-                    <div className="space-y-3 p-3">
-      
-                      {p.feed_type === "repost" && (
-                        <div className="text-xs text-green-500 font-medium">
-                          🔁 Repost
-                        </div>
-                      )}
-                      {/* CAPTION */}
-                      {p.caption && (
-                        <p className="text-sm line-clamp-1 text-gray-700 dark:text-gray-300">
-                          {p.caption}
-                        </p>
-                      )}
-      
-                      {/* MEDIA */}
-                      {p.media?.length > 0 && (
-                        <div
-                          className={`grid gap-2 ${
-                            p.media.length === 1
-                              ? "grid-cols-1"
-                              : p.media.length === 2
-                              ? "grid-cols-2"
-                              : "grid-cols-2 md:grid-cols-3"
-                          }`}
-                        >
-      
-                          {p.media.map((m: any, i: number) => (
-      
-                            <MediaItem
-                              key={i}
-                              media={m}
-                            />
-      
-                          ))}
-      
-                        </div>
-                      )}
-      
-                    </div>
-      
-                  </AppLink>
-      
+                  <PostCard
+                    post={p}
+                    context="search"
+                    hideCommunityName
+                    hideStarButton
+                    isEmbedded
+                    showPinnedLabel={false}
+                    showManageButtons={false}
+                  />
                 )}
-      
               </div>
             ))}
-
+      
             {activeTab === "all" && results.posts?.length > 5 && (
               <button
                 onClick={() => setActiveTab("posts")}
@@ -275,36 +239,9 @@ export default function SearchResults({
                 See all
               </button>
             )}
-      
           </div>
       )}
 
     </div>
   );
 }
-
-const MediaItem = ({ media }: any) => {
-
-  // IMAGE
-  if (media.type === "image") {
-    return (
-      <img
-        src={media.url}
-        loading="lazy"
-        className="rounded-xl w-full aspect-square object-cover"
-      />
-    );
-  }
-
-  // VIDEO / REEL
-  return (
-    <video
-      src={media.url}
-      poster={media.thumbnail}
-      preload="metadata"
-      onError={() => {}}
-      controls
-      className="rounded-xl w-full aspect-video object-cover"
-    />
-  );
-};

@@ -8,26 +8,35 @@ import { starCreator } from '@/lib/api'
 import PostCard from '@/components/PostCard';
 import { apiRequest } from '@/utils/api';
 
+type CardContext =
+  | "feed"
+  | "profile"
+  | "community"
+  | "search";
+
 type RepostCardProps = {
   repost: any;
-  handlePostAction: any;
+  handlePostAction?: (action: string, post: any) => void;
   currentUser: any;
   hideStarButton?: boolean;
   starredUserIds?: Set<number>;
   shouldHideStar?: boolean;
   canModerateReposts?: boolean;
+  context?: CardContext;
 };
 
 export default function RepostCard({
   repost,
   handlePostAction,
   currentUser,
+  context = "feed",
   hideStarButton = false,
   starredUserIds = new Set(),
   shouldHideStar = false,
   canModerateReposts = false,
 }: RepostCardProps) {
   const [isStarred, setIsStarred] = useState(false);
+  const isSearch = context === "search";
 
   const currentUserId = Number(currentUser?.id);
   const repostUserId = Number(repost.user.id);

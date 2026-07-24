@@ -41,15 +41,27 @@ export type MediaSource =
   | "forward"
   | "external";
 
+type UserRole = "owner" | "admin" | "moderator" | "member";
+
+export interface UserSummary {
+  id: number;
+  username: string;
+  avatar?: string;
+  role: UserRole;
+}
+
 export interface Message {
 
   // ids
+  community?: number;
+  communityId?: number;
   client_id: string;
   id?: number;
 
   chat?: number;
 
   sender: number;
+  sender_info?: UserSummary;
 
   encrypted_text?: string;
   caption?: string;
@@ -88,4 +100,15 @@ export interface Message {
   delivered_to?:number[]
   
   reply_to?: Message|null
+  
+  is_pinned?: boolean
+  
+  is_edited?: boolean
+  edited_at?: string
+  
+  forwarded_from?: Message | null
+  
+  mentions?: UserSummary
+  
+  read_by?: number[]
 }

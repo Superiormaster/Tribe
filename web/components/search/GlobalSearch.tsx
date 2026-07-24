@@ -16,6 +16,7 @@ export default function GlobalSearch() {
 
     results,
     loading,
+    user,
 
     activeTab,
     setActiveTab,
@@ -58,6 +59,7 @@ export default function GlobalSearch() {
         query={query}
         results={results}
         loading={loading}
+        currentUser={user}
         activeTab={activeTab}
         setActiveTab={setActiveTab}
       />
