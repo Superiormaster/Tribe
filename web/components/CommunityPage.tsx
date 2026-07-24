@@ -74,7 +74,9 @@ export default function CommunityPage({
   const canBulkModerate = canManage;
   
   // ❌ ONLY NON-OWNER CAN LEAVE
-  const canLeave = !isOwner;
+  const canLeave =
+  !isOwner &&
+  community?.joined === true;
   
   useEffect(() => {
     fetchCommunity();
@@ -452,6 +454,11 @@ export default function CommunityPage({
       await apiRequest(`api/communities/${communityId}/leave/`, {
         method: "POST",
       });
+      if (community?.tribe?.id) {
+        replace(`/main/tribe/${community.tribe.id}`);
+      } else {
+        replace(`/main/community/${community.id}`);
+      }
     } catch (err) {
       setCommunity(previous);
       console.error(err);

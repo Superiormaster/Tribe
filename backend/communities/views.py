@@ -46,6 +46,13 @@ def get_membership(user, community):
         community=community
     ).first()
 
+def is_moderator(user, community):
+    role = get_user_role(user, community)
+
+    return (
+        user == community.owner or
+        role in ["admin", "moderator"]
+    )
 
 def get_user_role(user, community):
     if user == community.owner:
@@ -577,19 +584,19 @@ class CommunityViewSet(viewsets.ModelViewSet):
     def pending_posts(self, request, pk=None):
         community = self.get_object()
     
-        if can_moderate(request.user, community):
+        if is_moderator(request.user, community):
             posts = Post.objects.filter(
                 community=community,
                 is_approved=False,
                 is_rejected=False
-            )
+            ).order_by("-created_at")
         else:
             posts = Post.objects.filter(
                 community=community,
                 user=request.user,
                 is_approved=False,
                 is_rejected=False
-            )
+            ).order_by("-created_at")
     
         paginator = FeedPagination()
         result_page = paginator.paginate_queryset(
@@ -611,7 +618,7 @@ class CommunityViewSet(viewsets.ModelViewSet):
     def approved_posts(self, request, pk=None):
         community = self.get_object()
     
-        if can_moderate(request.user, community):
+        if is_moderator(request.user, community):
             posts = Post.objects.filter(
                 community=community,
                 is_approved=True
@@ -686,17 +693,17 @@ class CommunityViewSet(viewsets.ModelViewSet):
     def rejected_posts(self, request, pk=None):
         community = self.get_object()
     
-        if can_moderate(request.user, community):
+        if is_moderator(request.user, community):
             posts = Post.objects.filter(
                 community=community,
                 is_rejected=True
-            )
+            ).order_by("-created_at")
         else:
             posts = Post.objects.filter(
                 community=community,
                 user=request.user,
                 is_rejected=True
-            )
+            ).order_by("-created_at")
     
         paginator = FeedPagination()
         result_page = paginator.paginate_queryset(
