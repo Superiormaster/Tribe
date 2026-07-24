@@ -425,7 +425,7 @@ def annotate_reels_features(qs, joined_communities):
 
 def compute_reels_score(qs):
     return qs.annotate(
-        final_score=(
+        final_score=ExpressionWrapper(
             F("views_count") * Value(0.1) +
             F("likes_count") * 2 +
             F("comments_count") * 3 +

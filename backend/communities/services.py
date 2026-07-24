@@ -379,7 +379,7 @@ def compute_feed_scores(items, weights):
 def compute_main_feed_score(qs, weights):
 
     return qs.annotate(
-        final_score=(
+        final_score=ExpressionWrapper(
             F("likes_count") * Value(weights["like"]) +
             F("comments_count") * Value(weights["comment"]) +
             F("views_count") * Value(weights["view"]) +
@@ -434,7 +434,7 @@ def finalize_feed(items, user):
 def compute_reels_score(qs):
 
     return qs.annotate(
-        final_score=(
+        final_score=ExpressionWrapper(
             F("avg_watch_time") * 4 +
             F("completion_rate") * 10 +
             Least(F("replay_count"), Value(5)) * 6 +
