@@ -232,8 +232,11 @@ class GoogleLoginView(generics.GenericAPIView):
         try:
             idinfo = id_token.verify_oauth2_token(token, google_requests.Request())
             print("3. Google token verified")
-        except ValueError:
-            return Response({"error": "Invalid Google token"}, status=400)
+        except Exception as e:
+          import traceback
+          traceback.print_exc()
+          print(e)
+          return Response({"error": str(e)}, status=400)
 
         email = idinfo.get("email")
         if not email:
