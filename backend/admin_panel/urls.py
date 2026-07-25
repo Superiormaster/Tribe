@@ -76,7 +76,7 @@ urlpatterns = [
     ),
   
     path(
-        "tribe-requests/<int:pk>/delete",
+        "tribe-requests/<int:pk>/delete/",
         delete_tribe_request,
     ),
 
@@ -94,15 +94,15 @@ urlpatterns = [
         create_community,
     ),
     path(
-        "tribes/create",
+        "tribes/create/",
         create_tribe,
     ),
     path(
-        "tribes/<int:pk>/update",
+        "tribes/<int:pk>/update/",
         update_tribe,
     ),
     path(
-        "tribes/<int:pk>/delete",
+        "tribes/<int:pk>/delete/",
         delete_tribe,
     ),
 ]
