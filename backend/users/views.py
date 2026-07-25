@@ -215,6 +215,7 @@ class ProfilePostPagination(PageNumberPagination):
     page_size_query_param = "page_size"
 
 class GoogleLoginView(generics.GenericAPIView):
+    print("Google login endpoint reached")
     permission_classes = [AllowAny]
     parser_classes = [JSONParser]
 
