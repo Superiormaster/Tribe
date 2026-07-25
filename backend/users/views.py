@@ -215,13 +215,12 @@ class ProfilePostPagination(PageNumberPagination):
     page_size_query_param = "page_size"
 
 class GoogleLoginView(generics.GenericAPIView):
-    print("Google login endpoint reached")
     permission_classes = [AllowAny]
     parser_classes = [JSONParser]
-    print("1. Request received")
 
     @method_decorator(ratelimit(key='ip', rate='10/m', method='POST', block=True))
     def post(self, request):
+        print("1. Request received")
         token = request.data.get("token")
         print("2. Token:", bool(token))
         if not token:
