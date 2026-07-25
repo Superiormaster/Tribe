@@ -30,8 +30,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   
         <InstallButton />
 
-        {/*<script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-        <script dangerouslySetInnerHTML={{ __html: "eruda.init();" }} />*/}
+        <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+        <script dangerouslySetInnerHTML={{ __html: "eruda.init();" }} />
 
       </body>
     </html>
