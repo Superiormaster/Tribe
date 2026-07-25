@@ -73,7 +73,7 @@ export default function TribeRequestDetailPage() {
   }, [requestId]);
 
   const approveRequest = () => {
-    push(`/admin/tribes/create`);
+    push(`/admin/tribe_request/${requestId}/create`);
   }
 
   const rejectRequest = async () => {

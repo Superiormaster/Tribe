@@ -16,6 +16,7 @@ def create_notification(
     actors,
     post=None,
     community=None,
+    tribe_request=None,
     group_key=None,
     merge_window_hours=6
 ):
@@ -87,6 +88,7 @@ def create_notification(
             type=type,
             post=post,
             community=community,
+            tribe_request=tribe_request,
             group_key=group_key,
             count=1,
             message=""
