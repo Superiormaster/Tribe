@@ -388,7 +388,8 @@ def compute_main_feed_score(qs, weights):
             F("is_joined_community") * Value(weights["community"]) +
             F("is_recent") * Value(weights["recent"]) +
             F("is_popular") * Value(weights["popular"]) +
-            F("is_repost") * Value(weights["repost"])
+            F("is_repost") * Value(weights["repost"]),
+            output_field=FloatField(),
         )
     )
 
@@ -439,7 +440,8 @@ def compute_reels_score(qs):
             F("completion_rate") * 10 +
             Least(F("replay_count"), Value(5)) * 6 +
             F("shares_count") * 8 -
-            F("skip_rate") * 7
+            F("skip_rate") * 7,
+            output_field=FloatField(),
         )
     )
 

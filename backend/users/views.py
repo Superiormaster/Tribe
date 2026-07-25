@@ -113,21 +113,6 @@ def issue_tokens(user, response=None):
         }
     }
 
-def update_user_location(request, user):
-    ip = request.META.get('HTTP_X_FORWARDED_FOR')
-    if ip:
-        ip = ip.split(",")[0].strip()
-    else:
-        ip = request.META.get('REMOTE_ADDR')
-
-    user.last_login_ip = ip
-    lat, lon = get_location(ip)
-
-    if lat is not None and lon is not None:
-        user.latitude = lat
-        user.longitude = lon
-        user.save(update_fields=["latitude", "longitude", "last_login_ip"])
-
 def get_client_ip(request):
     x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
 
@@ -135,7 +120,37 @@ def get_client_ip(request):
         ip = x_forwarded_for.split(",")[0].strip()
     else:
         ip = request.META.get("REMOTE_ADDR")
+
+    print("X_FORWARDED_FOR:", request.META.get("HTTP_X_FORWARDED_FOR"))
+    print("REMOTE_ADDR:", request.META.get("REMOTE_ADDR"))
     return ip
+
+def update_user_location(request, user):
+    ip = get_client_ip(request)
+
+    user.last_login_ip = ip
+
+    lat, lon, city, country = get_location(ip)
+
+    if lat is not None and lon is not None:
+        user.latitude = lat
+        user.longitude = lon
+        user.save(
+            update_fields=[
+                "latitude",
+                "longitude",
+                "last_login_ip",
+            ]
+        )
+
+    location = "Unknown"
+
+    if city and country:
+        location = f"{city}, {country}"
+    elif country:
+        location = country
+
+    return ip, location
 
 def can_view_profile(viewer, profile_user):
 
@@ -227,7 +242,7 @@ class GoogleLoginView(generics.GenericAPIView):
             defaults={"username": f"{username_base}_{uuid.uuid4().hex[:6]}", "email_verified": True}
         )
 
-        update_user_location(request, user)
+        ip, location = update_user_location(request, user)
         response = Response()
 
         data = issue_tokens(user)
@@ -239,8 +254,8 @@ class GoogleLoginView(generics.GenericAPIView):
           send_login_alert_email(
             email=user.email,
             device=request.META.get("HTTP_USER_AGENT", "Unknown Device"),
-            location="Unknown",
-            ip_address=get_client_ip(request),
+            location=location,
+            ip_address=ip,
             login_time=timezone.localtime().strftime("%d %b %Y %I:%M %p"),
             reset_password_link=f"{settings.FRONTEND_URL}/auth/forgot-password",
           )
@@ -265,7 +280,7 @@ class NormalLoginView(generics.GenericAPIView):
         if not user:
             return Response({"error": "Invalid credentials"}, status=401)
 
-        update_user_location(request, user)
+        ip, location = update_user_location(request, user)
         response = Response()
 
         data = issue_tokens(user)
@@ -277,8 +292,8 @@ class NormalLoginView(generics.GenericAPIView):
           send_login_alert_email(
             email=user.email,
             device=request.META.get("HTTP_USER_AGENT", "Unknown Device"),
-            location="Unknown",
-            ip_address=get_client_ip(request),
+            location=location,
+            ip_address=ip,
             login_time=timezone.localtime().strftime("%d %b %Y %I:%M %p"),
             reset_password_link=f"{settings.FRONTEND_URL}/auth/forgot-password",
           )
