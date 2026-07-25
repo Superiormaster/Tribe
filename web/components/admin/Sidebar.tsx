@@ -52,6 +52,11 @@ export default function Sidebar({
       icon: Users,
     },
     {
+      name: 'Tribe Request',
+      path: '/admin/tribe_request',
+      icon: Users,
+    },
+    {
       name: 'Feedback',
       path: '/admin/feedback',
       icon: MessageSquare,

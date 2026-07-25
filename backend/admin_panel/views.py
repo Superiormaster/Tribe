@@ -15,7 +15,8 @@ from users.serializers import ProfileSerializer
 import uuid
 from hashlib import sha256
 from django.utils import timezone
-from communities.models import TribeRequest, Tribe
+from communities.models import TribeRequest, Tribe, Community, CommunityMembership
+from communities.serializers import TribeSerializer, CommunitySerializer
 from .serializers import (
     AdminTribeRequestSerializer,
     RejectTribeRequestSerializer,
@@ -639,3 +640,227 @@ def create_tribe_from_request(request):
             "name": tribe.name,
         }
     })
+
+@api_view(["GET"])
+@permission_classes([IsAdmin])
+def admin_tribes(request):
+    search = request.GET.get("search", "").strip()
+
+    queryset = Tribe.objects.all().order_by("name")
+
+    if search:
+        queryset = queryset.filter(
+            Q(name__icontains=search) |
+            Q(description__icontains=search)
+        )
+
+    paginator = PageNumberPagination()
+    paginator.page_size = 20
+
+    page = paginator.paginate_queryset(
+        queryset,
+        request
+    )
+
+    results = []
+
+    for tribe in page:
+        results.append({
+            "id": tribe.id,
+            "name": tribe.name,
+            "description": tribe.description,
+            "allow_reels": tribe.allow_reels,
+            "community_count": Community.objects.filter(
+                tribe=tribe
+            ).count(),
+            "created_at": tribe.created_at,
+        })
+
+    return paginator.get_paginated_response(results)
+
+@api_view(["POST"])
+@permission_classes([IsAdmin])
+def create_tribe(request):
+
+    name = request.data.get("name")
+    description = request.data.get("description")
+    allow_reels = request.data.get(
+        "allow_reels",
+        False,
+    )
+
+    if not name:
+        return Response(
+            {
+                "detail": "Name is required."
+            },
+            status=400,
+        )
+
+    if Tribe.objects.filter(
+        name__iexact=name
+    ).exists():
+        return Response(
+            {
+                "detail":
+                "A tribe with this name already exists."
+            },
+            status=400,
+        )
+
+    tribe = Tribe.objects.create(
+        name=name,
+        description=description,
+        allow_reels=allow_reels,
+    )
+
+    return Response({
+        "id": tribe.id,
+        "name": tribe.name,
+    })
+
+@api_view(["GET"])
+@permission_classes([IsAdmin])
+def admin_tribe_detail(request, tribe_id):
+
+    tribe = get_object_or_404(
+        Tribe.objects.prefetch_related(
+            "communities"
+        ),
+        id=tribe_id,
+    )
+
+    communities = Community.objects.filter(
+        tribe=tribe
+    ).order_by("name")
+
+    communities = []
+
+    for community in tribe.communities.all():
+    
+        communities.append({
+            "id": community.id,
+            "name": community.name,
+            "members": CommunityMembership.objects.filter(
+                community=community
+            ).count(),
+        })
+
+    return Response({
+        "id": tribe.id,
+        "name": tribe.name,
+        "description": tribe.description,
+        "allow_reels": tribe.allow_reels,
+        "created_at": tribe.created_at,
+        "communities": communities,
+    })
+
+@api_view(["PATCH"])
+@permission_classes([IsAdmin])
+def update_tribe(request, tribe_id):
+
+    tribe = get_object_or_404(
+        Tribe,
+        id=tribe_id,
+    )
+
+    tribe.name = request.data.get(
+        "name",
+        tribe.name,
+    )
+
+    tribe.description = request.data.get(
+        "description",
+        tribe.description,
+    )
+
+    tribe.allow_reels = request.data.get(
+        "allow_reels",
+        tribe.allow_reels,
+    )
+
+    tribe.save()
+
+    return Response({
+        "detail":
+        "Tribe updated successfully."
+    })
+
+@api_view(["DELETE"])
+@permission_classes([IsSuperAdmin])
+def delete_tribe(request, tribe_id):
+
+    tribe = get_object_or_404(
+        Tribe,
+        id=tribe_id,
+    )
+
+    tribe.delete()
+
+    return Response({
+        "detail":
+        "Tribe deleted successfully."
+    })
+
+@api_view(["POST"])
+@permission_classes([IsAdmin])
+def create_community(request):
+
+    tribe_id = request.data.get("tribe")
+
+    if not tribe_id:
+        return Response(
+            {
+                "detail": "Tribe is required."
+            },
+            status=400,
+        )
+
+    tribe = get_object_or_404(
+        Tribe,
+        id=tribe_id,
+    )
+
+    if Community.objects.filter(
+        tribe=tribe,
+        name=request.data.get("name", "").strip(),
+    ).exists():
+        return Response(
+            {
+                "detail":
+                "A community with this name already exists in this tribe."
+            },
+            status=400,
+        )
+
+    serializer = CommunitySerializer(
+        data=request.data
+    )
+
+    serializer.is_valid(
+        raise_exception=True
+    )
+
+    community = serializer.save(
+        owner=request.user,
+        tribe=tribe,
+    )
+
+    CommunityMembership.objects.create(
+        community=community,
+        user=request.user,
+        role="owner",
+    )
+
+    return Response(
+        {
+            "detail":
+            "Community created successfully.",
+            "community": {
+                "id": community.id,
+                "name": community.name,
+                "tribe": tribe.id,
+            },
+        },
+        status=201,
+    )

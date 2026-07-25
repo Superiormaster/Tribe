@@ -19,6 +19,12 @@ from .views import (
     create_tribe_from_request,
     reject_tribe_request,
     delete_tribe_request,
+    admin_tribes,
+    create_tribe,
+    admin_tribe_detail,
+    update_tribe,
+    delete_tribe,
+    create_community,
 )
 
 urlpatterns = [
@@ -72,5 +78,31 @@ urlpatterns = [
     path(
         "tribe-requests/<int:pk>/delete",
         delete_tribe_request,
+    ),
+
+    path(
+        "tribes/",
+        admin_tribes,
+    ),
+    path(
+        "tribes/<int:tribe_id>/",
+        admin_tribe_detail,
+    ),
+    
+    path(
+        "communities/create/",
+        create_community,
+    ),
+    path(
+        "tribes/create",
+        create_tribe,
+    ),
+    path(
+        "tribes/<int:pk>/update",
+        update_tribe,
+    ),
+    path(
+        "tribes/<int:pk>/delete",
+        delete_tribe,
     ),
 ]
