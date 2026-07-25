@@ -218,10 +218,12 @@ class GoogleLoginView(generics.GenericAPIView):
     print("Google login endpoint reached")
     permission_classes = [AllowAny]
     parser_classes = [JSONParser]
+    print("1. Request received")
 
     @method_decorator(ratelimit(key='ip', rate='10/m', method='POST', block=True))
     def post(self, request):
         token = request.data.get("token")
+        print("2. Token:", bool(token))
         if not token:
             return Response({"error": "Missing Google token"}, status=400)
 
@@ -230,6 +232,7 @@ class GoogleLoginView(generics.GenericAPIView):
 
         try:
             idinfo = id_token.verify_oauth2_token(token, google_requests.Request())
+            print("3. Google token verified")
         except ValueError:
             return Response({"error": "Invalid Google token"}, status=400)
 
@@ -242,14 +245,18 @@ class GoogleLoginView(generics.GenericAPIView):
             email=email,
             defaults={"username": f"{username_base}_{uuid.uuid4().hex[:6]}", "email_verified": True}
         )
+        print("4. User:", user.email)
 
         ip, location = update_user_location(request, user)
+        print("5. Location updated")
         response = Response()
 
         data = issue_tokens(user)
+        print("6. JWT created")
         
         # 🔥 CREATE SESSION HERE
         session, is_new_device = create_session(user, request, data["refresh"])
+        print("7. Session created")
 
         if is_new_device:
           send_login_alert_email(
@@ -260,8 +267,10 @@ class GoogleLoginView(generics.GenericAPIView):
             login_time=timezone.localtime().strftime("%d %b %Y %I:%M %p"),
             reset_password_link=f"{settings.FRONTEND_URL}/auth/forgot-password",
           )
+          print("8. Sending login alert")
         
         response.data = data
+        print("9. Returning response")
         return response
 
 # -----------------------------
