@@ -3,7 +3,7 @@ import { apiRequest } from "@/utils/api";
 
 interface OnboardingStatus {
   profileCompleted: boolean;
-  interestsCompleted: boolean;
+  discoverCompleted: boolean;
   starCompleted: boolean;
   completed: boolean;
 }
@@ -19,8 +19,8 @@ export const handleOnboardingRedirect = async (
     push("/main/home");
   } else if (!onboarding.profileCompleted) {
     push("/auth/profile-setup");
-  } else if (!onboarding.interestsCompleted) {
-    push("/auth/interests");
+  } else if (!onboarding.discoverCompleted) {
+    push("/auth/discover");
   } else if (!onboarding.starCompleted) {
     push("/auth/star");
   } else {
