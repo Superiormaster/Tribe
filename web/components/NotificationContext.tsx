@@ -86,6 +86,7 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
             const notification =
               JSON.parse(event.data);
   
+            console.log(notification);
             addNotification(
               notification
             );

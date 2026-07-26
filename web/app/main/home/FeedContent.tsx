@@ -725,7 +725,7 @@ export default function HomePage() {
             {tribes.length > 3 && (
               <button
                 onClick={() => setShowAllTribes(prev => !prev)}
-                className="px-3 py-1 rounded-full bg-black text-white text-sm"
+                className="px-3 py-1 rounded-full bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-white text-sm"
               >
                 {showAllTribes ? "Less" : `+${tribes.length - 3} More`}
               </button>
