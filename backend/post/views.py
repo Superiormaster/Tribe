@@ -6,6 +6,7 @@ from django.db.models.functions import Mod
 from django.db.models.functions import Random
 from django.db import transaction
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from .services import *
 from .cache import *
@@ -51,8 +52,23 @@ class IsOwnerOrModerator(BasePermission):
 
 class FeedPagination(PageNumberPagination):
     page_size = 10
-    page_size_query_param = "page_size"
-    max_page_size = 30
+
+    def paginate_queryset(self, queryset, request, view=None):
+        try:
+            return super().paginate_queryset(queryset, request, view)
+        except NotFound:
+            self.page = None
+            return []
+
+    def get_paginated_response(self, data):
+        if self.page is None:
+            return Response({
+                "count": 0,
+                "next": None,
+                "previous": None,
+                "results": []
+            })
+        return super().get_paginated_response(data)
 
 def safe_int(val):
     try:
@@ -488,7 +504,7 @@ class PostViewSet(viewsets.ModelViewSet):
         joined_communities = CommunityMembership.objects.filter(
           user=user
         ).values_list("community_id", flat=True)
-        
+    
         qs = qs.exclude(
             user_id__in=muted_ids
         ).exclude(
@@ -496,6 +512,13 @@ class PostViewSet(viewsets.ModelViewSet):
         ).exclude(
             user_id__in=blocked_me_ids
         )
+  
+        tribe_id = request.query_params.get("tribe")
+
+        if tribe_id:
+            qs = qs.filter(
+                community__tribe_id=tribe_id
+            )
     
         # 🔥 REELS SCORING (IMPORTANT)
         qs = annotate_reels_features(qs, joined_communities)
@@ -1020,6 +1043,9 @@ class FeedViewSet(viewsets.ModelViewSet):
         user = request.user
     
         # NEW RANDOM FEED SESSION
+        redis_client.delete(f"feed:user:{user.id}")
+        redis_client.delete(f"feed:seen:{user.id}")
+        redis_client.delete(f"feed_seed:{user.id}")
         redis_client.set(
             f"feed_seed:{user.id}",
             randint(1, 999999),

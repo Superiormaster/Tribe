@@ -23,9 +23,7 @@ self.addEventListener(
       badge:
         "/badge.png",
 
-      image:
-        data.thumbnail ||
-        notification.image,
+      image: data.thumbnail || data.communityCover || notification.image || "",
 
       data,
     };

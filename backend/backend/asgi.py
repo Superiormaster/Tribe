@@ -13,11 +13,12 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.settings')
 
 from django.core.asgi import get_asgi_application
 from channels.routing import ProtocolTypeRouter, URLRouter
-from backend.middleware import JWTAuthMiddleware
 
 import backend.routing
 
 django_asgi_app = get_asgi_application()
+
+from backend.middleware import JWTAuthMiddleware
 
 application = ProtocolTypeRouter({
     "http": django_asgi_app,

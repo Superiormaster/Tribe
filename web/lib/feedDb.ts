@@ -22,51 +22,126 @@ function getDB() {
   return dbPromise;
 }
 
+function feedKey(
+    filter: string,
+    tribeId: number | null,
+    page: number
+) {
+    return `${filter}_${tribeId ?? "all"}_page_${page}`;
+}
+
+function reelsKey(
+    filter: string,
+    tribeId: number | null
+) {
+    return `${filter}_${tribeId ?? "all"}_reels`;
+}
+
 // ==========================
 // POSTS
 // ==========================
-export async function saveFeed(page: number, posts: any[]) {
-  const db = await getDB();
-  if (!db) return;
+export async function saveFeed(
+    filter: string,
+    tribeId: number | null,
+    page: number,
+    posts: any[]
+) {
+    const db = await getDB();
+    if (!db) return;
 
-  await db.put("feed", posts, `page_${page}`);
+    await db.put(
+        "feed",
+        posts,
+        feedKey(filter, tribeId, page)
+    );
 }
 
-export async function getFeed(page: number) {
-  const db = await getDB();
-  if (!db) return [];
+export async function getFeed(
+    filter: string,
+    tribeId: number | null,
+    page: number
+) {
+    const db = await getDB();
+    if (!db) return [];
 
-  return (await db.get("feed", `page_${page}`)) || [];
+    return (
+        await db.get(
+            "feed",
+            feedKey(filter, tribeId, page)
+        )
+    ) || [];
 }
 
-export async function clearFeed() {
-  const db = await getDB();
-  if (!db) return;
+export async function clearFeed(
+    filter: string,
+    tribeId: number | null
+) {
+    const db = await getDB();
+    if (!db) return;
 
-  await db.delete("feed", "home_feed");
+    const keys = await db.getAllKeys("feed");
+
+    for (const key of keys) {
+        if (
+            String(key).startsWith(
+                `${filter}_${tribeId ?? "all"}`
+            )
+        ) {
+            await db.delete("feed", key);
+        }
+    }
 }
 
 // ==========================
 // REELS
 // ==========================
 
-export async function saveReels(reels: any[]) {
-  const db = await getDB();
-  if (!db) return;
+export async function saveReels(
+    filter: string,
+    tribeId: number | null,
+    reels: any[]
+) {
+    const db = await getDB();
+    if (!db) return;
 
-  await db.put("reels", reels, "home_reels");
+    await db.put(
+        "reels",
+        reels,
+        reelsKey(filter, tribeId)
+    );
 }
 
-export async function getReels() {
-  const db = await getDB();
-  if (!db) return [];
+export async function getReels(
+    filter: string,
+    tribeId: number | null,
+) {
+    const db = await getDB();
+    if (!db) return [];
 
-  return (await db.get("reels", "home_reels")) || [];
+    return (
+        await db.get(
+            "reels",
+            reelsKey(filter, tribeId)
+        )
+    ) || [];
 }
 
-export async function clearReels() {
-  const db = await getDB();
-  if (!db) return;
+export async function clearReels(
+    filter: string,
+    tribeId: number | null
+) {
+    const db = await getDB();
+    if (!db) return;
 
-  await db.delete("reels", "home_reels");
+    const keys = await db.getAllKeys("reels");
+
+    for (const key of keys) {
+        if (
+            String(key).startsWith(
+                `${filter}_${tribeId ?? "all"}`
+            )
+        ) {
+            await db.delete("reels", key);
+        }
+    }
 }

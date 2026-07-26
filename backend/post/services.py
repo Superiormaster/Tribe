@@ -88,9 +88,13 @@ def build_global_feed(
     posts = build_base_queryset(user)
 
     if tribe_id:
+      # STRICT tribe feed
       posts = posts.filter(
-          community__tribe_id=tribe_id
+          community__isnull=False,
+          community__tribe_id=tribe_id,
       )
+    else:
+      pass
 
     posts = annotate_features(
         posts,
@@ -153,7 +157,8 @@ def build_global_feed(
 
     if tribe_id:
       reposts = reposts.filter(
-          post__community__tribe_id=tribe_id
+          post__community__isnull=False,
+          post__community__tribe_id=tribe_id,
       )
 
     reposts = annotate_repost_features(
@@ -377,10 +382,12 @@ def finalize_feed(items, user):
             content_id = item["data"].id
         else:
             content_id = item["data"].post_id
+
+        digest = hashlib.md5(
+            f"{content_id}:{seed}".encode()
+        ).hexdigest()
         
-        shuffle = (
-            content_id + seed
-        ) % 13
+        shuffle = int(digest[:8], 16) % 100
 
         age_score = (
             1.0 if item["created_at"] > timezone.now() - timedelta(hours=24)
@@ -390,7 +397,7 @@ def finalize_feed(items, user):
         item["final_score"] = (
             item["score"]
             + age_score * 2
-            + shuffle * 0.3
+            + shuffle * 0.05
             + base_penalty
         )
 

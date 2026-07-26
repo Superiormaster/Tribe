@@ -1,8 +1,9 @@
 'use client'
 
-import { createContext, useState, useMemo, useEffect, ReactNode } from "react";
+import { createContext, useState, useMemo, useContext, useEffect, ReactNode } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { apiRequest } from "@/utils/api";
+import { UserContext } from "@/components/UserContext";
 import { connectNotificationSocket } from "@/lib/notifications-socket";
 
 interface NotificationContextType {
@@ -28,6 +29,7 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
   const [toast, setToast] = useState<any | null>(null);
   const [count, setCount] = useState(0);
   const [socket, setSocket] = useState<WebSocket | null>(null);
+  const { user } = useContext(UserContext) || {};
 
   const normalizeNotifications = (data: any) => {
     if (Array.isArray(data)) return data;
@@ -54,9 +56,11 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
       return [n, ...list];
     });
   
-    setCount(prev => prev + 1);
-    setToast(n);
-    setTimeout(() => setToast(null), 4000);
+    if (!n.read && n.actor?.id !== user?.id) {
+        setCount(prev => prev + 1);
+        setToast(n);
+        setTimeout(() => setToast(null), 4000);
+    }
   };
   
   const dismissToast = () => setToast(null);

@@ -76,19 +76,31 @@ export default function HomePage() {
     })();
   }, []);
   
+  const resetFeedState = () => {
+    pagesCache.current = {};
+    lastPageRef.current = 1;
+  
+    setPosts([]);
+    setPage(1);
+    setHasMore(true);
+    setReachedLimit(false);
+  
+    loadingMoreRef.current = false;
+    hasMoreRef.current = true;
+  };
+  
   useEffect(() => {
     const refresh = async () => {
         setRefreshingFeed(true);
-        pagesCache.current = {};
-        setPosts([]);
-        await clearFeed();
-        await clearReels();
+        await clearFeed(
+          filter,
+          selectedTribe
+        );
+        await clearReels(filter, selectedTribe);
         hasCacheRef.current = false;
 
+        resetFeedState();
         setLoading(true);
-        setPage(1);
-        setHasMore(true);
-        setReachedLimit(false);
         await fetchPosts(1, true, true);
 
         if (filter === "all") {
@@ -122,6 +134,7 @@ export default function HomePage() {
     const reconnectFeed = async () => {
       try {
         setRefreshingFeed(true);
+        resetFeedState();
     
         await fetchPosts(1, true, true);
     
@@ -240,7 +253,7 @@ export default function HomePage() {
   
     try {
       let url =
-        "api/post/reels/";
+        "api/post/reels/?";
   
       if (
         filter === "tribes" &&
@@ -284,7 +297,7 @@ export default function HomePage() {
   
       reelsCache.current = shuffled;
       setReels(shuffled);
-      await saveReels(shuffled);
+      saveReels(filter, selectedTribe, shuffled);
     } catch (err) {
       console.error(
         "Failed to fetch reels",
@@ -350,13 +363,6 @@ export default function HomePage() {
   
       if (
         filter === "tribes" &&
-        !selectedTribe
-      ) {
-        return;
-      }
-  
-      if (
-        filter === "tribes" &&
         selectedTribe
       ) {
         url += `&tribe=${selectedTribe}`;
@@ -388,11 +394,11 @@ export default function HomePage() {
   
       const results = data.results ?? [];
 
-      setHasMore(!!data.next);
-      
-      if (results.length === 0) {
-          setHasMore(false);
+      if (!data.next) {
+        hasMoreRef.current = false;
       }
+
+      setHasMore(!!data.next);
   
       setFeedResponse(data);
   
@@ -404,8 +410,13 @@ export default function HomePage() {
         feed_type: item.type,
         is_starred_by_user: starredUserIds.has(item.data.user?.id),
       }));
-      
-      await saveFeed(pageNumber, newItems);
+
+      await saveFeed(
+        filter,
+        selectedTribe,
+        pageNumber,
+        newItems
+      );
 
       pagesCache.current[pageNumber] = newItems;
       
@@ -466,19 +477,16 @@ export default function HomePage() {
   const refreshFeed = async () => {
     if (loadingMore || loadingMoreRef.current) return;
   
-    await clearFeed();
-    await clearReels();
-
-    pagesCache.current = {};
-    setPosts([]);
+    await clearFeed(
+      filter,
+      selectedTribe
+    );
+    await clearReels(filter, selectedTribe);
     hasCacheRef.current = false;
+  
+    resetFeedState();
     setInitialLoad(true); 
     setLoading(true);
-
-    setPage(1);
-
-    setHasMore(true);
-    setReachedLimit(false);
   
     try {
       await apiRequest("api/feed/refresh/", {
@@ -512,7 +520,11 @@ export default function HomePage() {
     const nextPage = page + 1;
   
     // Show cached page instantly if available
-    const cached = await getFeed(nextPage);
+    const cached = await getFeed(
+      filter,
+      selectedTribe,
+      nextPage
+    );
   
     if (cached.length) {
       pagesCache.current[nextPage] = cached;
@@ -550,15 +562,52 @@ export default function HomePage() {
       setReels([]);
     }
   }, [filter]);
-  
+
   useEffect(() => {
-    if (filter === 'tribes') fetchUserTribes();
+    if (filter === "tribes") {
+        fetchUserTribes();
+    } else {
+        setTribes([]);
+        setSelectedTribe(null);
+        setShowAllTribes(false);
+    }
   }, [filter]);
   
   useEffect(() => {
+    hasCacheRef.current = false;
+
+    resetFeedState();
+
+    fetchPosts(1, true, true);
+
+    if (filter === "all") {
+        fetchReels();
+    }
+  }, [filter]);
+  
+  useEffect(() => {
+    if (filter !== "tribes") return;
+    if (!selectedTribe) return;
+
+    hasCacheRef.current = false;
+
+    resetFeedState();
+
+    fetchPosts(1, true, true);
+
+    if (isEntertainment) {
+        fetchReels();
+    }
+  }, [selectedTribe]);
+  
+  useEffect(() => {
     (async () => {
-      const cachedPosts = await getFeed(1);
-      const cachedReels = await getReels();
+      const cachedPosts = await getFeed(
+        filter,
+        selectedTribe,
+        1
+      );
+      const cachedReels = await getReels(filter, selectedTribe);
   
       hasCacheRef.current = cachedPosts.length > 0;
 

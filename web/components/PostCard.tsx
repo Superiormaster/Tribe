@@ -660,7 +660,10 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
       {/* Actions */}  
       <div className="flex flex-wrap items-center gap-6 mt-2">  
         <button  
-          onClick={handleLike}  
+          onClick={(e) => {
+            e.stopPropagation();
+            handleLike();
+          }}  
           className={`flex items-center gap-1 font-medium ${  
             isLikedByUser ? "text-blue-600" : "text-gray-500"  
           }`}  
@@ -672,7 +675,10 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
         </button>  
   
         <button  
-          onClick={handleMediaClick}  
+          onClick={(e) => {
+            e.stopPropagation();
+            handleMediaClick();
+          }}  
           className="flex items-center gap-1 text-gray-500 font-medium"  
         >  
           <MessageCircle className="mr-2" />

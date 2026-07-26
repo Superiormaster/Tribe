@@ -32,6 +32,10 @@ async function sendNotificationPush(
               notification.userId
             )
           : "",
+
+      thumbnail: notification.thumbnail || "",
+
+      communityCover: notification.communityCover || ""
     },
   });
 }

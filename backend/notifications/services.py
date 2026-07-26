@@ -25,6 +25,10 @@ def create_notification(
         return None
 
     actor = actors[0]
+
+    # Don't notify yourself
+    if recipient.id == actor.id:
+        return None
     
     settings = getattr(
         recipient,
@@ -142,6 +146,10 @@ def create_notification(
     
                 "userId":
                     str(actor.id),
+    
+                "thumbnail": post.thumbnail_url if post else "",
+    
+                "communityCover": community.cover_image if community else "",
             },
         )
     
