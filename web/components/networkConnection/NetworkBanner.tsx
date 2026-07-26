@@ -24,12 +24,6 @@ export default function NetworkBanner() {
     } else if (!serverReachable) {
         message = "🔴 Network Unavailable";
         color = "bg-red-500";
-    } else if (!socketConnected) {
-        message = "🟡 Connecting...";
-        color = "bg-yellow-500";
-    } else if (reconnecting) {
-        message = "🔄 Reconnecting...";
-        color = "bg-yellow-500";
     } else if (networkStatus === "poor") {
         message = `🔴 Poor Network • ${Math.round(latency ?? 0)}ms`;
         color = "bg-red-600";
@@ -66,3 +60,10 @@ export default function NetworkBanner() {
         </div>
     );
 }
+
+{/*} else if (!socketConnected) {
+        message = "🟡 Connecting...";
+        color = "bg-yellow-500";
+    } else if (reconnecting) {
+        message = "🔄 Reconnecting...";
+        color = "bg-yellow-500";*/}
