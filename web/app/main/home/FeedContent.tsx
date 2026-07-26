@@ -10,6 +10,7 @@ import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import { apiRequest } from '@/utils/api';
 import AppLink from '@/components/AppLink';
 import { REFRESH_HOME_EVENT } from "@/lib/authEvents";
+import { saveReels, saveFeed, getFeed, getReels, clearFeed, clearReels } from "@/lib/feedDb";
 
 interface MediaFile {
   thumbnail_url?: string;
@@ -20,15 +21,19 @@ interface MediaFile {
 export default function HomePage() {
   const [posts, setPosts] = useState<any[]>([]);
   const pagesCache = useRef<Record<number, any[]>>({});
+  const reelsCache = useRef<any[]>([]);
+  const lastPageRef = useRef(1);
   const [feedResponse, setFeedResponse] = useState<any>(null);
   const [reels, setReels] = useState<any[]>([]);
   const [reachedLimit, setReachedLimit] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [community, setCommunity] = useState<any>({});
+  const [initialLoad, setInitialLoad] = useState(true);
+  const preloaded = useRef(new Set());
   const [starredUsers, setStarredUsers] = useState<Set<number>>(new Set());
   const loadingRef = useRef(false);
   const loadingMoreRef = useRef(false);
   const hasMoreRef = useRef(true);
+  const hasCacheRef = useRef(false);
   const [filter, setFilter] = useState<'all' | 'tribes'>('all');
   const [tribes, setTribes] = useState<any[]>([]);
   const [selectedTribe, setSelectedTribe] = useState<number | null>(null);
@@ -54,9 +59,9 @@ export default function HomePage() {
   const [refreshingFeed, setRefreshingFeed] =
     useState(false);
   const showLoading =
-    (loading || reconnecting || refreshingFeed) &&
-    isOnline &&
-    posts.length === 0;
+    initialLoad &&
+    loading &&
+    isOnline;
 
   const isEntertainment =
   currentTribe?.name?.toLowerCase() === "entertainment";
@@ -76,10 +81,15 @@ export default function HomePage() {
         setRefreshingFeed(true);
         pagesCache.current = {};
         setPosts([]);
+        await clearFeed();
+        await clearReels();
+        hasCacheRef.current = false;
+
+        setLoading(true);
         setPage(1);
         setHasMore(true);
         setReachedLimit(false);
-        await fetchPosts(1, true);
+        await fetchPosts(1, true, true);
 
         if (filter === "all") {
             await fetchReels();
@@ -113,7 +123,7 @@ export default function HomePage() {
       try {
         setRefreshingFeed(true);
     
-        await fetchPosts(1, true);
+        await fetchPosts(1, true, true);
     
         if (
           cancelled ||
@@ -172,38 +182,53 @@ export default function HomePage() {
   
   useEffect(() => {
     reels.slice(0, 3).forEach((reel) => {
-      const media = reel.media_files?.[0];
   
-      if (!media?.thumbnail) return;
+      const url = reel.media_files?.[0]?.thumbnail;
+  
+      if (!url) return;
+  
+      if (preloaded.current.has(url)) return;
+  
+      preloaded.current.add(url);
   
       const img = new Image();
       img.loading = "eager";
       img.decoding = "async";
-      img.src = media.thumbnail;
+      img.src = url;
+  
     });
   }, [reels]);
   
   useEffect(() => {
-    posts.slice(0, 10).forEach((post: any) => {
-      // preload avatar
-      if (post.user?.avatar) {
-        const avatar = new Image();
-        avatar.loading = "eager";
-        avatar.decoding = "async";
-        avatar.src = post.user.avatar;
+    posts.slice(0, 10).forEach((post) => {
+  
+      if (post.user?.avatar &&
+          !preloaded.current.has(post.user.avatar)) {
+  
+        preloaded.current.add(post.user.avatar);
+  
+        const img = new Image();
+        img.loading = "eager";
+        img.decoding = "async";
+        img.src = post.user.avatar;
       }
   
-      // preload media
       post.media_files?.forEach((file: MediaFile) => {
+  
         const url = file.thumbnail_url ?? file.file_url;
-      
+  
         if (!url) return;
-      
+  
+        if (preloaded.current.has(url)) return;
+  
+        preloaded.current.add(url);
+  
         const img = new Image();
         img.loading = "eager";
         img.decoding = "async";
         img.src = url;
       });
+  
     });
   }, [posts]);
 
@@ -215,7 +240,7 @@ export default function HomePage() {
   
     try {
       let url =
-        "api/post/?content_type=short_video";
+        "api/post/reels/";
   
       if (
         filter === "tribes" &&
@@ -257,7 +282,9 @@ export default function HomePage() {
           () => Math.random() - 0.5
         );
   
+      reelsCache.current = shuffled;
       setReels(shuffled);
+      await saveReels(shuffled);
     } catch (err) {
       console.error(
         "Failed to fetch reels",
@@ -296,7 +323,8 @@ export default function HomePage() {
   // --- Fetch posts ---
   const fetchPosts = async (
     pageNumber = 1,
-    replace = false
+    replace = false,
+    showSkeleton = true
   ) => {
     if (
       loadingMore ||
@@ -310,7 +338,7 @@ export default function HomePage() {
       ++postsRequestIdRef.current;
   
     try {
-      if (pageNumber === 1) {
+      if (showSkeleton && !hasCacheRef.current && pageNumber === 1) {
         setLoading(true);
       } else {
         setLoadingMore(true);
@@ -358,59 +386,51 @@ export default function HomePage() {
         return;
       }
   
-      if (
-        !data ||
-        data.detail === "Not found."
-      ) {
-        setHasMore(false);
-        return;
+      const results = data.results ?? [];
+
+      setHasMore(!!data.next);
+      
+      if (results.length === 0) {
+          setHasMore(false);
       }
   
       setFeedResponse(data);
   
-      setPosts((prev: any[]) => {
-        const results =
-          Array.isArray(data.results)
-            ? data.results
-            : [];
-  
-        const newItems =
-          results.map((item:any) => ({
-            id:
-              item.type === "repost"
-                ? `repost-${item.data.id}`
-                : item.data.id,
-  
-            ...item.data,
-            feed_type: item.type,
-  
-            is_starred_by_user:
-              starredUserIds.has(
-                item.data.user?.id
-              ),
-          }));
+      const newItems = results.map((item: any) => ({
+        id: item.type === "repost"
+          ? `repost-${item.data.id}`
+          : item.data.id,
+        ...item.data,
+        feed_type: item.type,
+        is_starred_by_user: starredUserIds.has(item.data.user?.id),
+      }));
+      
+      await saveFeed(pageNumber, newItems);
 
-        pagesCache.current[pageNumber] = newItems;
+      pagesCache.current[pageNumber] = newItems;
+      
+      const merged = Object.keys(pagesCache.current)
+        .map(Number)
+        .sort((a, b) => a - b)
+        .flatMap(page => pagesCache.current[page]);
   
-        if (
-          replace ||
-          pageNumber === 1
-        ) {
-          return newItems;
+      if (replace || pageNumber === 1) {
+        const saved = sessionStorage.getItem("new_post");
+      
+        if (saved) {
+          const localPost = JSON.parse(saved);
+      
+          if (!merged.some(p => p.id === localPost.id)) {
+            merged.unshift(localPost);
+          }
+      
+          sessionStorage.removeItem("new_post");
         }
+      }
+      
+      setPosts(merged);
   
-        const map = new Map<any, any>();
-  
-        [...prev, ...newItems]
-          .forEach((item: any) => {
-            map.set(item.id, item);
-          });
-  
-        return Array.from(
-          map.values()
-        );
-      });
-  
+      lastPageRef.current = pageNumber;
       setPage(pageNumber);
     } catch (err) {
       console.error(
@@ -422,6 +442,9 @@ export default function HomePage() {
   
       setLoading(false);
       setLoadingMore(false);
+      if (initialLoad) {
+        setInitialLoad(false);
+      }
     }
   };
   
@@ -443,6 +466,13 @@ export default function HomePage() {
   const refreshFeed = async () => {
     if (loadingMore || loadingMoreRef.current) return;
   
+    await clearFeed();
+    await clearReels();
+
+    pagesCache.current = {};
+    setPosts([]);
+    hasCacheRef.current = false;
+    setInitialLoad(true); 
     setLoading(true);
 
     setPage(1);
@@ -455,17 +485,25 @@ export default function HomePage() {
         method: "POST"
       });
 
-      await fetchPosts(1, true);
+      await fetchPosts(1, true, true);
     } finally {
       setLoading(false);
     }
   };
   
   const loadMore = async () => {
-
-    if (loading || loadingMore || !hasMore || reachedLimit || loadingMoreRef.current || loadingRef.current || !hasMoreRef.current) return;
+    if (
+      loading ||
+      loadingMore ||
+      !hasMore ||
+      reachedLimit ||
+      loadingMoreRef.current ||
+      loadingRef.current ||
+      !hasMoreRef.current
+    ) {
+      return;
+    }
   
-    // LIMIT
     if (page >= MAX_PAGES) {
       setReachedLimit(true);
       return;
@@ -473,9 +511,22 @@ export default function HomePage() {
   
     const nextPage = page + 1;
   
-    await fetchPosts(nextPage);
+    // Show cached page instantly if available
+    const cached = await getFeed(nextPage);
   
-    setPage(nextPage);
+    if (cached.length) {
+      pagesCache.current[nextPage] = cached;
+  
+      const merged = Object.keys(pagesCache.current)
+        .map(Number)
+        .sort((a, b) => a - b)
+        .flatMap(page => pagesCache.current[page]);
+  
+      setPosts(merged);
+    }
+  
+    // Refresh the page from the server
+    await fetchPosts(nextPage);
   };
 
   // --- Fetch tribes user belongs to ---
@@ -505,21 +556,42 @@ export default function HomePage() {
   }, [filter]);
   
   useEffect(() => {
-    if (!isOnline) return;
+    (async () => {
+      const cachedPosts = await getFeed(1);
+      const cachedReels = await getReels();
+  
+      hasCacheRef.current = cachedPosts.length > 0;
 
-    if (pagesCache.current[1]) {
-      setPosts(pagesCache.current[1]);
-    }
+      if (cachedPosts.length) {
+        setPosts(cachedPosts);
+        setInitialLoad(false);
+        setLoading(false);
+      }
   
-    setPage(1)
+      if (cachedReels.length) {
+        setReels(cachedReels);
+      }
   
-    setHasMore(true)
-    setReachedLimit(false)
+      // Refresh in background
+      if (!cachedPosts.length) {
+        await fetchPosts(1, true, true);
+      } else {
+        fetchPosts(1, true, false);
+      }
   
-    fetchPosts(1, true)
+      if (filter === "all") {
+        fetchReels();
+      }
+    })();
+  }, [filter, selectedTribe]);
   
-  }, [filter, selectedTribe, isOnline])
-  
+  useEffect(() => {
+    return () => {
+      postsRequestIdRef.current++;
+      reelsRequestIdRef.current++;
+    };
+  }, []);
+
   const handlePostAction = async (
     action: string,
     postId: number
@@ -574,20 +646,6 @@ export default function HomePage() {
         break;
     }
   };
-  
-  const normalizePost = (item: any) => {
-    if (item.feed_type === "repost") {
-      return item.post || item.data?.post;
-    }
-    return item;
-  };
-
-  console.log(posts);
-  
-  console.log(posts.map((p: any) => ({
-    user: p?.user?.username,
-    starred: p?.user?.is_starred_by_user
-  })));
 
   return (
     <div className="mt-24 mb-14 w-full space-y-4">

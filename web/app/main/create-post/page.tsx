@@ -275,13 +275,8 @@ export default function CreatePostPage() {
 
   const handlePost = async () => {
     if (!content.trim() && imageFiles.length === 0 && !video) return;
-    if (!isEntertainmentTribe && !selectedCommunity) {
+    if ((mode === "community" || mode === "reel") && !selectedCommunity) {
       alert("Please select a community");
-      return;
-    }
-    
-    if (isEntertainmentTribe && !selectedCommunity) {
-      alert("Reels must belong to a community");
       return;
     }
 
@@ -342,6 +337,8 @@ export default function CreatePostPage() {
         community: selectedCommunity,
       };
   
+      let newPost = null;
+
       if (isEdit) {
         await apiRequest(`api/post/${postId}/`, {
           method: "PUT",
@@ -350,7 +347,7 @@ export default function CreatePostPage() {
   
         toast.success("Post updated!");
       } else {
-        await apiRequest(`api/post/`, {
+        newPost = await apiRequest(`api/post/`, {
           method: "POST",
           data: payload,
         });
@@ -381,9 +378,18 @@ export default function CreatePostPage() {
       if (draftId) {
           await deletePostDraft(draftId);
       }
-      push('/main/home');
+
+      if (newPost) {
+        sessionStorage.setItem(
+          "new_post",
+          JSON.stringify(newPost)
+        );
+      }
+
+      push("/main/home");
     } catch (err:any) {
       console.log("FULL ERROR:", err.data || err);
+      console.error(err);
       toast.error('Failed to create post');
       setFileProgress({});
     } finally {
@@ -491,7 +497,7 @@ export default function CreatePostPage() {
           )}
         
         </div>
-        <AppLink href="/main/draft" className="absolute top-24 right-10 text-sm font-bold mb-6">
+        <AppLink href="/main/draft" className="absolute top-24 right-10 text-sm text-gray-700 dark:text-gray-200 font-bold mb-6">
           Drafts • {draftCount}
         </AppLink>
 

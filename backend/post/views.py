@@ -64,7 +64,6 @@ def safe_int(val):
         return None
 
 class PostViewSet(viewsets.ModelViewSet):
-    queryset = Post.objects.select_related('user', 'community', 'repost').prefetch_related('likes', 'comments').order_by('-created_at')
     serializer_class = PostSerializer
     permission_classes = [permissions.IsAuthenticated]
     pagination_class = FeedPagination
@@ -167,6 +166,29 @@ class PostViewSet(viewsets.ModelViewSet):
   
       instance.is_deleted = True
       instance.save()
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        self.perform_create(serializer)
+
+        # Get the newly created post
+        post = Post.objects.select_related(
+            "user",
+            "community",
+        ).prefetch_related(
+            "likes",
+            "comments",
+            "media_files",
+        ).get(pk=serializer.instance.pk)
+
+        data = PostSerializer(
+            post,
+            context={"request": request}
+        ).data
+
+        return Response(data, status=status.HTTP_201_CREATED)
 
     # ✅ Create post with moderation
     def perform_create(self, serializer):
