@@ -14,9 +14,7 @@ def can_chat(user1, user2):
         status="accepted"
     ).exists()
 
-redis_client = redis.Redis(
-    host="127.0.0.1",
-    port=6379,
-    db=0,
+redis_client = redis.from_url(
+    settings.REDIS_URL,
     decode_responses=True
 )

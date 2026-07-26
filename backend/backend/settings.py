@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
+REDIS_URL = os.getenv("REDIS_URL")
 
 SECRET_KEY = os.getenv("SECRET_KEY")
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")
