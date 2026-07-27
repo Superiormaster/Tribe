@@ -633,23 +633,39 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
       {/* Post content */}  
       <div onClick={handleMediaClick} className="cursor-pointer">  
         {post.caption && (  
-          <Linkify
-            options={{
-              defaultProtocol: "https",
-              target: "_blank",
-              rel: "noopener noreferrer",
-              attributes: {
-                class: "text-indigo-600 hover:underline break-all",
-                onClick: (e: React.MouseEvent<HTMLAnchorElement>) => {
-                  e.stopPropagation();
+          <div className="mb2">
+            <Linkify
+              options={{
+                defaultProtocol: "https",
+                target: "_blank",
+                rel: "noopener noreferrer",
+                attributes: {
+                  class: "text-indigo-600 hover:underline break-all",
+                  onClick: (e: React.MouseEvent<HTMLAnchorElement>) => {
+                    e.stopPropagation();
+                  },
                 },
-              },
-            }}
-          >
-            <p className="mb-2 whitespace-pre-line text-gray-600 dark:text-gray-300">
-              {post.caption}
-            </p>
-          </Linkify>
+              }}
+            >
+              <p 
+                className="whitespace-pre-line mb-2 text-gray-600 dark:text-gray-300 line-clamp-3 overflow-hidden"
+              >
+                {post.caption}
+              </p>
+            </Linkify>
+  
+            {post.caption.length > 150 && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleMediaClick();
+                }}
+                className="mt-1 text-sm font-medium text-indigo-600 hover:underline"
+              >
+                More
+              </button>
+            )}
+          </div>
         )}  
         {post.media_files?.length > 0 && (
           <div className={`grid gap-2 ${

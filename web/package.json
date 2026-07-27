@@ -11,6 +11,7 @@
     "lint": "eslint"
   },
   "devDependencies": {
+    "@tailwindcss/line-clamp": "^0.4.4",
     "@types/node": "^20",
     "@types/nprogress": "^0.2.3",
     "@types/react": "^19",
