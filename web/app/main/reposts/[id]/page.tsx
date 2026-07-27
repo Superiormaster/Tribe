@@ -42,6 +42,18 @@ export default function RepostDetailPage() {
     id: null,
     type: null,
   });
+  
+  const onReplaceComment = (tempId: string, comment: any) => {
+    setComments(prev =>
+      prev.map(c => (c.id === tempId ? comment : c))
+    );
+  };
+  
+  const onRemoveComment = (tempId: string) => {
+    setComments(prev =>
+      prev.filter(c => c.id !== tempId)
+    );
+  };
  
   const videoRef = useRef<HTMLVideoElement | null>(null)
 
@@ -256,6 +268,7 @@ export default function RepostDetailPage() {
         <div className="max-w-3xl mx-auto p-3">
 
           <CommentInput
+            user={currentUser}
             postId={post.id}
             replyTarget={replyTarget}
             onClearReply={() =>
@@ -264,6 +277,8 @@ export default function RepostDetailPage() {
                 type: null,
               })
             }
+            onReplaceComment={onReplaceComment}
+            onRemoveComment={onRemoveComment}
             onNewComment={(newComment: any) =>
               setComments((prev: any[]) => [
                 newComment,

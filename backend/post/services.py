@@ -9,7 +9,7 @@ from users.models import BlockedUser
 from .weights import get_user_weights
 from .cache import *
 from django.db.models.functions import Least, Cast
-from users.utils import redis_client
+from users.utils import redis_client, get_interest_map
 from django.db.models import Avg, Count, Sum, Case, When, Value, FloatField, ExpressionWrapper, IntegerField, F, Q, Exists, OuterRef
 
 # -----------------------------
@@ -84,6 +84,119 @@ def build_global_feed(
     )
 
     weights = get_user_weights(user)
+    interest_map = get_interest_map(user)
+  
+    cached = get_cached_feed(redis_client, user.id, tribe_id)
+
+    if cached:
+        post_ids = [
+            item["id"]
+            for item in cached
+            if item["type"] == "post"
+        ]
+    
+        repost_ids = [
+            item["id"]
+            for item in cached
+            if item["type"] == "repost"
+        ]
+    
+        post_map = {
+          p.id: p
+          for p in compute_main_feed_score(
+              annotate_features(
+                  build_base_queryset(user).filter(id__in=post_ids),
+                  user,
+                  joined_communities,
+                  starred_ids,
+                  two_weeks_ago,
+              ),
+              weights,
+          )
+        }
+    
+        repost_map = {
+            r.id: r
+            for r in 
+              compute_main_feed_score(
+                annotate_repost_features(
+                  Repost.objects.filter(
+                      id__in=repost_ids,
+                      is_deleted=False,
+                  )
+                  .select_related(
+                      "user",
+                      "post",
+                      "post__user",
+                      "post__community",
+                  )
+                  .annotate(
+                      likes_count=Count("post__likes", distinct=True),
+                      comments_count=Count("post__comments", distinct=True),
+                      shares_count=Count("post__shares", distinct=True),
+                      repost_count=Count("post__reposts", distinct=True),
+                      is_liked=Exists(
+                          Like.objects.filter(
+                              post=OuterRef("post_id"),
+                              user=user
+                          )
+                      ),
+                      views_count=F("post__views_count"),
+                      skipped_views=F("post__skipped_views"),
+                  ),
+                  user,
+                  joined_communities,
+                  starred_ids,
+                  two_weeks_ago,
+                ),
+                weights,
+              )
+        }
+    
+        items = []
+    
+        for item in cached:
+    
+            if item["type"] == "post":
+    
+                obj = post_map.get(item["id"])
+    
+                if obj:
+                    items.append({
+                        "type": "post",
+                        "data": obj,
+                    })
+    
+            else:
+    
+                obj = repost_map.get(item["id"])
+    
+                if obj:
+                    items.append({
+                        "type": "repost",
+                        "data": obj,
+                    })
+    
+        for item in items:
+            topics = (
+                item["data"].topics
+                if item["type"] == "post"
+                else item["data"].post.topics
+            )
+    
+            bonus = sum(
+                interest_map.get(str(topic).lower(), 0)
+                for topic in (topics or [])
+            )
+        
+            item["final_score"] = getattr(item["data"], "final_score", 0) + bonus
+    
+        items.sort(
+            key=lambda x: x["final_score"],
+            reverse=True,
+        )
+    
+        return items
 
     posts = build_base_queryset(user)
 
@@ -175,7 +288,7 @@ def build_global_feed(
     )
 
     items = []
-
+  
     for p in posts:
         items.append({
             "type": "post",
@@ -195,6 +308,54 @@ def build_global_feed(
     items = finalize_feed(
         items,
         user
+    )
+
+    for item in items:
+
+      if item["type"] == "post":
+          topics = item["data"].topics
+      else:
+          topics = item["data"].post.topics
+  
+      bonus = 0
+  
+      for topic in (topics or []):
+          bonus += interest_map.get(
+              topic.lower(),
+              0,
+          )
+  
+      item["final_score"] += bonus
+
+    items.sort(
+        key=lambda x: x["final_score"],
+        reverse=True,
+    )
+  
+    cache_data = []
+
+    for item in items:
+    
+        if item["type"] == "post":
+    
+            cache_data.append({
+                "type": "post",
+                "id": item["data"].id,
+            })
+    
+        else:
+    
+            cache_data.append({
+                "type": "repost",
+                "id": item["data"].id,
+            })
+  
+    set_cached_feed(
+        redis_client,
+        user.id,
+        cache_data,
+        ttl=300,
+        tribe_id=tribe_id,
     )
 
     return items

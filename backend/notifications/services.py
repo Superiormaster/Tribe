@@ -23,8 +23,6 @@ def create_notification(
 
     print("========== CREATE_NOTIFICATION ==========")
     print("type:", type)
-    print("recipient:", recipient.id)
-    print("actors:", [a.id for a in actors])
 
     if not actors:
         return None
@@ -121,9 +119,6 @@ def create_notification(
         }
     )
   
-    print("===== CREATE NOTIFICATION =====")
-    print("Recipient:", recipient.id)
-    print("Actor:", actor.id)
     print("Recipient token:", getattr(recipient, "fcm_token", None))
     print("===============================")
     # push notification

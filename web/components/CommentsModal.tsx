@@ -27,6 +27,18 @@ export default function CommentsModal({
     type: null,
   });
   
+  const onReplaceComment = (tempId: string, comment: any) => {
+    setComments(prev =>
+      prev.map(c => (c.id === tempId ? comment : c))
+    );
+  };
+  
+  const onRemoveComment = (tempId: string) => {
+    setComments(prev =>
+      prev.filter(c => c.id !== tempId)
+    );
+  };
+  
   return (
     <div className="fixed inset-0 z-50 bg-black/70 flex flex-col justify-end">
 
@@ -53,11 +65,14 @@ export default function CommentsModal({
         {/* ✅ INPUT ALWAYS FIXED AT BOTTOM */}
         <div className="border-t p-2">
           <CommentInput
+            user={user ?? null}
             postId={postId}
             replyTarget={replyTarget}
             onNewComment={(comment) =>
               setComments((prev) => [...prev, comment])
             }
+            onReplaceComment={onReplaceComment}
+            onRemoveComment={onRemoveComment}
             onClearReply={() =>
               setReplyTarget({ id: null, type: null })
             }

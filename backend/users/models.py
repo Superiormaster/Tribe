@@ -260,3 +260,19 @@ class UserDevice(models.Model):
     last_seen = models.DateTimeField(auto_now=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
+
+class UserInterest(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="interests",
+    )
+
+    topic = models.CharField(max_length=50)
+
+    score = models.FloatField(default=0)
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("user", "topic")

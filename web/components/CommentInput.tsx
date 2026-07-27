@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { apiRequest } from "@/utils/api";
 import { Send } from "lucide-react";
 
@@ -12,34 +12,89 @@ type ReplyTarget = {
 
 interface CommentInputProps {
   postId: number;
+  user: any;
   replyTarget?: ReplyTarget | null;
   onNewComment: (comment: any) => void;
+  onReplaceComment?: (tempId: string, comment: any) => void;
+  onRemoveComment?: (tempId: string) => void;
   onClearReply?: () => void;
 }
 
 export default function CommentInput({
   postId,
+  user,
   replyTarget,
   onNewComment,
+  onReplaceComment,
+  onRemoveComment,
   onClearReply,
 }: CommentInputProps) {
   const [text, setText] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [sending, setSending] = useState(false);
+
+  const resize = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+  };
 
   const handleSend = async () => {
-    if (!text.trim()) return;
-
-    const res = await apiRequest("api/comments/", {
-      method: "POST",
-      data: {
-        post: Number(postId),
-        text: text.trim(),
-        parent: replyTarget?.id || null,
-      },
-    });
-
+    const message = text.trim();
+  
+    if (!message || sending) return;
+  
+    setSending(true);
+  
+    const tempId = `temp-${Date.now()}`;
+  
+    const optimisticComment = {
+      id: tempId,
+      text: message,
+      created_at: new Date().toISOString(),
+      user,
+      replies: [],
+      likes_count: 0,
+      is_liked: false,
+      pending: true,
+    };
+  
+    // Clear UI immediately
     setText("");
-    onNewComment(res);
     onClearReply?.();
+  
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+  
+    // Show immediately
+    onNewComment(optimisticComment);
+  
+    try {
+      const res = await apiRequest("api/comments/", {
+        method: "POST",
+        data: {
+          post: Number(postId),
+          text: message,
+          parent: replyTarget?.id || null,
+        },
+      });
+  
+      // Replace temporary comment
+      onReplaceComment?.(tempId, res);
+  
+    } catch (err) {
+      console.error(err);
+  
+      // Remove temp comment if request failed
+      onRemoveComment?.(tempId);
+  
+      alert("Failed to send comment.");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -57,18 +112,24 @@ export default function CommentInput({
       )}
 
       <div className="flex gap-2">
-        <input
+        <textarea
+          ref={textareaRef}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          rows={1}
+          onChange={(e) => {
+              setText(e.target.value);
+              resize();
+          }}
           placeholder={
-            replyTarget?.id
-              ? "Write a reply..."
-              : "Write a comment..."
+              replyTarget?.id
+                  ? "Write a reply..."
+                  : "Write a comment..."
           }
-          className="flex-1 px-3 py-2 rounded outline-none text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800"
+          className="flex-1 resize-none overflow-hidden rounded px-3 py-2 text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 outline-none"
         />
 
         <button
+          disabled={sending}
           onClick={handleSend}
           className="bg-indigo-600 text-white px-3 rounded"
         >

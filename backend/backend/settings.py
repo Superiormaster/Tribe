@@ -81,7 +81,6 @@ INSTALLED_APPS = [
     'chats',
     'communities',
     'wallets',
-    'ai_app',
     'post',
     'notifications.apps.NotificationsConfig',
     'rest_framework.authtoken',

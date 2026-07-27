@@ -1,17 +1,34 @@
 "use client";
 
-import AppLink from '@/components/AppLink';
+import { useContext, useState } from "react";
 import Image from "next/image";
+import AppLink from "@/components/AppLink";
+import LoadingScreen from "@/components/LoadingScreen";
+import { UserContext } from "@/components/UserContext";
+import { useNavigation } from "@/utils/useNavigation";
 import { tribe2 } from "@/assets";
-import LoadingScreen from '@/components/LoadingScreen';
-import useAuthRedirect from "@/utils/useAuthRedirect";
-import { useState, useEffect } from 'react';
 
 export default function Home() {
-  const [loading, setLoading] = useState(true);
-  useAuthRedirect();
-  
-  if (loading) return <LoadingScreen onComplete={() => setLoading(false)} />;
+  const { replace } = useNavigation();
+  const { user, loadingUser } = useContext(UserContext)!;
+
+  const [loadingSplash, setLoadingSplash] = useState(true);
+
+  // Never show the landing page until we know whether
+  // the user is logged in.
+  if (loadingSplash || loadingUser) {
+    return (
+      <LoadingScreen
+        onComplete={() => {
+          if (user) {
+            replace("/main/home");
+          } else {
+            setLoadingSplash(false);
+          }
+        }}
+      />
+    );
+  }
 
   return (
     <div className="relative h-screen bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-gray-100">

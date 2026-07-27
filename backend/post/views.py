@@ -10,6 +10,7 @@ from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 from .services import *
 from .cache import *
+from ai.topics import extract_topics
 from .weights import get_user_weights
 from django.utils import timezone
 from datetime import timedelta
@@ -17,11 +18,12 @@ from django_filters.rest_framework import DjangoFilterBackend
 from .models import Post, Like, Comment, Feed, PostMedia, CommentLike, Repost, Share, PostView
 from rest_framework.permissions import IsAuthenticated, BasePermission
 from communities.models import Community, Tribe, CommunityMembership
-from users.utils import redis_client
+from users.utils import redis_client, get_interest_map
 from rest_framework.exceptions import PermissionDenied
 from notifications.services import create_notification
 from random import randint
 from users.models import Star, BlockedUser
+from users.interest import update_interest
 from feedback.models import Report
 from .serializers import PostSerializer, LikeSerializer, CommentSerializer, RepostSerializer
 
@@ -232,6 +234,25 @@ class PostViewSet(viewsets.ModelViewSet):
           user=user,
           is_approved=is_approved
       )
+      
+      text = " ".join(
+        filter(
+            None,
+            [
+                post.caption,
+            ]
+        )
+      )
+      
+      topics = extract_topics(text)
+      
+      post.topics = topics
+      
+      post.save(
+          update_fields=[
+              "topics",
+          ]
+      )
   
       media_files = self.request.data.get("media_files", [])
       for media in media_files:
@@ -438,6 +459,20 @@ class PostViewSet(viewsets.ModelViewSet):
             ])
     
         post.refresh_from_db()
+    
+        if completed:
+          value = 4
+        elif skipped:
+          value = -3
+        else:
+          value = 1
+    
+        for topic in post.topics:
+          update_interest(
+              user,
+              topic,
+              value,
+          )
 
         return Response({
             "status": "view recorded",
@@ -525,16 +560,34 @@ class PostViewSet(viewsets.ModelViewSet):
         qs = compute_reels_score(qs)
     
         # 🔥 ORDER BY SCORE (TikTok style)
-        qs = qs.order_by('-final_score', '-created_at')
+        interest_map = get_interest_map(user)
+
+        reels = list(qs)
+
+        for reel in reels:
+            bonus = 0
+    
+            for topic in (reel.topics or []):
+                bonus += interest_map.get(
+                    topic.lower(),
+                    0
+                )
+        
+            reel.final_score += bonus
+        
+        reels.sort(
+            key=lambda x: x.final_score,
+            reverse=True,
+        )
     
         # pagination
-        page = self.paginate_queryset(qs)
+        page = self.paginate_queryset(reels)
     
         if page is not None:
             serializer = self.get_serializer(page, many=True, context={'request': request})
             return self.get_paginated_response(serializer.data)
     
-        serializer = self.get_serializer(qs, many=True, context={'request': request})
+        serializer = self.get_serializer(reels, many=True, context={'request': request})
         return Response(serializer.data)
 
     @action(detail=True, methods=["post"])
@@ -546,7 +599,14 @@ class PostViewSet(viewsets.ModelViewSet):
             post=post,
             platform=request.data.get("platform", "unknown")
         )
-        
+    
+        for topic in post.topics:
+          update_interest(
+              request.user,
+              topic,
+              10,
+          )
+    
         if created and post.user != request.user:
 
           create_notification(
@@ -1085,6 +1145,15 @@ class LikeViewSet(viewsets.ModelViewSet):
 
         likes_count = post.likes.count()
 
+        value = 5 if liked else -5
+
+        for topic in post.topics:
+          update_interest(
+              request.user,
+              topic,
+              value,
+          )
+
         return Response({
             "liked": liked,
             "likes_count": likes_count
@@ -1160,6 +1229,15 @@ class CommentViewSet(viewsets.ModelViewSet):
           user=self.request.user,
           parent=parent
       )
+
+      post = comment.post
+
+      for topic in post.topics:
+        update_interest(
+            self.request.user,
+            topic,
+            8,
+        )
   
       if comment.post.user != self.request.user:
 

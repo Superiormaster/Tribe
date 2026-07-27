@@ -28,6 +28,7 @@ class Post(models.Model):
         null=True,
         related_name='posts'
     )
+    topics = models.JSONField(default=list, blank=True)
     replay_count = models.IntegerField(default=0)
     skipped_views = models.IntegerField(default=0)
     views_count = models.PositiveIntegerField(default=0)

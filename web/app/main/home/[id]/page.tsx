@@ -63,6 +63,18 @@ export default function PostPage() {
     type: null,
   });
   
+  const onReplaceComment = (tempId: string, comment: any) => {
+    setComments(prev =>
+      prev.map(c => (c.id === tempId ? comment : c))
+    );
+  };
+  
+  const onRemoveComment = (tempId: string) => {
+    setComments(prev =>
+      prev.filter(c => c.id !== tempId)
+    );
+  };
+  
   const fetchCurrentUser = async () => {
     try {
       const user = await apiRequest('api/users/me/')
@@ -274,11 +286,14 @@ export default function PostPage() {
       <div className="fixed bottom-0 left-0 w-full border-t bg-white dark:bg-gray-900 z-50">
         <div className="max-w-3xl mx-auto flex gap-2 p-3">
           <CommentInput
+            user={currentUser}
             postId={postId}
             replyTarget={replyTarget}
             onClearReply={() =>
               setReplyTarget({ id: null, type: null })
             }
+            onReplaceComment={onReplaceComment}
+            onRemoveComment={onRemoveComment}
             onNewComment={(newComment: any) =>
               setComments((prev) => [newComment, ...prev])
             }

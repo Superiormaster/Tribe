@@ -2,16 +2,18 @@
 
 import json
 
-def get_cached_feed(redis_client, user_id):
-    key = f"feed:user:{user_id}"
+def get_cached_feed(redis_client, user_id, tribe_id=None):
+    key = f"feed:user:{user_id}:tribe:{tribe_id or 'all'}"
     cached = redis_client.get(key)
     if cached:
         return json.loads(cached)
     return None
 
 
-def set_cached_feed(redis_client, user_id, post_ids, ttl=300):
-    key = f"feed:user:{user_id}"
+def set_cached_feed(redis_client, user_id, post_ids, ttl=300, tribe_id=None):
+    ttl = 300 if ttl is None else int(ttl)
+
+    key = f"feed:user:{user_id}:tribe:{tribe_id or 'all'}"
     redis_client.setex(key, ttl, json.dumps(post_ids))
 
 

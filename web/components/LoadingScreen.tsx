@@ -27,7 +27,9 @@ export default function LoadingScreen({ onComplete, refreshOnComplete, forceHome
   
         setTimeout(() => {
           if (refreshOnComplete) {
-            refreshHome();
+            setTimeout(() => {
+              refreshHome();
+            }, 200);
           }
         
           onComplete?.();
@@ -36,7 +38,7 @@ export default function LoadingScreen({ onComplete, refreshOnComplete, forceHome
     }, 150);
   
     return () => clearInterval(interval);
-  }, [onComplete]);
+  }, [onComplete, refreshOnComplete]);
 
   return (
     <div className='fixed inset-0 z-50 bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 flex flex-col items-center justify-center'>
