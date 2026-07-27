@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import Avatar from '@/components/Avatar'
 import Skeleton from '@/components/Skeleton'
 import CommentList from '@/components/CommentList'
+import Linkify from "linkify-react";
 import CommentInput from '@/components/CommentInput'
 import ShareButton from '@/components/share/ShareButton'
 import { useShareSheet } from '@/components/share/ShareContext'
@@ -173,9 +174,23 @@ export default function RepostDetailPage() {
 
         {/* CAPTION */}
         {post.caption && (
-          <p className="mb-4 whitespace-pre-line text-gray-700 dark:text-gray-300">
-            {post.caption}
-          </p>
+          <Linkify
+            options={{
+              defaultProtocol: "https",
+              target: "_blank",
+              rel: "noopener noreferrer",
+              attributes: {
+                class: "text-indigo-600 hover:underline break-all",
+                onClick: (e: React.MouseEvent<HTMLAnchorElement>) => {
+                  e.stopPropagation();
+                },
+              },
+            }}
+          >
+            <p className="mb-2 whitespace-pre-line text-gray-600 dark:text-gray-300">
+              {post.caption}
+            </p>
+          </Linkify>
         )}
 
         {/* MEDIA */}

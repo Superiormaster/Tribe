@@ -14,6 +14,7 @@ import { useSmartPostView } from '@/lib/useSmartPostView'
 import { useContext } from 'react'  
 import { UserContext } from '@/components/UserContext'
 import { useInView } from '@/components/UseInView'
+import Linkify from "linkify-react";
 import RepostActions from '@/components/repost/RepostActions';
 import { formatCount } from '@/utils/formatCount';
   
@@ -632,9 +633,23 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
       {/* Post content */}  
       <div onClick={handleMediaClick} className="cursor-pointer">  
         {post.caption && (  
-          <p className="text-gray-800 dark:text-gray-200 line-clamp-3 mb-2 whitespace-pre-line">  
-            {post.caption}  
-          </p>  
+          <Linkify
+            options={{
+              defaultProtocol: "https",
+              target: "_blank",
+              rel: "noopener noreferrer",
+              attributes: {
+                class: "text-indigo-600 hover:underline break-all",
+                onClick: (e: React.MouseEvent<HTMLAnchorElement>) => {
+                  e.stopPropagation();
+                },
+              },
+            }}
+          >
+            <p className="mb-2 whitespace-pre-line text-gray-600 dark:text-gray-300">
+              {post.caption}
+            </p>
+          </Linkify>
         )}  
         {post.media_files?.length > 0 && (
           <div className={`grid gap-2 ${

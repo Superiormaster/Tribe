@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { MoreVertical } from "lucide-react";
+import Linkify from "linkify-react";
 
 interface ReelCaptionProps {
     reel: any;
@@ -77,13 +78,26 @@ export default function ReelCaption({
 
             <div className="mt-2 max-w-[70%]">
 
-                <p
+                <Linkify
+                  options={{
+                    defaultProtocol: "https",
+                    target: "_blank",
+                    rel: "noopener noreferrer",
+                    attributes: {
+                      class: "text-indigo-600 hover:underline break-all",
+                      onClick: (e: React.MouseEvent<HTMLAnchorElement>) => {
+                        e.stopPropagation();
+                      },
+                    },
+                  }}
+                >
+                  <p 
                     className={`text-sm ${
                         expanded ? "" : "line-clamp-1"
-                    }`}
-                >
+                    }`}>
                     {reel.caption}
-                </p>
+                  </p>
+                </Linkify>
 
                 {reel.caption?.length > 60 && (
 

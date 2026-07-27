@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useSearchParams } from 'next/navigation';
 import Skeleton from '@/components/Skeleton';
 import Avatar from '@/components/Avatar';
+import Linkify from "linkify-react";
 import { AlarmClock, ThumbsUp, ChartNoAxesColumn, MessageCircle } from 'lucide-react';
 import CommentList from '@/components/CommentList'
 import CommentInput from '@/components/CommentInput'
@@ -263,9 +264,23 @@ export default function PostPage() {
         <PostHeader />
   
         {post.caption && (
-          <p className="mb-2 whitespace-pre-line text-gray-600 dark:text-gray-300">
-            {post.caption}
-          </p>
+          <Linkify
+            options={{
+              defaultProtocol: "https",
+              target: "_blank",
+              rel: "noopener noreferrer",
+              attributes: {
+                class: "text-indigo-600 hover:underline break-all",
+                onClick: (e: React.MouseEvent<HTMLAnchorElement>) => {
+                  e.stopPropagation();
+                },
+              },
+            }}
+          >
+            <p className="mb-2 whitespace-pre-line text-gray-600 dark:text-gray-300">
+              {post.caption}
+            </p>
+          </Linkify>
         )}
   
         <PostMedia />
