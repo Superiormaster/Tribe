@@ -126,13 +126,13 @@ def create_notification(
     print("Actor:", actor.id)
     print("Recipient token:", getattr(recipient, "fcm_token", None))
     print("===============================")
-    print("Recipient token:", token)
     # push notification
     token = getattr(
         recipient,
         "fcm_token",
         None,
     )
+    print("Recipient token:", token)
     
     if token:
         print("Calling push_notification()")
