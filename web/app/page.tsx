@@ -1,6 +1,6 @@
 "use client";
 
-import { useContext, useState } from "react";
+import { useContext, useEffect } from "react";
 import Image from "next/image";
 import AppLink from "@/components/AppLink";
 import LoadingScreen from "@/components/LoadingScreen";
@@ -12,22 +12,23 @@ export default function Home() {
   const { replace } = useNavigation();
   const { user, loadingUser } = useContext(UserContext)!;
 
-  const [loadingSplash, setLoadingSplash] = useState(true);
+  useEffect(() => {
+    if (!loadingUser && user) {
+        replace("/main/home");
+    }
+  }, [loadingUser, user]);
 
   // Never show the landing page until we know whether
   // the user is logged in.
-  if (loadingSplash || loadingUser) {
+  if (loadingUser) {
     return (
       <LoadingScreen
-        onComplete={() => {
-          if (user) {
-            replace("/main/home");
-          } else {
-            setLoadingSplash(false);
-          }
-        }}
+        onComplete={() => {}}
       />
     );
+  }
+  if (user) {
+    return null;
   }
 
   return (
