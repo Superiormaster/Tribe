@@ -46,6 +46,7 @@ from .views import (
     presence_receivers,
     RevokeSessionView,
     DeviceListView,
+    save_fcm_token,
 
     # Multi-account
     NormalLoginView,
@@ -98,6 +99,7 @@ urlpatterns = [
         name="report-user"
     ),
     path("privacy-settings/", PrivacySettingsView.as_view(), name="privacy-settings"),
+    path("fcm-token/", save_fcm_token),
 
     # -----------------------------
     # PRESENCE (ONLINE / LAST SEEN)

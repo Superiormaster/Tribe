@@ -90,6 +90,10 @@ class User(AbstractUser):
 
     is_creator = models.BooleanField(default=False)
     stars = models.ManyToManyField("self", symmetrical=False, related_name="starred_by")
+    fcm_token = models.TextField(
+        blank=True,
+        null=True,
+    )
 
     def generate_verification_code(self):
         self.verification_code = get_random_string(48)

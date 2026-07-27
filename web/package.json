@@ -39,6 +39,7 @@
     "countries-list": "^3.3.0",
     "emoji-picker-react": "^4.19.1",
     "express": "^5.2.1",
+    "firebase": "^12.16.0",
     "firebase-admin": "^14.1.0",
     "framer-motion": "^12.38.0",
     "idb": "^8.0.3",

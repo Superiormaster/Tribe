@@ -5,6 +5,8 @@ import type { Dispatch, SetStateAction } from "react";
 import { apiRequest } from "@/utils/api";
 import { UserContext } from "@/components/UserContext";
 import { connectNotificationSocket } from "@/lib/notifications-socket";
+import { messaging } from "@/lib/firebase";
+import { getToken } from "firebase/messaging";
 
 interface NotificationContextType {
   notifications: any[];
@@ -65,6 +67,34 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
   
   const dismissToast = () => setToast(null);
 
+  useEffect(() => {
+    const setupPush = async () => {
+      if (!user) return;
+  
+      const permission = await Notification.requestPermission();
+      console.log("Permission:", permission);
+  
+      if (permission !== "granted") return;
+  
+      const token = await getToken(messaging, {
+        vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
+      });
+  
+      console.log("FCM TOKEN:", token);
+  
+      await apiRequest("api/users/fcm-token/", {
+        method: "POST",
+        data: {
+          token,
+        },
+      });
+    };
+  
+    setupPush();
+  
+    // existing notification loading...
+  }, [user]);
+  
   useEffect(() => {
     // Load first page and count unread
     apiRequest("api/notifications/?page=1").then(data => {

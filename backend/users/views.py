@@ -1925,3 +1925,10 @@ def ping(request):
     return JsonResponse({
         "status": "ok"
     })
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def save_fcm_token(request):
+    request.user.fcm_token = request.data.get("token")
+    request.user.save(update_fields=["fcm_token"])
+    return Response({"success": True})
