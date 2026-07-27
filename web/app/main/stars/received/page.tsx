@@ -36,7 +36,7 @@ export default function MyStarsPage() {
           {user.avatar ? (
             <img src={user.avatar} className="w-10 h-10 rounded-full border-gray-700 dark:border-gray-200 border" />
           ) : (
-            <div className="w-10 h-10 bg-gray-400 rounded-full flex items-center justify-center text-white">
+            <div className="w-10 h-10 bg-gray-400 rounded-full flex items-center justify-center text-gray-700 dark:text-white">
               {user.username.slice(0,2).toUpperCase()}
             </div>
           )}

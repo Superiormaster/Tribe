@@ -263,20 +263,20 @@ export default function CommentList({
                   <input
                     value={editText}
                     onChange={(e) => setEditText(e.target.value)}
-                    className="w-full p-2 border rounded"
+                    className="w-full p-2 border text-sm text-gray-700 dark:text-gray-200 rounded"
                   />
               
                   <div className="flex gap-2 mt-2">
                     <button
                       onClick={() => handleEdit(item.id)}
-                      className="bg-green-600 text-white px-3 py-1 rounded"
+                      className="bg-green-600 text-sm text-white px-3 py-1 rounded"
                     >
                       Save
                     </button>
               
                     <button
                       onClick={() => setEditTarget(null)}
-                      className="px-3 py-1"
+                      className="px-3 py-1 text-sm text-gray-700 dark:text-gray-200"
                     >
                       Cancel
                     </button>
@@ -537,20 +537,20 @@ export default function CommentList({
                         <input
                           value={editText}
                           onChange={(e) => setEditText(e.target.value)}
-                          className="w-full p-2 border rounded"
+                          className="w-full text-sm p-2 text-gray-700 dark:text-gray-200 border rounded"
                         />
                     
                         <div className="flex gap-2 mt-2">
                           <button
                             onClick={() => handleEdit(comment.id)}
-                            className="bg-green-600 text-white px-3 py-1 rounded"
+                            className="bg-green-600 text-sm text-white px-3 py-1 rounded"
                           >
                             Save
                           </button>
                     
                           <button
                             onClick={() => setEditTarget(null)}
-                            className="px-3 py-1"
+                            className="px-3 text-sm text-gray-700 dark:text-gray-200 py-1"
                           >
                             Cancel
                           </button>

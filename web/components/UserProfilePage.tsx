@@ -5,7 +5,7 @@ import { useNavigation } from "@/utils/useNavigation"
 import AppLink from '@/components/AppLink';
 import { UserContext } from '@/components/UserContext';
 import { 
-  Home, Star, Camera, Image, Video,
+  Home, Star, Camera, Image, Send, Video,
 } from 'lucide-react';
 import {
   DndContext,

@@ -23,14 +23,14 @@ export default function MyStarsPage() {
   }
 
   return (
-    <div className="p-4 my-20 space-y-3 max-w-xl mx-auto">
+    <div className="p-4 my-20 text-gray-700 dark:text-gray-200 space-y-3 max-w-xl mx-auto">
       <h1 className="text-xl font-bold mb-4">⭐ People I Starred</h1>
 
       {users.map(user => (
         <AppLink
           key={user.id}
           href={`/main/profile/${user.username}`}
-          className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer"
+          className="flex items-center gap-3 p-3 border border-indigo-600 dark:border-gray-200 rounded-lg cursor-pointer"
         >
           {user.avatar ? (
             <img src={user.avatar} className="w-10 h-10 rounded-full" />
