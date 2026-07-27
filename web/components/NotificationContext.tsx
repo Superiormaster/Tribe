@@ -5,8 +5,8 @@ import type { Dispatch, SetStateAction } from "react";
 import { apiRequest } from "@/utils/api";
 import { UserContext } from "@/components/UserContext";
 import { connectNotificationSocket } from "@/lib/notifications-socket";
-import { messaging } from "@/lib/firebase";
-import { getToken } from "firebase/messaging";
+import { getMessaging, getToken, isSupported } from "firebase/messaging";
+import { app } from "@/lib/firebase";
 
 interface NotificationContextType {
   notifications: any[];
@@ -76,8 +76,29 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
   
       if (permission !== "granted") return;
   
+      if (
+        typeof window === "undefined" ||
+        !("serviceWorker" in navigator)
+      ) {
+        return;
+      }
+
+      const supported = await isSupported();
+
+      if (!supported) {
+        console.log("Messaging not supported");
+        return;
+      }
+  
+      const messaging = getMessaging(app);
+  
+      const registration = await navigator.serviceWorker.register(
+        "/firebase-messaging-sw.js"
+      );
+  
       const token = await getToken(messaging, {
         vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
+        serviceWorkerRegistration: registration,
       });
   
       console.log("FCM TOKEN:", token);

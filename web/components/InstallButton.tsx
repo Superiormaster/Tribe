@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { Toaster } from 'react-hot-toast';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt(): Promise<void>;
@@ -20,8 +19,7 @@ export default function InstallButton() {
     // Already running as installed PWA
     const alreadyInstalled =
       window.matchMedia("(display-mode: standalone)").matches ||
-      (window.navigator as any).standalone ||
-      localStorage.getItem("tribe-installed") === "true";
+      (window.navigator as any).standalone;
   
     if (alreadyInstalled) {
       setInstalled(true);
@@ -35,9 +33,9 @@ export default function InstallButton() {
 
     const installedHandler = () => {
       console.log("APP INSTALLED EVENT");
-      localStorage.setItem("tribe-installed", "true");
       setInstalled(true);
       setPromptEvent(null);
+      toast.success("Tribe installed");
     };
 
     window.addEventListener(
@@ -65,8 +63,7 @@ export default function InstallButton() {
   const handleInstall = async () => {
     if (
       window.matchMedia("(display-mode: standalone)").matches ||
-      (window.navigator as any).standalone ||
-      localStorage.getItem("tribe-installed") === "true"
+      (window.navigator as any).standalone
     ) {
       toast("Tribe is already installed.");
       return;
@@ -92,6 +89,7 @@ export default function InstallButton() {
   };
 
   if (installed) return null;
+  if (!promptEvent) return null;
 
   return (
     <button 
