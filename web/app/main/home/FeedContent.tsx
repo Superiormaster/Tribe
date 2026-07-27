@@ -92,16 +92,7 @@ export default function HomePage() {
   useEffect(() => {
     const refresh = async () => {
         setRefreshingFeed(true);
-        await clearFeed(
-          filter,
-          selectedTribe
-        );
-        await clearReels(filter, selectedTribe);
-        hasCacheRef.current = false;
-
-        resetFeedState();
-        setLoading(true);
-        await fetchPosts(1, true, true);
+        await refreshFeed();
 
         if (filter === "all") {
             await fetchReels();
