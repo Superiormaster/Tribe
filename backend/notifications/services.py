@@ -21,6 +21,11 @@ def create_notification(
     merge_window_hours=6
 ):
 
+    print("========== CREATE_NOTIFICATION ==========")
+    print("type:", type)
+    print("recipient:", recipient.id)
+    print("actors:", [a.id for a in actors])
+
     if not actors:
         return None
 
@@ -107,6 +112,7 @@ def create_notification(
 
     serialized = NotificationSerializer(notif).data
 
+    print("Sending websocket notification")
     async_to_sync(channel_layer.group_send)(
         f"notifications_{recipient.id}",
         {
@@ -115,6 +121,12 @@ def create_notification(
         }
     )
   
+    print("===== CREATE NOTIFICATION =====")
+    print("Recipient:", recipient.id)
+    print("Actor:", actor.id)
+    print("Recipient token:", getattr(recipient, "fcm_token", None))
+    print("===============================")
+    print("Recipient token:", token)
     # push notification
     token = getattr(
         recipient,
@@ -123,6 +135,7 @@ def create_notification(
     )
     
     if token:
+        print("Calling push_notification()")
         push_notification(
             token,
             recipient.id,
