@@ -98,11 +98,11 @@ urlpatterns = [
         create_tribe,
     ),
     path(
-        "tribes/<int:pk>/update/",
+        "tribes/<int:tribe_id>/update/",
         update_tribe,
     ),
     path(
-        "tribes/<int:pk>/delete/",
+        "tribes/<int:tribe_id>/delete/",
         delete_tribe,
     ),
 ]
