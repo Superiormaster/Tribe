@@ -38,7 +38,6 @@ app.use(
 
 const CLIENT_URL =
   process.env.CLIENT_URL;
-console.log("client", CLIENT_URL)
 
 app.use(cors({
   origin: CLIENT_URL,

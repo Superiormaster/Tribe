@@ -1,6 +1,7 @@
 self.addEventListener(
   "push",
   event => {
+    console.log("📲 PUSH EVENT");
     const payload =
       event.data?.json() ||
       {};
@@ -41,6 +42,8 @@ self.addEventListener(
 self.addEventListener(
   "notificationclick",
   event => {
+    console.log("📲 Notification clicked");
+    console.log(event.notification.data);
     event.notification.close();
 
     const data =

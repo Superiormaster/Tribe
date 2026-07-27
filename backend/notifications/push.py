@@ -9,6 +9,11 @@ def push_notification(
     recipient_id,
     notification
 ):
+    print("========== DJANGO PUSH ==========")
+    print("Recipient:", recipient_id)
+    print("Token exists:", bool(token))
+    print("NODE_URL:", settings.NODE_URL)
+    print("Notification:", notification)
     try:
         requests.post(
             f"{settings.NODE_URL}/push/notification",
@@ -19,6 +24,9 @@ def push_notification(
             },
             timeout=5,
         )
+        print("Node status:", response.status_code)
+        print("Node response:", response.text)
+        print("================================")
     except Exception as e:
         print(
             "Push failed:",
