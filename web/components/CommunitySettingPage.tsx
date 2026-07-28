@@ -18,6 +18,10 @@ export default function CommunitySettingsPage({
   const [loading, setLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(true);
   const [isMuted, setIsMuted] = useState(true);
+  const [permissions, setPermissions] = useState({
+    allow_reels: false,
+    allow_videos: true,
+  });
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
   useEffect(() => {
@@ -30,6 +34,7 @@ export default function CommunitySettingsPage({
     );
 
     setCommunity(data);
+    setPermissions(data.permissions);
     setLoading(false);
   };
 
@@ -46,6 +51,7 @@ export default function CommunitySettingsPage({
 
           require_post_approval: community.require_post_approval,
           join_approval_required: community.join_approval_required,
+          allow_videos: permissions.allow_videos,
         },
       }
     );
@@ -217,6 +223,22 @@ return (
     
     Require Join Approval  
   </label>  
+  
+  {permissions.allow_reels && (
+    <label className="flex items-center gap-2">
+      <input
+        type="checkbox"
+        checked={permissions.allow_videos}
+        onChange={(e) =>
+          setPermissions({
+            ...permissions,
+            allow_videos: e.target.checked,
+          })
+        }
+      />
+      Allow Videos Instead of Reels
+    </label>
+  )}
 
   <p className="dark:text-gray-200 text-gray-700">  
     Owner: {community.owner?.username}  

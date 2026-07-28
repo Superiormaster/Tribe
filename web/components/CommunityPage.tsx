@@ -542,11 +542,7 @@ export default function CommunityPage({
             )}
           </AppLink>
           <AppLink
-            href={`/main/create-post?communityId=${communityId}&mode=${
-                  community?.tribe?.name === "Entertainment"
-                    ? "reel"
-                    : "community"
-                }`}
+            href={`/main/create-post?communityId=${communityId}`}
             className="p-2 flex-1 rounded-xl bg-gray-100 text-gray-500 dark:text-gray-400 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 cursor-pointer"
           >
             What's happening in this community?

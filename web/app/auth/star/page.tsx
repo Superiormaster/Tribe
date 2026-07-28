@@ -31,11 +31,7 @@ type Person = {
   requestPending?: boolean
   requestReceived?: boolean
 
-  distance?: number | null
-
   type?: string
-
-  mutual_interests?: string[]
 }
 
 export default function DiscoverPeoplePage() {
@@ -278,22 +274,6 @@ export default function DiscoverPeoplePage() {
                     <h2 className="font-semibold text-lg text-gray-900 dark:text-white truncate">
                       {person.username}
                     </h2>
-
-                    {person.distance !== null &&
-                     person.distance !== undefined && (
-                      <p className="text-xs text-gray-500">
-                        {person.distance} km away
-                      </p>
-                    )}
-
-                    {person.mutual_interests &&
-                     person.mutual_interests.length > 0 && (
-                      <p className="text-xs text-indigo-500 mt-1">
-                        {person.mutual_interests
-                          .slice(0, 2)
-                          .join(', ')}
-                      </p>
-                    )}
 
                   </div>
 

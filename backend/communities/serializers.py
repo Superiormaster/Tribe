@@ -141,6 +141,7 @@ class CommunitySerializer(serializers.ModelSerializer):
     tribe = TribeSerializer(read_only=True)
     requested = serializers.SerializerMethodField()
     invited = serializers.SerializerMethodField()
+    permissions = serializers.SerializerMethodField()
 
     class Meta:
         model = Community
@@ -150,6 +151,7 @@ class CommunitySerializer(serializers.ModelSerializer):
             'description',
             'cover_image',
             'intro_video',
+            'allow_videos',
             'require_post_approval',
             'join_approval_required',
             'tribe',
@@ -158,7 +160,8 @@ class CommunitySerializer(serializers.ModelSerializer):
             'joined',
             'my_role',
             'invited',
-            'requested'
+            'requested',
+            'permissions',
         ]
 
         read_only_fields = [
@@ -212,6 +215,24 @@ class CommunitySerializer(serializers.ModelSerializer):
           return membership.role
   
       return "member"
+
+    def get_permissions(self, obj):
+      allow_reels = (
+          obj.tribe.allow_reels
+          if obj.tribe and not obj.override_reels
+          else False
+      )
+  
+      allow_videos = (
+          obj.allow_videos
+          if obj.override_reels
+          else not allow_reels
+      )
+  
+      return {
+          "allow_reels": allow_reels,
+          "allow_videos": allow_videos,
+      }
 
     def get_invited(self, obj):
         request = self.context.get("request")

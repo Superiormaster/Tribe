@@ -65,7 +65,7 @@ export default function DraftsPage() {
   };
 
   return (
-    <div className="max-w-2xl mt-20 mx-auto p-4">
+    <div className="max-w-2xl text-gray-700 dark:text-gray-200 my-20 mx-auto p-4">
 
       <h1 className="text-2xl font-bold mb-6">
         📝 Drafts • {drafts.length}

@@ -85,6 +85,8 @@ class Community(models.Model):
         default=False
     )
     tribe = models.ForeignKey(Tribe, null=True, on_delete=models.SET_NULL, related_name="communities")
+    allow_videos = models.BooleanField(null=True, blank=True, default=True)
+    override_reels = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

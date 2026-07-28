@@ -491,6 +491,20 @@ class CommunityViewSet(viewsets.ModelViewSet):
                         "username": community.owner.username,
                     }
                 ),
+                "permissions": {
+                    "allow_reels": (
+                        community.tribe.allow_reels
+                        if community.tribe and not community.override_reels
+                        else False
+                    ),
+                    "allow_videos": (
+                        community.allow_videos
+                        if community.override_reels
+                        else not (
+                            community.tribe and community.tribe.allow_reels
+                        )
+                    ),
+                },
             })
 
         # UPDATE SETTINGS
@@ -515,7 +529,17 @@ class CommunityViewSet(viewsets.ModelViewSet):
                 "join_approval_required",
                 community.join_approval_required
             )
+            allow_videos = request.data.get("allow_videos")
 
+            if allow_videos is not None:
+              allow_videos = bool(allow_videos)
+          
+              if allow_videos:
+                  community.override_reels = True
+                  community.allow_videos = True
+              else:
+                  community.override_reels = False
+                  community.allow_videos = False
             community.save()
 
             return Response({"status": "updated", "require_post_approval": community.require_post_approval, "join_approval_required": community.join_approval_required})

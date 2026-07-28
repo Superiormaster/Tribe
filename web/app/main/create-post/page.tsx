@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useContext } from 'react';
-import { useSearchParams, usePathname } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useNavigation } from "@/utils/useNavigation"
 import AppLink from '@/components/AppLink';
 import toast from 'react-hot-toast';
@@ -20,8 +20,8 @@ import { uploadToCloudinary } from '@/utils/cloudinary';
 
 export default function CreatePostPage() {
   const [content, setContent] = useState('');
-  const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [loadingCommunity, setLoadingCommunity] = useState(false);
   const draftId = searchParams.get("draftId");
   const [imageFiles, setImageFiles] = useState<(File | string)[]>([]);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
@@ -50,16 +50,17 @@ export default function CreatePostPage() {
   const isCommunityPost = !!selectedCommunity;
   
   const [communityData, setCommunityData] = useState<any>(null);
-  const [isEntertainmentTribe, setIsEntertainmentTribe] = useState<boolean | null>(null);
+  const [permissions, setPermissions] = useState({
+    allow_reels: false,
+    allow_videos: false,
+  });
   const isGlobal = mode === 'global';
   const isCommunity = mode === 'community';
   const isReel = mode === 'reel';
   
-  const isEntertainment = isEntertainmentTribe === true;
-  
-  const allowReel = isEntertainmentTribe === true;
+  const allowReel = permissions.allow_reels;
+  const allowVideo = permissions.allow_videos;
   const allowImages = true;
-  const allowVideo = !isEntertainmentTribe;
 
   const MAX_IMAGES = 5;
 
@@ -82,8 +83,8 @@ export default function CreatePostPage() {
                   : "auto-global",
   
               title: selectedCommunity
-                  ? "Community Post"
-                  : "Global Post",
+                ? `${communityData?.tribe?.name} • ${communityData?.name}`
+                : "Global Post",
   
               content,
   
@@ -149,11 +150,9 @@ export default function CreatePostPage() {
 
       await saveManualPostDraft({
   
-          title: allowReel
-              ? "Entertainment"
-              : selectedCommunity
-              ? "Community Post"
-              : "Global Post",
+          title: selectedCommunity
+            ? `${communityData?.tribe?.name} • ${communityData?.name}`
+            : "Global Post",
   
           communityName:
               communityData?.name || "",
@@ -180,16 +179,6 @@ export default function CreatePostPage() {
     setImageFiles([]);
     setVideo(null);
   }, [selectedCommunity]);
-  
-  useEffect(() => {
-    if (!selectedCommunity) return;
-  
-    if (isEntertainmentTribe) {
-      isEntertainmentTribe;
-    } else {
-      !!selectedCommunity && !isEntertainmentTribe;
-    }
-  }, [selectedCommunity, isEntertainmentTribe]);
 
   // Handle adding images
   const handleImagesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -211,7 +200,7 @@ export default function CreatePostPage() {
 
     const file = e.target.files[0];
   
-    if (isEntertainmentTribe) {
+    if (allowReel) {
       // ✅ ONLY REELS
       setVideo(file);
       setImageFiles([]);
@@ -317,9 +306,9 @@ export default function CreatePostPage() {
 
       let contentType = "text";
 
-      if (isEntertainmentTribe && video) {
+      if (allowReel && video) {
         contentType = "short_video";
-      } else if (video) {
+      } else if (allowVideo && video) {
         contentType = "long_video";
       } else if (
         imageFiles.length > 0 ||
@@ -398,25 +387,31 @@ export default function CreatePostPage() {
   };
   
   useEffect(() => {
+    if (!selectedCommunity) return;
+
     const fetchCommunity = async () => {
-      if (!selectedCommunity) return;
-  
-      try {
-        const data = await apiRequest(`api/communities/${selectedCommunity}/`);
-        setCommunityData(data);
-  
-        // 🔥 THIS IS THE REAL CHECK
-        if (data.tribe?.name === "Entertainment") {
-          setIsEntertainmentTribe(true);
-        } else {
-          setIsEntertainmentTribe(false);
+        try {
+            setLoadingCommunity(true);
+
+            const data = await apiRequest(
+                `api/communities/${selectedCommunity}/`
+            );
+
+            setCommunityData(data);
+            setPermissions(data.permissions);
+            setMode(
+              data.permissions.allow_reels
+                ? "reel"
+                : "community"
+            );
+
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoadingCommunity(false);
         }
-  
-      } catch (err) {
-        console.error("Failed to fetch community", err);
-      }
     };
-  
+
     fetchCommunity();
   }, [selectedCommunity]);
   
@@ -433,7 +428,7 @@ export default function CreatePostPage() {
       );
     };
   
-  if (selectedCommunity && isEntertainmentTribe === null) {
+  if (loadingCommunity) {
     return <Skeleton />;
   }
   
@@ -446,7 +441,11 @@ export default function CreatePostPage() {
 
   return (
     <div className="max-w-3xl mx-auto p-4 my-20 space-y-4">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{allowReel ? "Create Entertainment Post" : selectedCommunity ? "Create Community Post" : isEdit ? "Edit Post" : "Create Post"}
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{allowReel
+        ? `Create ${communityData?.tribe?.name} Post`
+        : selectedCommunity ? "Create Community Post"
+        : isEdit ? "Edit Post" 
+        : "Create Post"}
       </h1>
 
       <div className="bg-white dark:bg-gray-900 p-4 rounded-2xl shadow-sm transition-colors space-y-3">
@@ -483,7 +482,7 @@ export default function CreatePostPage() {
           )}
         
           {/* REEL */}
-          {isReel && isEntertainment && (
+          {isReel && allowReel && (
             <button
               onClick={() => {
                 setMode('reel');
@@ -492,12 +491,12 @@ export default function CreatePostPage() {
                 isReel ? 'bg-indigo-600 text-white' : 'bg-gray-300 text-gray-500'
               }`}
             >
-              Entertainment Post
+              {`${communityData?.tribe?.name} Post`}
             </button>
           )}
         
         </div>
-        <AppLink href="/main/draft" className="absolute top-24 right-10 text-sm text-gray-700 dark:text-gray-200 font-bold mb-6">
+        <AppLink href="/main/draft" className="absolute top-36 right-10 border rounded-xl text-sm p-3 text-gray-700 dark:text-gray-200 font-bold mb-6">
           Drafts • {draftCount}
         </AppLink>
 
