@@ -34,14 +34,7 @@ export default function InstallButton() {
       e.preventDefault();
       console.log("beforeinstallprompt fired");
 
-      checkInstalled();
-
-      if (
-        !window.matchMedia("(display-mode: standalone)").matches &&
-        !(window.navigator as any).standalone
-      ) {
-        setPromptEvent(e as BeforeInstallPromptEvent);
-      }
+      setPromptEvent(e as BeforeInstallPromptEvent);
     };
 
     const installedHandler = () => {
@@ -94,6 +87,11 @@ export default function InstallButton() {
 
     setPromptEvent(null);
   };
+  
+  console.log({
+    installed,
+    hasPrompt: !!promptEvent,
+  });
 
   if (installed) return null;
 
