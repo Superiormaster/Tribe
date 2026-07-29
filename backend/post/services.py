@@ -36,7 +36,8 @@ def build_base_queryset(user):
 
     return Post.objects.filter(
         is_deleted=False,
-        is_approved=True
+        is_approved=True,
+        is_rejected=False
     ).exclude(
         user_id__in=muted_ids
     ).exclude(

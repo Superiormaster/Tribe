@@ -49,10 +49,6 @@ export default function LoginPage() {
     }
   }, [loadingUser, user, replace]);
   
-  if (loadingUser) {
-    return <LoadingScreen onComplete={() => {}} />;
-  }
-  
   // Load Google script
   useEffect(() => {
     if (typeof window === "undefined") return;

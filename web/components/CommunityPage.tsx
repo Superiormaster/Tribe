@@ -632,7 +632,7 @@ export default function CommunityPage({
         }
       />
 
-      {selectMode && selectedPosts.length > 0 && (
+      {selectMode && canModerate && selectedPosts.length > 0 && (
         <ModerationBar
           selectedCount={selectedPosts.length}
           onCancel={() => {

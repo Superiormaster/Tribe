@@ -352,19 +352,6 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
         isEmbedded ? '' : 'border-b-4 border-gray-600 p-4'
       }`}>
 
-    {canBulkSelect && (
-      <button
-        onClick={() => onSelect?.(post.id)}
-        className={`absolute top-3 right-14 w-7 h-7 rounded-full border-2 ${
-          isSelected
-            ? "bg-indigo-600 border-indigo-600"
-            : "bg-white border-gray-400"
-        }`}
-      >
-        ✓
-      </button>
-    )}
-
       {showPinnedLabel && (post.profile_pinned || post.community_pinned) && (
         <div
           className={`text-sm font-semibold ${

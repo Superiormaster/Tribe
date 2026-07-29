@@ -127,8 +127,19 @@ def create_notification(
         "fcm_token",
         None,
     )
-    print("Recipient token:", token)
+  
+    thumbnail = ""
+
+    if post:
+        media = post.media_files.filter(
+            media_type="video"
+        ).first() or post.media_files.filter(
+            media_type="image"
+        ).first()
     
+        if media:
+            thumbnail = media.thumbnail or media.file
+  
     if token:
         try:
           print("Calling push_notification()")
@@ -156,7 +167,7 @@ def create_notification(
                   "userId":
                       str(actor.id),
       
-                  "thumbnail": post.thumbnail_url if post else "",
+                  "thumbnail": thumbnail,
       
                   "communityCover": community.cover_image if community else "",
               },

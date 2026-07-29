@@ -7,6 +7,8 @@ import CommentsModal from "@/components/CommentsModal";
 import { useReels } from "@/reelsHook/useReels";
 import { useReelPlayer } from  "@/reelsHook/useReelsPlayer";
 import ReelItem from  "@/components/reels/ReelItem";
+import NoReels from "@/components/reels/NoReels";
+import ReelSkeleton from "@/components/reels/ReelSkeleton";
 
 export default function ReelsPage() {
     const params = useParams();
@@ -18,6 +20,21 @@ export default function ReelsPage() {
         reels: reelsState.reels,
         loadMore: reelsState.loadMore,
     });
+  
+    if (reelsState.loading) {
+      return <ReelSkeleton/>; 
+    }
+
+    const videoReels = reelsState.reels.filter(
+      (reel: any) =>
+        reel.media_files?.some(
+          (m: any) => m.media_type === "video"
+        )
+    );
+    
+    if (videoReels.length === 0) {
+      return <NoReels />;
+    }
 
     return (
         <div

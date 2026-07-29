@@ -45,42 +45,46 @@ export function useReelPlayer({
 
     // Auto play / pause
     useEffect(() => {
-        const observer =
-            new IntersectionObserver(
-                entries => {
-                    entries.forEach(entry => {
-
-                        const video =
-                            entry.target as HTMLVideoElement;
-
-                        const id =
-                            Number(
-                                video.dataset.id
-                            );
-
-                        if (
-                            entry.isIntersecting
-                        ) {
-                            video.play()
-                                .catch(() => {});
-                            setActiveId(id);
-                        } else {
-                            video.pause();
-                        }
-                    });
-                },
-                {
-                    threshold: 0.8,
-                }
-            );
-
-        videoRefs.current.forEach(video=> {
-            if (video) {
-                observer.observe(video);
-            }
-        });
-        return () =>
-            observer.disconnect();
+      const observer = new IntersectionObserver(
+          (entries) => {
+              let nextActive: HTMLVideoElement | null = null;
+  
+              entries.forEach((entry) => {
+                  const video = entry.target as HTMLVideoElement;
+  
+                  if (entry.intersectionRatio >= 0.8) {
+                      nextActive = video;
+                  }
+              });
+  
+              videoRefs.current.forEach((video) => {
+                  if (!video) return;
+  
+                  if (video === nextActive) {
+                      video.play().catch(() => {});
+  
+                      setActiveId(
+                          Number(video.dataset.id)
+                      );
+                  } else {
+                      video.pause();
+  
+                      video.currentTime = 0;
+  
+                      video.muted = true;
+                  }
+              });
+          },
+          {
+              threshold: 0.95,
+          }
+      );
+  
+      videoRefs.current.forEach((video) => {
+          if (video) observer.observe(video);
+      });
+  
+      return () => observer.disconnect();
     }, [reels]);
 
     // Infinite loading + preload next reel
@@ -103,8 +107,13 @@ export function useReelPlayer({
             videoRefs.current.get(
                 reels[index + 1]?.id
             );
+        
         if (isOnline && next) {
-          next.load();
+            next.pause();
+        
+            next.muted = true;
+        
+            next.load();
         }
     }, [activeId, reels, loadMore]);
 
@@ -114,7 +123,9 @@ export function useReelPlayer({
           if (!activeId) return;
           const video =
               videoRefs.current.get(activeId);
-          video?.play().catch(() => {});
+          if (video?.paused) {
+            video.play().catch(() => {});
+          }
       };
   
       window.addEventListener(

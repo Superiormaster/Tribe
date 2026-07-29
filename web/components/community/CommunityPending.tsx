@@ -59,6 +59,7 @@ export default function CommunityPending({
               post={post}
       
               hideCommunityName
+              hideStarButton
       
               showManageButtons={canModerate}
               canBulkSelect={selectMode}
@@ -85,7 +86,7 @@ export default function CommunityPending({
       
           )}
 
-          {selectMode && (
+          {selectMode && canModerate && (
             <div className="absolute top-2 right-2 flex gap-2">
 
               <button

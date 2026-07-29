@@ -5,7 +5,6 @@ import { useNavigation } from "@/utils/useNavigation"
 import AppLink from '@/components/AppLink';
 import toast from 'react-hot-toast';
 import { Toaster } from 'react-hot-toast';
-import { NotificationContext } from "@/components/NotificationContext";
 import {
   saveAutoPostDraft,
   saveManualPostDraft,
@@ -32,7 +31,6 @@ export default function CreatePostPage() {
   const isEdit = searchParams.get('edit') === 'true';
   const postId = searchParams.get('postId');
   const modeParam = searchParams.get('mode');
-  const { addNotification } = useContext(NotificationContext);
   const [draftCount, setDraftCount] = useState(0);
 
   const [mode, setMode] = useState<'global' | 'community' | 'reel'>(
@@ -238,11 +236,13 @@ export default function CreatePostPage() {
   
         if (data.media_files?.length) {
           let imageUrls: string[] = [];
-          let videoUrl: string | null = null;
   
           data.media_files.forEach((m: any) => {
             if (m.media_type === "video") {
-              videoUrl = m.file_url;
+              setVideo({
+                url: m.file_url,
+                thumbnail: m.thumbnail_url,
+              });
             } else if (m.media_type === "image") {
               imageUrls.push(m.file_url);
             }
@@ -301,7 +301,15 @@ export default function CreatePostPage() {
       
       const existingMedia = [
         ...imageFiles.filter(i => typeof i === "string").map(url => ({ url, type: "image" })),
-        ...(typeof video === "string" ? [{ url: video, type: "video" }] : [])
+        ...(video &&
+          typeof video !== "string" &&
+          !(video instanceof File)
+            ? [{
+                url: video.url,
+                type: "video",
+                thumbnail: video.thumbnail,
+              }]
+            : [])
       ];
 
       let contentType = "text";
@@ -361,11 +369,13 @@ export default function CreatePostPage() {
           await deletePostDraft(draftId);
       }
 
-      if (newPost) {
-        sessionStorage.setItem(
-          "new_post",
-          JSON.stringify(newPost)
-        );
+      if (newPost.is_approved) {
+          sessionStorage.setItem(
+              "new_post",
+              JSON.stringify(newPost)
+          );
+      } else {
+          toast.success("Post submitted for approval.");
       }
 
       push("/main/home");

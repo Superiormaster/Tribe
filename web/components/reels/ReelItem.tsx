@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from "react";
+import { useRef, useEffect, useState } from "react";
 import { Heart } from "lucide-react";
 import ReelSpinner from "@/components/Spinner";
 import { useSmartPostView } from "@/lib/useSmartPostView";
@@ -10,7 +10,6 @@ import ReelSkeleton from "./ReelSkeleton";
 import ReelCaption from "./ReelCaption";
 import ReelMenu from "./ReelMenu";
 import ReelReportModal from "./ReelReportModal";
-import NoReels from "./NoReels";
 import { useNavigation } from "@/utils/useNavigation"
 import { useDoubleTapLike } from '@/reelsHook/useDoubleTapLike';
 import { useReelBuffer } from '@/reelsHook/useReelBuffer';
@@ -91,16 +90,25 @@ export default function ReelItem({
         ? "metadata"
         : "none";
   
-  const videoReels = reels.filter(
-    (reel: any) =>
-      reel.media_files?.some(
-        (m: any) => m.media_type === "video"
-      )
-  );
+  useEffect(() => {
+    const video = reelVideoRef.current;
   
-  if (videoReels.length === 0) {
-    return <NoReels />;
-  }
+    if (!video) return;
+  
+    const isActive = player.activeId === reel.id;
+  
+    if (isActive) {
+      video.muted = player.muted;
+  
+      video.play().catch(() => {});
+    } else {
+      video.pause();
+  
+      video.currentTime = 0;
+  
+      video.muted = true;
+    }
+  }, [player.activeId, player.muted, reel.id]);
 
   return (
     <div
@@ -155,8 +163,12 @@ export default function ReelItem({
         onPlaying={() => setBuffering(false)}
         onCanPlay={(e) => {
           player.loadedVideos.current.add(reel.id);
+        
           setBuffering(false);
-          e.currentTarget.play().catch(() => {});
+        
+          if (player.activeId === reel.id) {
+            e.currentTarget.play().catch(() => {});
+          }
         }}
         onStalled={() => setBuffering(true)}
         onSuspend={() => setBuffering(true)}

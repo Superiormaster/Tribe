@@ -64,6 +64,14 @@ def get_user_role(user, community):
 
     return membership.role
 
+def can_manage_posts(user, community):
+    role = get_user_role(user, community)
+
+    return (
+        user == community.owner or
+        role in ("admin", "moderator")
+    )
+
 def can_moderate(actor, target, community):
     actor_role = get_user_role(actor, community)
     target_role = get_user_role(target, community)
@@ -878,8 +886,8 @@ class CommunityViewSet(viewsets.ModelViewSet):
         for post in posts:
             community = post.community
     
-            if not can_moderate(request.user, community):
-                continue
+            if not can_manage_posts(request.user, community):
+              continue
     
             if action == "approve":
                 post.is_approved = True

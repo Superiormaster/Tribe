@@ -104,6 +104,7 @@ class PostSerializer(serializers.ModelSerializer):
             "profile_pin_order",
             "community_pinned",
             "community_pin_order",
+            "is_approved",
         ]
         read_only_fields = ['id', 'user', 'created_at', 'updated_at', 'media_files']
 
