@@ -1,10 +1,11 @@
 "use client";
 
 import AppLink from '@/components/AppLink';
-import { Home, MessageSquare, PlusCircle, Bell } from "lucide-react";
+import { Home, MessageSquare, PlusCircle, Bell, Video } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useContext } from "react";
 import { UserContext } from "@/components/UserContext";
+import { apiRequest } from "@/utils/api";
 import { NotificationContext } from "@/components/NotificationContext"
 
 export default function BottomNav() {
@@ -17,6 +18,7 @@ export default function BottomNav() {
     
     { name: "Notifications", path: "/main/notification", icon: Bell },
     { name: "Create", path: "/main/create-post", icon: PlusCircle },
+    { name: "Reels", path: "/main/reels", icon: Video },
   ];
 
   const profileActive = pathname.startsWith("/main/profile");
@@ -28,7 +30,26 @@ export default function BottomNav() {
       {navItems.map(({ name, path, icon: Icon }) => {
         const active = pathname === path;
         return (
-          <AppLink key={name} prefetch={false} href={path} className="flex flex-col items-center text-xs relative">
+          <AppLink
+            key={name}
+            href={path}
+            prefetch={false}
+            onClick={async () => {
+              if (name === "Notifications") {
+                setCount(0);
+          
+                try {
+                  await apiRequest(
+                    "api/notifications/read-all/",
+                    { method: "POST" }
+                  );
+                } catch (e) {
+                  console.error(e);
+                }
+              }
+            }}
+            className="flex flex-col items-center text-xs relative"
+          >
             <Icon className={active ? "text-indigo-600" : "text-gray-500"} />
             {name === "Notifications" && count > 0 && (
               <span className="absolute -top-1 right-4 bg-red-500 text-white text-[10px] px-1 rounded-full">

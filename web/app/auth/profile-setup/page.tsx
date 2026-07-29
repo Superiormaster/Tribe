@@ -191,6 +191,10 @@ export default function ProfileSetup() {
       if (avatarUrl) formData.append('avatar', avatarUrl)
       if (coverUrl) formData.append('cover_photo', coverUrl)
   
+      for (const [key, value] of formData.entries()) {
+        console.log(key, value);
+      }
+
       await apiRequest('api/users/me/', {
         method: 'PATCH',
         data: formData
@@ -199,9 +203,14 @@ export default function ProfileSetup() {
       push('/auth/discover')
   
     } catch (err: any) {
-  
-      setError(err.message || 'Something went wrong')
-  
+        console.log(err);
+        console.log(err.response?.data);
+        setError(
+            JSON.stringify(
+                err.response?.data ?? err
+            ) || 'Something went wrong'
+        );
+
     } finally {
   
       setLoading(false)

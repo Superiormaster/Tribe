@@ -32,6 +32,7 @@ export default function TopNavWrapper() {
     /^\/main\/messages\/chat\/\d+/.test(pathname) ||
     /^\/main\/community\/\d+\/chat/.test(pathname) ||
     /^\/main\/reels\/\d+/.test(pathname) ||
+    /^\/main\/reels/.test(pathname) ||
     selectionMode;
 
   if (hideNavbar) return null;

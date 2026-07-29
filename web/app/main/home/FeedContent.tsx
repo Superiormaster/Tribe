@@ -4,6 +4,7 @@ import { useNavigation } from "@/utils/useNavigation"
 import PostCard from '@/components/PostCard';
 import ReelCard from '@/components/ReelCard';
 import RepostCard from '@/components/repost/RepostCard';
+import LoadingScreen from '@/components/LoadingScreen';
 import Skeleton from '@/components/Skeleton';
 import { UserContext } from "@/components/UserContext";
 import { useNetwork } from "@/components/networkConnection/NetworkContext";
@@ -19,6 +20,24 @@ interface MediaFile {
 }
 
 export default function HomePage() {
+  const { user, loadingUser } = useContext(UserContext)!;
+  const { replace, push } = useNavigation();
+  
+  useEffect(() => {
+    if (loadingUser) return;
+  
+    if (!user) {
+      replace("/");
+    }
+  }, [loadingUser, user, replace]);
+  
+  if (loadingUser) {
+    return <LoadingScreen onComplete={() => {}} />;
+  }
+  
+  if (!user) {
+    return null;
+  }
   const [posts, setPosts] = useState<any[]>([]);
   const pagesCache = useRef<Record<number, any[]>>({});
   const reelsCache = useRef<any[]>([]);
@@ -39,8 +58,6 @@ export default function HomePage() {
   const [selectedTribe, setSelectedTribe] = useState<number | null>(null);
   const [showAllTribes, setShowAllTribes] = useState(false);
   const visibleTribes = showAllTribes ? tribes : tribes.slice(0, 3);
-  const { push, replace } = useNavigation();
-  const { user } = useContext(UserContext) || {};
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const MAX_PAGES = 5;
@@ -439,6 +456,11 @@ export default function HomePage() {
         "Failed to fetch posts",
         err
       );
+      window.dispatchEvent(
+        new CustomEvent("network-error", {
+            detail: "Failed to fetch posts",
+        })
+      );
     } finally {
       loadingMoreRef.current = false;
   
@@ -485,6 +507,12 @@ export default function HomePage() {
       });
 
       await fetchPosts(1, true, true);
+    } catch(err) {
+      window.dispatchEvent(
+        new CustomEvent("network-error", {
+            detail: "Couldn't refresh feed",
+        })
+      );
     } finally {
       setLoading(false);
     }

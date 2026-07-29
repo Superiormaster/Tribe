@@ -343,15 +343,6 @@ export default function CreatePostPage() {
   
         toast.success("Post created!");
       }
-
-      addNotification({
-        id: Date.now(),
-        message: isEdit ? "Post updated!" : "Post created!",
-        created_at: new Date().toISOString(),
-        sender: {
-          avatar: "/default.png"
-        }
-      });
   
       setContent('');
       setImageUrls([]);

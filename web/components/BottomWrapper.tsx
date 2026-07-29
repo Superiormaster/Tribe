@@ -11,6 +11,7 @@ export default function BottomNavWrapper() {
     /^\/main\/reposts\/\d+/.test(pathname) ||
     /^\/main\/messages\/chat\/\d+/.test(pathname) ||
     /^\/main\/reels\/\d+/.test(pathname) ||
+    /^\/main\/reels/.test(pathname) ||
     /^\/main\/community\/\d+\/chat/.test(pathname)
 
   if (hideBottomNav) return null

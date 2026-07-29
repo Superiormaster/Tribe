@@ -37,14 +37,7 @@ export default function NotificationsPage() {
   };
 
   useEffect(() => {
-    apiRequest("api/notifications/?page=1").then(data => {
-      const unread = data.results.reduce(
-        (acc: number, n: any) => acc + (n.read ? 0 : 1),
-        0
-      );
-  
-      setCount(unread);
-    });
+    markAllRead();
   }, []);
   
   useEffect(() => {
