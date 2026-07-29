@@ -10,6 +10,9 @@ export const metadata = {
   themeColor: "#4f46e5",
   applicationName: "Tribe",
 };
+export const viewport = {
+  themeColor: "#4f46e5",
+};
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

@@ -93,13 +93,23 @@ export default function LoginPage() {
   
     if (!account) return;
   
-    if (account.type === "google" && window.google && document.getElementById("googleSignInDiv")) {
+    if (account.type === "google" && window.google?.accounts?.id && document.getElementById("googleSignInDiv")) {
       // Auto-prompt Google One Tap
       window.google.accounts.id.prompt();
     } else if (account.type === "password") {
       // Prefill email
       setEmail(account.email);
     }
+  }, []);
+  
+  useEffect(() => {
+    window.onerror = (msg, src, line, col, err) => {
+      console.log("ERROR", msg, err);
+    };
+  
+    window.onunhandledrejection = (e) => {
+      console.log("PROMISE", e.reason);
+    };
   }, []);
 
   const handleGoogleResponse = async (googleRes: any) => {
@@ -127,7 +137,11 @@ export default function LoginPage() {
       // Also set selected account
       setActiveAccount(profile.email)
       saveAccount(profile, profile.auth_provider === "google" ? "google" : "password");
-      await handleOnboardingRedirect(push);
+      try {
+          await handleOnboardingRedirect(push);
+      } catch (e) {
+          console.error(e);
+      }
 
     } catch (err: any) {
       console.error(err);
@@ -168,7 +182,11 @@ export default function LoginPage() {
       saveAccount(profile, profile.auth_provider === "google" ? "google" : "password");
 
       // Redirect based on profile completeness
-      await handleOnboardingRedirect(push);
+      try {
+          await handleOnboardingRedirect(push);
+      } catch (e) {
+          console.error(e);
+      }
     } catch (err:any) {
 
       const detail =
