@@ -122,7 +122,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "onboarding_step",
         ]
 
-        read_only_fields = ["email", "username"]
+        read_only_fields = ["email"]
 
     def validate_avatar(self, value):
         # Only check size if it's a file upload
@@ -130,6 +130,20 @@ class ProfileSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Avatar file too large.")
         return value
 
+    def validate_username(self, value):
+      user = self.instance
+  
+      exists = User.objects.exclude(id=user.id).filter(
+          username=value
+      ).exists()
+  
+      if exists:
+          raise serializers.ValidationError(
+              "This username is already taken."
+          )
+  
+      return value
+  
     def get_stars_count(self, obj):
         return obj.stars_given.count() if hasattr(obj, "stars_given") else 0
 

@@ -130,35 +130,38 @@ def create_notification(
     print("Recipient token:", token)
     
     if token:
-        print("Calling push_notification()")
-        push_notification(
-            token,
-            recipient.id,
-            {
-                "id":
-                    notif.id,
-    
-                "type":
-                    notif.type,
-    
-                "title":
-                    "Tribe",
-    
-                "body":
-                    serialized["message"],
-    
-                "postId":
-                    str(post.id)
-                    if post
-                    else "",
-    
-                "userId":
-                    str(actor.id),
-    
-                "thumbnail": post.thumbnail_url if post else "",
-    
-                "communityCover": community.cover_image if community else "",
-            },
-        )
+        try:
+          print("Calling push_notification()")
+          push_notification(
+              token,
+              recipient.id,
+              {
+                  "id":
+                      notif.id,
+      
+                  "type":
+                      notif.type,
+      
+                  "title":
+                      "Tribe",
+      
+                  "body":
+                      serialized["message"],
+      
+                  "postId":
+                      str(post.id)
+                      if post
+                      else "",
+      
+                  "userId":
+                      str(actor.id),
+      
+                  "thumbnail": post.thumbnail_url if post else "",
+      
+                  "communityCover": community.cover_image if community else "",
+              },
+          )
+        except Exception as e:
+          print("Push notification failed:", e)
     
     return notif

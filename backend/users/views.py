@@ -1503,19 +1503,25 @@ class ProfileView(generics.RetrieveUpdateAPIView):
         return Response(serializer.data)
 
     def patch(self, request, *args, **kwargs):
-        user = request.user   # ✅ FIX
-    
-        serializer = self.get_serializer(user, data=request.data, partial=True)
-        serializer.is_valid(raise_exception=True)
-        serializer.save()
-    
-        return Response(serializer.data)
-
-        # STEP 1 COMPLETED
-        user.onboarding_step = max(user.onboarding_step, 1)
-        user.save(update_fields=["onboarding_step"])
-
-        return Response(serializer.data)
+      serializer = self.get_serializer(
+          request.user,
+          data=request.data,
+          partial=True,
+      )
+  
+      if not serializer.is_valid():
+          print(serializer.errors)
+          return Response(serializer.errors, status=400)
+  
+      serializer.save()
+  
+      request.user.onboarding_step = max(
+          request.user.onboarding_step,
+          1,
+      )
+      request.user.save(update_fields=["onboarding_step"])
+  
+      return Response(serializer.data)
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
