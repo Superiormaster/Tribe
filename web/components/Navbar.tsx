@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import AppLink from '@/components/AppLink';
-import { Home, MessageSquare, PlusCircle, Search, Bell, Menu } from "lucide-react";
+import { Home, MessageSquare, Search, Bell, Menu } from "lucide-react";
 import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import Image from "next/image";
 import { tribe2 } from "@/assets";
@@ -26,7 +26,6 @@ export default function Navbar() {
 
   const navItems = [
     { name: "Home", path: "/main/home", icon: Home },
-    { name: "Create", path: "/main/create-post", icon: PlusCircle },
     { name: "Search", path: "/main/search", icon: Search },
     { name: "Notification", path: "/main/notification", icon: Bell },
   ];

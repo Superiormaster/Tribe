@@ -1,7 +1,7 @@
 "use client";
 
 import AppLink from '@/components/AppLink';
-import { Home, MessageSquare, PlusCircle, Bell, Video } from "lucide-react";
+import { Home, MessageSquare, Bell, Video } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useContext } from "react";
 import { UserContext } from "@/components/UserContext";
@@ -17,7 +17,6 @@ export default function BottomNav() {
     { name: "Home", path: "/main/home", icon: Home },
     
     { name: "Notifications", path: "/main/notification", icon: Bell },
-    { name: "Create", path: "/main/create-post", icon: PlusCircle },
     { name: "Reels", path: "/main/reels", icon: Video },
   ];
 

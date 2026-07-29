@@ -46,7 +46,7 @@ export default function NetworkBanner() {
       if (!isOnline) return;
   
       if (!serverReachable) {
-          setMessage("🔴 Network unavailable");
+          setMessage("Network unavailable");
           setColor("bg-red-600");
           setVisible(true);
       } else {

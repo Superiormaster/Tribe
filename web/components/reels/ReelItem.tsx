@@ -10,6 +10,7 @@ import ReelSkeleton from "./ReelSkeleton";
 import ReelCaption from "./ReelCaption";
 import ReelMenu from "./ReelMenu";
 import ReelReportModal from "./ReelReportModal";
+import NoReels from "./NoReels";
 import { useNavigation } from "@/utils/useNavigation"
 import { useDoubleTapLike } from '@/reelsHook/useDoubleTapLike';
 import { useReelBuffer } from '@/reelsHook/useReelBuffer';
@@ -89,6 +90,17 @@ export default function ReelItem({
         : reelIndex === currentIndex + 1
         ? "metadata"
         : "none";
+  
+  const videoReels = reels.filter(
+    (reel: any) =>
+      reel.media_files?.some(
+        (m: any) => m.media_type === "video"
+      )
+  );
+  
+  if (videoReels.length === 0) {
+    return <NoReels />;
+  }
 
   return (
     <div

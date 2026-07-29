@@ -7,6 +7,7 @@ import { faGoogle } from "@fortawesome/free-brands-svg-icons"
 import { apiRequest, setAccessToken } from '@/utils/api'
 import { UserContext } from '@/components/UserContext'
 import AuthLoading from '@/components/AuthLoading'
+import LoadingScreen from '@/components/LoadingScreen'
 import { saveAccount, getAccounts, setActiveAccount } from '@/utils/accounts'
 import { handleOnboardingRedirect } from '@/utils/handleOnboardingRedirect';
 import { useSearchParams } from "next/navigation"
@@ -24,7 +25,7 @@ export default function LoginPage() {
   const searchParams = useSearchParams();
   const initialEmail = searchParams.get("email");
   const [email, setEmail] = useState(initialEmail || '');
-  const { push } = useNavigation();
+  const { push, replace } = useNavigation();
 
   const { user, setUser, loadingUser } = useContext(UserContext)!
 
@@ -39,6 +40,18 @@ export default function LoginPage() {
   const [error,setError] = useState('')
   const [message,setMessage] = useState('')
   const [showResend,setShowResend] = useState(false)
+  
+  useEffect(() => {
+    if (loadingUser) return;
+  
+    if (user) {
+      replace("/main/home");
+    }
+  }, [loadingUser, user, replace]);
+  
+  if (loadingUser) {
+    return <LoadingScreen onComplete={() => {}} />;
+  }
   
   // Load Google script
   useEffect(() => {

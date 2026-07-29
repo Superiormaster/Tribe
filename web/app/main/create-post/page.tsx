@@ -59,7 +59,7 @@ export default function CreatePostPage() {
   const isReel = mode === 'reel';
   
   const allowReel = permissions.allow_reels;
-  const allowVideo = permissions.allow_videos;
+  const allowVideo = isGlobal || permissions.allow_videos;
   const allowImages = true;
 
   const MAX_IMAGES = 5;
@@ -306,10 +306,12 @@ export default function CreatePostPage() {
 
       let contentType = "text";
 
-      if (allowReel && video) {
-        contentType = "short_video";
-      } else if (allowVideo && video) {
-        contentType = "long_video";
+      if (video) {
+        if (isReel) {
+          contentType = "short_video";
+        } else {
+          contentType = "long_video";
+        }
       } else if (
         imageFiles.length > 0 ||
         imageUrls.length > 0
