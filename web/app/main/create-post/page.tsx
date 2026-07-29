@@ -17,6 +17,11 @@ import Skeleton from '@/components/Skeleton';
 import { apiRequest } from '@/utils/api';
 import { uploadToCloudinary } from '@/utils/cloudinary';
 
+type ExistingVideo = {
+  url: string;
+  thumbnail?: string;
+};
+
 export default function CreatePostPage() {
   const [content, setContent] = useState('');
   const searchParams = useSearchParams();
@@ -24,7 +29,9 @@ export default function CreatePostPage() {
   const draftId = searchParams.get("draftId");
   const [imageFiles, setImageFiles] = useState<(File | string)[]>([]);
   const [imageUrls, setImageUrls] = useState<string[]>([]);
-  const [video, setVideo] = useState<File | string | null>(null);
+  const [video, setVideo] = useState<
+    File | ExistingVideo | null
+  >(null);
   const [loading, setLoading] = useState(false);
   const [fileProgress, setFileProgress] = useState<Record<string, number>>({});
   const { push } = useNavigation()
@@ -249,7 +256,6 @@ export default function CreatePostPage() {
           });
   
           setImageUrls(imageUrls);
-          if (videoUrl) setVideo(videoUrl);
         }
   
         setSelectedCommunity(data.community);
@@ -543,11 +549,15 @@ export default function CreatePostPage() {
         {video && (
           <div className="relative mt-2">
             <video
-              src={typeof video === "string" ? video : URL.createObjectURL(video)}
+              src={
+                video instanceof File
+                  ? URL.createObjectURL(video)
+                  : video?.url
+              }
               poster={
-                typeof video === "string"
-                  ? video.replace("/upload/", "/upload/so_0,w_300,h_300,c_fill/")
-                  : undefined
+                video instanceof File
+                  ? undefined
+                  : video?.thumbnail
               }
               controls
               className={`w-full ${allowReel ? 'h-[500px] object-cover' : 'max-h-48 object-contain'} rounded-lg`} />
