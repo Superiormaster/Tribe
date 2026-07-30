@@ -4,6 +4,7 @@ import { useState, useContext, useEffect, useRef, useMemo } from 'react';
 import { useNavigation } from "@/utils/useNavigation"
 import { apiRequest } from '@/utils/api';
 import { createPortal } from "react-dom";
+import { useIsInstalled } from "@/hooks/useIsInstalled";
 import { useChatSocket } from '@/lib/useChatSocket';
 import { Pin } from 'lucide-react';
 import { connectUser, removeConnection } from '@/lib/api';
@@ -43,6 +44,7 @@ import { useChatSelection } from '@/utils/inbox/useChatSelection';
 export default function MessagesClient() {
   const { user: currentUser } = useContext(UserContext)!;
   const { push, replace } = useNavigation();
+  const installed = useIsInstalled();
   const [
     showChatDeleteModal,
     setShowChatDeleteModal,
@@ -228,6 +230,20 @@ export default function MessagesClient() {
     },
   });
   
+  const localCommunityPress = useLongPressSelection<number>({
+    onLongPress: communityId => {
+      toggleSelectChat(communityId);
+    },
+  
+    onClick: communityId => {
+      if (selectedChat.size > 0) {
+        toggleSelectChat(communityId);
+      } else {
+        handleOpenCommunity(communityId);
+      }
+    },
+  });
+
   const communityPress = useLongPressSelection<CommunityChat>({
     onLongPress: chat => {
       toggleSelectChat(chat.chat_id);
@@ -571,7 +587,11 @@ export default function MessagesClient() {
         )}
 
       {/* HEADER */}
-      <h2 className="text-xl text-gray-700 dark:text-white font-bold mb-4">Messages</h2>
+      {!isInboxEmpty && (
+        <h2 className="text-xl text-gray-700 dark:text-white font-bold mb-4">
+          Messages
+        </h2>
+      )}
 
       {isInboxEmpty ? (
         <EmptyInbox
@@ -612,7 +632,7 @@ export default function MessagesClient() {
               pending={communityPendingMap[chatId]}
               chatMeta={communityChatMeta[chatId]}
               selected={selectedChat.has(chatId)}
-              bind={localPress.bind(chatId)}
+              bind={localCommunityPress.bind(chatId)}
               currentUserId={currentUser.id}
             />
           ))}
@@ -634,7 +654,11 @@ export default function MessagesClient() {
 
       <button
         onClick={openDiscoverPanel}
-        className="fixed bottom-32 right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg text-2xl"
+        className={`fixed right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg text-2xl ${
+        installed
+          ? "bottom-[calc(env(safe-area-inset-bottom)+7rem)]"
+          : "bottom-32"
+        }`}
       >
         💬
       </button>

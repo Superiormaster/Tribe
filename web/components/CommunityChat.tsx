@@ -27,6 +27,7 @@ import { useNetwork } from '@/components/networkConnection/NetworkContext';
 import { useCallManager } from '@/lib/useCallManager';
 import { getLivekitToken, startCall } from "@/lib/calls";
 import CallUI from '@/components/CallUI';
+import { saveCommunityMeta } from "@/lib/communityMessageDB";
 import { useNavigation } from "@/utils/useNavigation";
 import { Message } from "@/utils/chat/messageContract";
 
@@ -75,11 +76,17 @@ export default function CommunityChat({ communityId }: Props) {
   useEffect(() => {
     const loadCommunity = async () => {
       try {
-        const res = await apiRequest(`api/communities/${communityId}/`);
-        setCommunityData(res);
+        const community = await apiRequest(`api/communities/${communityId}/`);
+        setCommunityData(community);
+  
+        await saveCommunityMeta(
+          community.id,
+          community.name,
+          community.cover_image
+        );
   
         setOnlineCount(
-          Math.floor((res?.members_count || 0) * 0.3)
+          Math.floor((community?.members_count || 0) * 0.3)
         );
       } catch (err) {
         console.error(err);

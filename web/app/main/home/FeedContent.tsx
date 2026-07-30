@@ -11,6 +11,7 @@ import Skeleton from '@/components/Skeleton';
 import { UserContext } from "@/components/UserContext";
 import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import { apiRequest } from '@/utils/api';
+import { useIsInstalled } from "@/hooks/useIsInstalled";
 import AppLink from '@/components/AppLink';
 import { REFRESH_HOME_EVENT } from "@/lib/authEvents";
 import { saveReels, saveFeed, getFeed, getReels, clearFeed, clearReels } from "@/lib/feedDb";
@@ -24,6 +25,7 @@ interface MediaFile {
 export default function HomePage() {
   const { user, loadingUser } = useContext(UserContext)!;
   const { replace, push } = useNavigation();
+  const installed = useIsInstalled();
   
   useEffect(() => {
     if (loadingUser) return;
@@ -41,7 +43,6 @@ export default function HomePage() {
     return null;
   }
   const [posts, setPosts] = useState<any[]>([]);
-  const [pageLoading, setPageLoading] = useState(true);
   const pagesCache = useRef<Record<number, any[]>>({});
   const reelsCache = useRef<any[]>([]);
   const lastPageRef = useRef(1);
@@ -627,8 +628,6 @@ export default function HomePage() {
   }, [selectedTribe]);
   
   useEffect(() => {
-    setPageLoading(true);
-  
     (async () => {
       try {
         const cachedPosts = await getFeed(
@@ -663,8 +662,8 @@ export default function HomePage() {
         if (filter === "all") {
             fetchReels();
         }
-      } finally {
-        setPageLoading(false);
+      } catch(err) {
+        console.error("Error:", err);
       }
     })();
   }, [filter, selectedTribe]);
@@ -730,10 +729,6 @@ export default function HomePage() {
         break;
     }
   };
-  
-  if (pageLoading) {
-    return <LoadingScreen />;
-  }
 
   return (
     <div className="mt-24 mb-14 w-full space-y-4">
@@ -947,7 +942,10 @@ export default function HomePage() {
         href={"/main/create-post?mode=post"
         }
         prefetch={false}
-        className="fixed flex items-center justify-center bottom-32 right-6 w-10 h-10 bg-indigo-600 text-white rounded-full shadow-lg text-2xl"
+        className={`fixed flex items-center justify-center right-6 w-10 h-10 bg-indigo-600 text-white rounded-full shadow-lg text-2xl ${
+        installed
+          ? "bottom-[calc(env(safe-area-inset-bottom)+7rem)]"
+          : "bottom-32"}`}
       >
         <Plus />
       </AppLink>

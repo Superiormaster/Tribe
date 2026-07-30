@@ -19,9 +19,9 @@ export default function BottomNav() {
     { name: "Communities", path: "/main/tribe", icon: Users },
     { name: "Reels", path: "/main/reels", icon: Video },
   ];
+  {/*{ name: "Messages", path: "/main/messages", icon: MessageSquare },*/}
 
   const profileActive = pathname.startsWith("/main/profile");
-  //{ name: "Messages", path: "/main/messages", icon: MessageSquare },
 
   return (
     <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700 flex justify-around items-center h-16 z-40">

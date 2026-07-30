@@ -93,12 +93,17 @@ export function useCommunityPendingMessages(
       const meta: Record<number, ChatMeta> = {};
 
       draftsData.forEach((d: any) => {
-        draftMap[d.chatId] = d;
+          const id = d.communityId;
+      
+          draftMap[id] = {
+              ...d,
+              chatId: id,
+          };
       });
 
       pendingData.forEach((m: any) => {
         const chatId =
-          m.chat ?? m.chatId;
+          m.chatId ?? m.communityId;
 
         const existing = pending[chatId];
 
@@ -114,7 +119,10 @@ export function useCommunityPendingMessages(
       });
 
       metaData.forEach((m: any) => {
-        meta[m.chatId] = m;
+        meta[m.communityId] = {
+          ...m,
+          communityName: m.name,
+        };
       });
 
       setDrafts(draftMap);

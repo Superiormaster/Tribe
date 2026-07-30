@@ -30,8 +30,10 @@ export default function Navbar() {
   const navItems = [
     { name: "Home", path: "/main/home", icon: Home },
     { name: "Notification", path: "/main/notification", icon: Bell },
+    
   ];
-    //{ name: "Messages", path: "/main/messages", icon: MessageSquare },
+  //{ name: "Messages", path: "/main/messages", icon: MessageSquare },
+  
   return (
     <>
       <nav className="fixed top-0 left-0 w-full z-40 flex items-center justify-between px-2 h-16 bg-white dark:bg-gray-900 shadow-md">

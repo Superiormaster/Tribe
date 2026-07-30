@@ -36,7 +36,10 @@ export async function saveMessage(msg: Message, ownerId?: number) {
     })),
   };
 
-  await db.put(MESSAGE_STORE, clean);
+  await db.put(MESSAGE_STORE, {
+      ...clean,
+      chat_type: "private",
+  });
 }
 
 export async function saveMessages(messages: Message[], ownerId?: number) {
@@ -58,6 +61,7 @@ export async function saveMessages(messages: Message[], ownerId?: number) {
       ownerId: msg.ownerId ?? ownerId,
       hidden_for: msg.hidden_for ?? [],
       is_deleted: msg.is_deleted ?? false,
+      chat_type: "private",
   
       files: (msg.files || []).map(file => ({
         blob: file.blob ?? file,
@@ -128,10 +132,14 @@ export async function getMessagesByChat(chatId: number, ownerId: number) {
   const messages = await db.getAllFromIndex(
     MESSAGE_STORE,
     "by_chat_owner",
-    [chatId, ownerId]
+    [chatId, ownerId, "private"]
   );
 
-  return messages.filter((m: any) => !isHiddenForUser(m, ownerId));
+  return messages.filter(
+    (m: any) =>
+      m.chat_type === "private" &&
+      !isHiddenForUser(m, ownerId)
+  );
 }
 
 export async function getMessage(
@@ -169,8 +177,8 @@ export async function getLatestMessages(
 
     let cursor = await index.openCursor(
         IDBKeyRange.bound(
-            [chatId, ownerId, 0],
-            [chatId, ownerId, Number.MAX_SAFE_INTEGER]
+            [chatId, ownerId, "private", 0],
+            [chatId, ownerId, "private", Number.MAX_SAFE_INTEGER]
         ),
         "prev"
     );
@@ -178,7 +186,10 @@ export async function getLatestMessages(
     const result = [];
 
     while (cursor && result.length < limit) {
-        result.push(cursor.value);
+        if (cursor.value.chat_type === "private") {
+            result.push(cursor.value);
+        }
+    
         cursor = await cursor.continue();
     }
 
@@ -201,8 +212,8 @@ export async function getMessagesBefore(
 
     let cursor = await index.openCursor(
         IDBKeyRange.bound(
-            [chatId, ownerId, 0],
-            [chatId, ownerId, anchorId],
+            [chatId, ownerId, "private", 0],
+            [chatId, ownerId, "private", anchorId],
             false,
             true
         ),
@@ -212,7 +223,10 @@ export async function getMessagesBefore(
     const result = [];
 
     while (cursor && result.length < limit) {
-        result.push(cursor.value);
+        if (cursor.value.chat_type === "private") {
+            result.push(cursor.value);
+        }
+    
         cursor = await cursor.continue();
     }
 
@@ -235,7 +249,7 @@ export async function getMessagesAfter(
 
     let cursor = await index.openCursor(
         IDBKeyRange.lowerBound(
-            [chatId, ownerId, anchorId],
+            [chatId, ownerId, "private", anchorId],
             true
         )
     );
@@ -243,7 +257,10 @@ export async function getMessagesAfter(
     const result = [];
 
     while (cursor && result.length < limit) {
-        result.push(cursor.value);
+        if (cursor.value.chat_type === "private") {
+            result.push(cursor.value);
+        }
+    
         cursor = await cursor.continue();
     }
 
@@ -415,6 +432,7 @@ export async function getPendingMessages(
   const pending = all.filter(
       (m: any) =>
           m.ownerId === ownerId &&
+          m.chat_type === "private" &&
           !m.server_id &&
           !m.is_deleted &&
           !isHiddenForUser(m, ownerId) &&

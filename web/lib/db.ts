@@ -1,7 +1,7 @@
 import { openDB } from "idb";
 import type { Message } from "@/utils/chat/messageContract";
 
-const DB_VERSION = 9;
+const DB_VERSION = 11;
 const DB_NAME = "tribe-chat-db";
 
 export const MESSAGE_STORE = "messages";
@@ -69,7 +69,7 @@ export function getDB() {
 
             store.createIndex(
               "by_chat_owner",
-              ["chat", "ownerId"],
+              ["chat", "ownerId", "chat_type"],
               { unique: false }
             );
           }
@@ -77,7 +77,7 @@ export function getDB() {
           if (!store.indexNames.contains("by_chat_owner_id")) {
             store.createIndex(
               "by_chat_owner_id",
-              ["chat", "ownerId", "id"],
+              ["chat", "ownerId", "chat_type", "id"],
               { unique: false }
             );
           }

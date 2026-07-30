@@ -11,7 +11,7 @@ export default function EmptyInbox({
   openConnectionsPanel,
 }: EmptyInboxProps) {
   return (
-    <div className="flex flex-col items-center justify-center h-full px-6 py-24 text-center">
+    <div className="flex flex-col items-center justify-center h-full px-6 text-center">
       <div className="w-24 h-24 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center mb-6">
         <MessageCircle
           size={42}

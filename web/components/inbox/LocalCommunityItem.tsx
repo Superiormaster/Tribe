@@ -22,8 +22,9 @@ export default function LocalCommunityItem({
   const chat = {
     chat_id: chatId,
     community_name:
-      pending?.communityName ||
-      chatMeta?.communityName ||
+      pending?.community_name ||
+      pending?.name ||
+      chatMeta?.name ||
       "Unknown Community",
 
     cover_image:

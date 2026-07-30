@@ -2,6 +2,7 @@
 
 import { useState, useRef } from "react";
 import { apiRequest } from "@/utils/api";
+import { saveCommunityMeta } from "@/lib/communityMessageDB";
 
 export type JoinedCommunity = {
   id: number;
@@ -47,6 +48,14 @@ export function useJoinedCommunities() {
           ...prev,
           ...res.results,
         ]);
+      }
+  
+      for (const community of res) {
+        await saveCommunityMeta(
+          community.id,
+          community.name,
+          community.cover_image
+        );
       }
 
       setHasMoreCommunities(!!res.next);

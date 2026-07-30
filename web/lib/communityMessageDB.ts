@@ -35,7 +35,10 @@ export async function saveCommunityMessage(msg: Message, ownerId?: number) {
     })),
   };
 
-  await db.put(MESSAGE_STORE, clean);
+  await db.put(MESSAGE_STORE, {
+    ...clean,
+      chat_type: "community",
+  });
 }
 
 export async function saveCommunityMessages(messages: Message[], ownerId?: number) {
@@ -57,6 +60,7 @@ export async function saveCommunityMessages(messages: Message[], ownerId?: numbe
       ownerId: msg.ownerId ?? ownerId,
       hidden_for: msg.hidden_for ?? [],
       is_deleted: msg.is_deleted ?? false,
+      chat_type: "community",
   
       files: (msg.files || []).map(file => ({
         blob: file.blob ?? file,
@@ -94,10 +98,14 @@ export async function getCommunityMessagesByChat(communityId: number, ownerId: n
   const messages = await db.getAllFromIndex(
     MESSAGE_STORE,
     "by_chat_owner",
-    [communityId, ownerId]
+    [communityId, ownerId, "community"]
   );
 
-  return messages.filter((m: any) => !isHiddenForUser(m, ownerId));
+  return messages.filter(
+    (m: any) =>
+      m.chat_type === "community" &&
+      !isHiddenForUser(m, ownerId)
+  );
 }
 
 export async function getCommunityMessage(
@@ -135,8 +143,8 @@ export async function getCommunityLatestMessages(
 
     let cursor = await index.openCursor(
         IDBKeyRange.bound(
-            [communityId, ownerId, 0],
-            [communityId, ownerId, Number.MAX_SAFE_INTEGER]
+            [communityId, ownerId, "community", 0],
+            [communityId, ownerId, "community", Number.MAX_SAFE_INTEGER]
         ),
         "prev"
     );
@@ -144,7 +152,10 @@ export async function getCommunityLatestMessages(
     const result = [];
 
     while (cursor && result.length < limit) {
-        result.push(cursor.value);
+        if (cursor.value.chat_type === "community") {
+            result.push(cursor.value);
+        }
+    
         cursor = await cursor.continue();
     }
 
@@ -167,8 +178,8 @@ export async function getCommunityMessagesBefore(
 
     let cursor = await index.openCursor(
         IDBKeyRange.bound(
-            [communityId, ownerId, 0],
-            [communityId, ownerId, anchorId],
+            [communityId, ownerId, "community", 0],
+            [communityId, ownerId, "community", anchorId],
             false,
             true
         ),
@@ -178,7 +189,10 @@ export async function getCommunityMessagesBefore(
     const result = [];
 
     while (cursor && result.length < limit) {
-        result.push(cursor.value);
+        if (cursor.value.chat_type === "community") {
+            result.push(cursor.value);
+        }
+    
         cursor = await cursor.continue();
     }
 
@@ -201,7 +215,7 @@ export async function getCommunityMessagesAfter(
 
     let cursor = await index.openCursor(
         IDBKeyRange.lowerBound(
-            [communityId, ownerId, anchorId],
+            [communityId, "community", ownerId, anchorId],
             true
         )
     );
@@ -209,7 +223,10 @@ export async function getCommunityMessagesAfter(
     const result = [];
 
     while (cursor && result.length < limit) {
-        result.push(cursor.value);
+        if (cursor.value.chat_type === "community") {
+            result.push(cursor.value);
+        }
+    
         cursor = await cursor.continue();
     }
 
@@ -381,6 +398,7 @@ export async function getCommunityPendingMessages(
   const pending = all.filter(
       (m: any) =>
           m.ownerId === ownerId &&
+          m.chat_type === "community" &&
           !m.server_id &&
           !m.is_deleted &&
           !isHiddenForUser(m, ownerId) &&
