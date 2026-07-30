@@ -165,7 +165,7 @@ export default function HomePage() {
         setRefreshingFeed(true);
         resetFeedState();
     
-        await fetchPosts(1, true, true);
+        await fetchPosts(1, true, true, "all", null);
     
         if (
           cancelled ||
@@ -366,11 +366,13 @@ export default function HomePage() {
   const fetchPosts = async (
     pageNumber = 1,
     replace = false,
-    showSkeleton = true
+    showSkeleton = true,
+    currentFilter = filter,
+    currentTribe = selectedTribe
   ) => {
     if (
       loadingMore ||
-      !hasMore ||
+      !hasMoreRef.current ||
       loadingMoreRef.current
     ) {
       return;
@@ -391,10 +393,10 @@ export default function HomePage() {
       let url = `api/feed/?page=${pageNumber}`;
   
       if (
-        filter === "tribes" &&
-        selectedTribe
+          currentFilter === "tribes" &&
+          currentTribe
       ) {
-        url += `&tribe=${selectedTribe}`;
+          url += `&tribe=${currentTribe}`;
       }
   
       const data =
@@ -440,12 +442,7 @@ export default function HomePage() {
         is_starred_by_user: starredUserIds.has(item.data.user?.id),
       }));
 
-      await saveFeed(
-        filter,
-        selectedTribe,
-        pageNumber,
-        newItems
-      );
+      await saveFeed(currentFilter, currentTribe, pageNumber, newItems);
 
       pagesCache.current[pageNumber] = newItems;
       
@@ -527,7 +524,7 @@ export default function HomePage() {
         method: "POST"
       });
 
-      await fetchPosts(1, true, true);
+      await fetchPosts(1, true, true, "all", null);
     } catch(err) {
       window.dispatchEvent(
         new CustomEvent("network-error", {
@@ -614,18 +611,6 @@ export default function HomePage() {
   }, [filter]);
   
   useEffect(() => {
-    hasCacheRef.current = false;
-
-    resetFeedState();
-
-    fetchPosts(1, true, true);
-
-    if (filter === "all") {
-        fetchReels();
-    }
-  }, [filter]);
-  
-  useEffect(() => {
     if (filter !== "tribes") return;
     if (!selectedTribe) return;
 
@@ -633,7 +618,7 @@ export default function HomePage() {
 
     resetFeedState();
 
-    fetchPosts(1, true, true);
+    fetchPosts(1, true, true, "all", null);
 
     if (isEntertainment) {
         fetchReels();
@@ -642,35 +627,38 @@ export default function HomePage() {
   
   useEffect(() => {
     (async () => {
-      const cachedPosts = await getFeed(
-        filter,
-        selectedTribe,
-        1
-      );
-      const cachedReels = await getReels(filter, selectedTribe);
-  
-      hasCacheRef.current = cachedPosts.length > 0;
+        const cachedPosts = await getFeed(
+            filter,
+            selectedTribe,
+            1
+        );
 
-      if (cachedPosts.length) {
-        setPosts(cachedPosts);
-        setInitialLoad(false);
-        setLoading(false);
-      }
-  
-      if (cachedReels.length) {
-        setReels(cachedReels);
-      }
-  
-      // Refresh in background
-      if (!cachedPosts.length) {
-        await fetchPosts(1, true, true);
-      } else {
-        fetchPosts(1, true, false);
-      }
-  
-      if (filter === "all") {
-        fetchReels();
-      }
+        const cachedReels = await getReels(
+            filter,
+            selectedTribe
+        );
+
+        hasCacheRef.current = cachedPosts.length > 0;
+
+        if (cachedPosts.length) {
+            setPosts(cachedPosts);
+            setInitialLoad(false);
+            setLoading(false);
+        }
+
+        if (cachedReels.length) {
+            setReels(cachedReels);
+        }
+
+        if (!cachedPosts.length) {
+            await fetchPosts(1, true, true, "all", null);
+        } else {
+            fetchPosts(1, true, true, "all", null);
+        }
+
+        if (filter === "all") {
+            fetchReels();
+        }
     })();
   }, [filter, selectedTribe]);
   
@@ -948,7 +936,7 @@ export default function HomePage() {
         href={"/main/create-post?mode=post"
         }
         prefetch={false}
-        className="fixed flex items-center justify-center bottom-28 right-6 w-10 h-10 bg-indigo-600 text-white rounded-full shadow-lg text-2xl"
+        className="fixed flex items-center justify-center bottom-32 right-6 w-10 h-10 bg-indigo-600 text-white rounded-full shadow-lg text-2xl"
       >
         <Plus />
       </AppLink>

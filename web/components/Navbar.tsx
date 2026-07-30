@@ -147,8 +147,8 @@ export default function Navbar() {
                 className="relative w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center shadow-sm transition cursor-pointer text-gray-700 dark:text-gray-200"
               >
                 <Icon className={active
-                      ? "bg-indigo-600 text-white"
-                      : "hover:bg-gray-200 dark:hover:bg-zinc-800"
+                      ? "text-indigo-600"
+                      : "hover:bg-gray-200"
                   } size={22} />
                 {name === "Notifications" && count > 0 && (
                   <span className="absolute -top-1 right-4 bg-red-500 text-white text-[10px] px-1 rounded-full">
