@@ -2,6 +2,7 @@ from django.shortcuts import render
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
+from random import shuffle
 from rest_framework.views import APIView
 from users.utils import redis_client
 from .services import build_community_feed, serialize_community_feed
@@ -1253,6 +1254,24 @@ class SuggestedCommunityView(APIView):
             communities,
             many=True,
             context={"request": request}
+        )
+
+        return Response(serializer.data)
+
+class ExploreCommunitiesView(APIView):
+    def get(self, request):
+        communities = list(
+            Community.objects
+            .annotate(member_count=Count("memberships"))
+            .order_by("-member_count")[:50]
+        )
+
+        shuffle(communities)
+
+        serializer = CommunitySerializer(
+            communities[:3],
+            many=True,
+            context={"request": request},
         )
 
         return Response(serializer.data)

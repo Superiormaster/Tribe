@@ -103,7 +103,7 @@ export default function InstallButton() {
             ? handleInstall
             : () => setShowHelp(true)
         }
-        className="fixed bottom-20 right-5 z-50 rounded-xl bg-indigo-600 px-5 py-3 text-white shadow-xl"
+        className="fixed bottom-16 right-5 z-50 rounded-xl bg-indigo-600 px-5 py-3 text-white shadow-xl"
       >
         {promptEvent
           ? "Install Tribe"

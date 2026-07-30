@@ -89,7 +89,7 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
     <aside className="flex flex-col h-screen text-gray-900 dark:text-gray-100">
 
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
+      <div className="flex items-center justify-between p-4 h-16 border-b border-gray-200 dark:border-gray-800 shrink-0">
 
         <div className="flex items-center gap-3">
           <div className="w-14 h-14 rounded-full overflow-hidden">

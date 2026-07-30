@@ -1,0 +1,58 @@
+import AppLink from '@/components/AppLink';
+import { formatCount } from '@/utils/formatCount';
+
+type Props = {
+    communities: any[];
+};
+
+export default function ExploreCommunities({
+    communities,
+}: Props) {
+    return (
+        <div className="w-full mb-5">
+
+            <div className="flex items-center justify-between pl-3 pr-5 mb-3">
+                <h2 className="text-gray-700 dark:text-gray-200 text-lg font-bold">
+                    Explore Communities
+                </h2>
+
+                <AppLink
+                    href="/main/tribe"
+                    className="text-indigo-600 text-sm"
+                >
+                    See all
+                </AppLink>
+            </div>
+
+            <div className="flex gap-1 overflow-x-auto pl-3 scrollbar-hide">
+
+                {communities.map((community) => (
+
+                    <AppLink
+                        key={community.id}
+                        href={`/main/community/${community.id}`}
+                        className="min-w-[110px] w-full flex flex-col py-1 items-center rounded-xl shadow"
+                    >
+
+                        <img
+                            src={community.cover_image}
+                            className="w-20 h-20 rounded-xl object-cover"
+                        />
+
+                        <p className="mt-2 text-gray-600 dark:text-gray-300 font-medium truncate">
+                            {community.name}
+                        </p>
+
+                        <p className="text-xs text-gray-500">
+                            {formatCount(community.members_count)} members
+                        </p>
+
+                    </AppLink>
+
+                ))}
+
+            </div>
+
+        </div>
+    );
+}

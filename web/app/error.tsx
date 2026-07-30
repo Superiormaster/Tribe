@@ -15,7 +15,7 @@ export default function GlobalError({
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-6 text-center dark:bg-gray-950">
-      <h1 className="mb-4 text-2xl font-bold">
+      <h1 className="mb-4 text-gray-700 dark:text-gray-200 text-2xl font-bold">
         Something went wrong
       </h1>
 

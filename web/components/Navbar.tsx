@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import AppLink from '@/components/AppLink';
-import { Home, MessageSquare, Search, Bell, Menu } from "lucide-react";
+import { Home, MessageSquare, Bell, Menu } from "lucide-react";
 import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import Image from "next/image";
 import { tribe2 } from "@/assets";
@@ -24,23 +24,31 @@ export default function Navbar() {
   } = useNetwork();
   const profileActive = pathname.startsWith("/main/profile");
 
+  const navItem = [
+    { name: "Notification", path: "/main/notification", icon: Bell },
+  ];
   const navItems = [
     { name: "Home", path: "/main/home", icon: Home },
-    { name: "Search", path: "/main/search", icon: Search },
     { name: "Notification", path: "/main/notification", icon: Bell },
   ];
     //{ name: "Messages", path: "/main/messages", icon: MessageSquare },
   return (
     <>
-      <nav className="fixed top-0 left-0 w-full z-40 flex items-center justify-between px-6 py-3 bg-white dark:bg-gray-900 shadow-md">
+      <nav className="fixed top-0 left-0 w-full z-40 flex items-center justify-between px-2 h-16 bg-white dark:bg-gray-900 shadow-md">
 
+        <button
+          onClick={() => setMenuOpen(true)}
+          className="p-2 text-gray-700 dark:text-white rounded-lg hover:bg-gray-200"
+        >
+          <Menu size={24} />
+        </button>
         {/* LEFT — Logo */}
-        <div className="w-16 h-16 border dark:border-indigo-600 rounded-full overflow-hidden shadow">
+        <div className="w-20 h-20 overflow-hidden">
           <Image src={tribe2} alt="Tribe Logo" />
         </div>
 
         {/* CENTER — Navigation Icons */}
-        <ul className="hidden md:flex items-center gap-6">
+        <ul className="hidden flex md:flex items-center gap-6">
           {navItems.map(({ name, path, icon: Icon }) => {
 
             const active = pathname === path;
@@ -67,16 +75,16 @@ export default function Navbar() {
                 className="flex flex-col items-center text-xs relative p-2 rounded-lg transition cursor-pointer text-indigo-500 dark:text-white"
               >
                 <Icon className={active
-                      ? "bg-indigo-600 text-white"
+                      ? "text-indigo-600"
                       : "hover:bg-gray-200 dark:hover:bg-zinc-800"
-                  } size={22} />
+                  } />
                 {name === "Notifications" && count > 0 && (
                   <span className="absolute -top-1 right-4 bg-red-500 text-white text-[10px] px-1 rounded-full">
                     {count}
                   </span>
                 )}
                 <span className={active
-                      ? "bg-indigo-600 text-white"
+                      ? "text-indigo-600"
                       : "hover:bg-gray-200 dark:hover:bg-zinc-800"
                   }>{name}</span>
               </AppLink>
@@ -112,30 +120,66 @@ export default function Navbar() {
           </div>
         </ul>
 
-        {/* RIGHT — Menu Button */}
-        
-        <button
-          onClick={() => setMenuOpen(true)}
-          className="p-2 hidden md:block rounded-lg hover:bg-gray-200 bg-indigo-500 dark:hover:bg-zinc-800"
-        >
-          <Menu size={24} />
-        </button>
-
         <div className="md:hidden flex justify-between gap-5">
-          <AppLink
-            href={`/main/search`}
-            prefetch={false}
-            className="p-2 rounded-lg hover:bg-gray-200 bg-indigo-500 dark:hover:bg-zinc-800"
-          >
-            <Search size={24} />
-          </AppLink>
-  
-          <button
-            onClick={() => setMenuOpen(true)}
-            className="p-2 rounded-lg hover:bg-gray-200 bg-indigo-500 dark:hover:bg-zinc-800"
-          >
-            <Menu size={24} />
-          </button>
+          {navItem.map(({ name, path, icon: Icon }) => {
+
+            const active = pathname === path;
+
+            return (
+              <AppLink
+                key={name}
+                href={path}
+                prefetch={false}
+                onClick={async () => {
+                  if (name === "Notifications") {
+                    setCount(0);
+              
+                    try {
+                      await apiRequest(
+                        "api/notifications/read-all/",
+                        { method: "POST" }
+                      );
+                    } catch (e) {
+                      console.error(e);
+                    }
+                  }
+                }}
+                className="relative w-10 h-10 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center shadow-sm transition cursor-pointer text-gray-700 dark:text-gray-200"
+              >
+                <Icon className={active
+                      ? "bg-indigo-600 text-white"
+                      : "hover:bg-gray-200 dark:hover:bg-zinc-800"
+                  } size={22} />
+                {name === "Notifications" && count > 0 && (
+                  <span className="absolute -top-1 right-4 bg-red-500 text-white text-[10px] px-1 rounded-full">
+                    {count}
+                  </span>
+                )}
+              </AppLink>
+            );
+          })}
+
+          {/* Profile */}
+          {user ? (
+            <AppLink href={`/main/profile/${user.username}`} prefetch={false} className="text-xs">
+              {user.avatar ? (
+                <img
+                  src={user.avatar}
+                  className={`w-10 h-10 rounded-full border-2 border-gray-400 dark:border-white object-cover ${profileActive ? "ring-2 ring-indigo-600" : ""}`}
+                />
+              ) : (
+                <div
+                  className={`w-10 h-10 rounded-full bg-gray-400 flex items-center justify-center text-white text-xs ${
+                    profileActive ? "ring-2 ring-indigo-600" : ""
+                  }`}
+                >
+                  {user.email?.slice(0, 2).toUpperCase() || "??"}
+                </div>
+              )}
+            </AppLink>
+          ) : (
+            <div className="w-10 h-10 bg-gray-200 rounded-full animate-pulse"></div>
+          )}
         </div>
 
       </nav>
@@ -148,7 +192,7 @@ export default function Navbar() {
             onClick={() => setMenuOpen(false)}
           />
 
-          <div className="absolute right-0 top-0 h-full w-72 bg-white dark:bg-gray-900 shadow-xl">
+          <div className="absolute left-0 top-0 h-full w-72 bg-white dark:bg-gray-900 shadow-xl">
             <Sidebar closeMenu={() => setMenuOpen(false)} />
           </div>
         </div>

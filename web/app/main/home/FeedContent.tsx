@@ -2,6 +2,8 @@
 import { useState, useRef, useMemo, useEffect, useContext } from 'react';
 import { useNavigation } from "@/utils/useNavigation"
 import PostCard from '@/components/PostCard';
+import ExploreCommunities from '@/components/ExploreCommunities';
+import { Plus } from 'lucide-react'
 import ReelCard from '@/components/ReelCard';
 import RepostCard from '@/components/repost/RepostCard';
 import LoadingScreen from '@/components/LoadingScreen';
@@ -46,6 +48,7 @@ export default function HomePage() {
   const [reels, setReels] = useState<any[]>([]);
   const [reachedLimit, setReachedLimit] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [suggestedCommunities, setSuggestedCommunities] = useState<any[]>([]);
   const [initialLoad, setInitialLoad] = useState(true);
   const preloaded = useRef(new Set());
   const [starredUsers, setStarredUsers] = useState<Set<number>>(new Set());
@@ -92,6 +95,24 @@ export default function HomePage() {
       setStarredUsers(new Set(res.starred_users));
     })();
   }, []);
+  
+  const fetchSuggested = async () => {
+    try {
+        const data = await apiRequest(
+            "api/communities/explore/"
+        );
+
+        setSuggestedCommunities(data);
+    } catch (err) {
+        console.error(err);
+    }
+  };
+  
+  useEffect(() => {
+    if (filter !== "all") return;
+
+    fetchSuggested();
+  }, [filter]);
   
   const resetFeedState = () => {
     pagesCache.current = {};
@@ -718,31 +739,6 @@ export default function HomePage() {
   return (
     <div className="mt-24 mb-14 w-full space-y-4">
 
-      {/* Create Post / Profile */}
-      {user && (
-        <div className="flex items-center gap-3 px-3 pt-2">
-          <AppLink href={`/main/profile/${user.username}`}
-            prefetch={false}
-            className="flex items-center gap-2">
-            {user.avatar ? (
-              <img src={user.avatar} className="w-10 h-10 rounded-full border-2 border-gray-400 dark:border-white object-cover" />
-            ) : (
-              <div className="w-8 h-8 bg-gray-400 rounded-full flex items-center justify-center text-white text-xs">
-                {user.email?.slice(0, 2).toUpperCase() || '??'}
-              </div>
-            )}
-          </AppLink>
-          <AppLink
-            href={"/main/create-post?mode=post"
-            }
-            prefetch={false}
-            className="flex-1 p-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 cursor-pointer"
-          >
-            What's happening in your tribe?
-          </AppLink>
-        </div>
-      )}
-
       {/* Toggle */}
       <div className="flex gap-4 justify-center mb-4">
         <button
@@ -813,6 +809,12 @@ export default function HomePage() {
           </button>
       
         </div>
+      )}
+  
+      {filter === "all" && suggestedCommunities.length > 0 && (
+          <ExploreCommunities
+              communities={suggestedCommunities}
+          />
       )}
 
       {/* Posts Feed */}
@@ -941,6 +943,15 @@ export default function HomePage() {
           </button>
         </div>
       )}
+
+      <AppLink
+        href={"/main/create-post?mode=post"
+        }
+        prefetch={false}
+        className="fixed flex items-center justify-center bottom-28 right-6 w-10 h-10 bg-indigo-600 text-white rounded-full shadow-lg text-2xl"
+      >
+        <Plus />
+      </AppLink>
     </div>
   );
 }
