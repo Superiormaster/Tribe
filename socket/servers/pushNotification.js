@@ -1,15 +1,12 @@
-const admin = require("./firebase");
+const { messaging } = require("./firebase");
 
 async function sendNotificationPush(
   token,
   notification
 ) {
   try {
-    console.log("========== FIREBASE ==========");
-    console.log("Token:", token);
-    console.log("Notification:", notification);
   
-    const id = await admin.messaging().send({
+    const id = await messaging.send({
       token,
   
       notification: {

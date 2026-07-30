@@ -65,7 +65,7 @@ self.addEventListener(
       case "star":
       case "connection_request":
         url =
-          "/main/notifications";
+          "/main/notification";
         break;
 
       default:
