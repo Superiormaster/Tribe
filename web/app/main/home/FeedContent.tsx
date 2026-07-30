@@ -41,6 +41,7 @@ export default function HomePage() {
     return null;
   }
   const [posts, setPosts] = useState<any[]>([]);
+  const [pageLoading, setPageLoading] = useState(true);
   const pagesCache = useRef<Record<number, any[]>>({});
   const reelsCache = useRef<any[]>([]);
   const lastPageRef = useRef(1);
@@ -165,7 +166,7 @@ export default function HomePage() {
         setRefreshingFeed(true);
         resetFeedState();
     
-        await fetchPosts(1, true, true, "all", null);
+        await fetchPosts(1, true, true, filter, selectedTribe);
     
         if (
           cancelled ||
@@ -524,7 +525,7 @@ export default function HomePage() {
         method: "POST"
       });
 
-      await fetchPosts(1, true, true, "all", null);
+      await fetchPosts(1, true, true, filter, selectedTribe);
     } catch(err) {
       window.dispatchEvent(
         new CustomEvent("network-error", {
@@ -618,7 +619,7 @@ export default function HomePage() {
 
     resetFeedState();
 
-    fetchPosts(1, true, true, "all", null);
+    fetchPosts(1, true, true, "tribes", selectedTribe);
 
     if (isEntertainment) {
         fetchReels();
@@ -626,7 +627,10 @@ export default function HomePage() {
   }, [selectedTribe]);
   
   useEffect(() => {
+    setPageLoading(true);
+  
     (async () => {
+      try {
         const cachedPosts = await getFeed(
             filter,
             selectedTribe,
@@ -651,14 +655,17 @@ export default function HomePage() {
         }
 
         if (!cachedPosts.length) {
-            await fetchPosts(1, true, true, "all", null);
+            await fetchPosts(1, true, true, filter, selectedTribe);
         } else {
-            fetchPosts(1, true, true, "all", null);
+            fetchPosts(1, true, false, filter, selectedTribe);
         }
 
         if (filter === "all") {
             fetchReels();
         }
+      } finally {
+        setPageLoading(false);
+      }
     })();
   }, [filter, selectedTribe]);
   
@@ -723,6 +730,10 @@ export default function HomePage() {
         break;
     }
   };
+  
+  if (pageLoading) {
+    return <LoadingScreen />;
+  }
 
   return (
     <div className="mt-24 mb-14 w-full space-y-4">

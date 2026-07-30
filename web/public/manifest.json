@@ -2,7 +2,7 @@
   "name": "Tribe",
   "short_name": "Tribe",
   "description": "Tribe Social Network",
-  "start_url": "/",
+  "start_url": "/main/home",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",

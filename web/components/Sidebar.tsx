@@ -80,7 +80,6 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
   
     loadInvites();
   }, []);
-  
 
   const navItem =
     "flex items-center gap-3 px-4 py-3 rounded-lg transition cursor-pointer hover:bg-gray-200 dark:hover:bg-zinc-800";
@@ -120,7 +119,7 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
 
         <ul className="space-y-2">
           {/* Search Button */}
-          <AppLink prefetch={false} className={navItem} href={"/main/search"}>
+          <AppLink prefetch={false} onClick={closeMenu} className={navItem} href={"/main/search"}>
             <Search size={20} />
             <span>Search</span>
           </AppLink>
@@ -132,6 +131,7 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
             <AppLink
               className="flex items-center gap-3 flex-1 cursor-pointer"
               prefetch={false}
+              onClick={closeMenu}
               href={"/main/switch-account"}
             >
               <Repeat size={20} />
@@ -142,6 +142,7 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
             <button
               onClick={(e) => {
                 e.stopPropagation();
+                closeMenu();
                 openSwitcher();
               }}
               className="p-2 rounded-full hover:bg-gray-300 dark:hover:bg-zinc-700"
@@ -209,6 +210,7 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
           <AppLink
             prefetch={false}
             className={navItem}
+            onClick={closeMenu}
             href={"/main/requests"}
           >
             <Handshake size={20} />
@@ -217,6 +219,7 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
           <AppLink
             className={`${navItem} relative`}
             prefetch={false}
+            onClick={closeMenu}
             href={`/main/invitation`}
           >
             <Mail size={20} />

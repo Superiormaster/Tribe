@@ -81,21 +81,29 @@ def get_or_create_chat(request):
     )
   
     return Response({
-        "chat_id": chat.id,
-        "chat_key": chat.chat_key,
-        "is_message_blocked":
-            is_message_blocked,
-        "blocked_me":
-            blocked_me,
+        "created": created,
+    
+        "chat": {
+            "id": chat.id,
+            "chat_key": chat.chat_key,
+            "type": chat.chat_type,
+        },
+    
         "other_user": {
             "id": user2.id,
             "username": user2.username,
-            "avatar": getattr(
-                user2,
-                "avatar",
-                None
+            "avatar": getattr(  
+                user2,  
+                "avatar",  
+                None  
             ),
-        }
+        },
+    
+        "is_message_blocked": is_message_blocked,
+        "blocked_me": blocked_me,
+    
+        "is_muted": participant1.is_muted,
+        "muted_until": participant1.muted_until,
     })
 
 @api_view(["GET"])

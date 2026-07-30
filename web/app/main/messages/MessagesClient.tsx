@@ -194,7 +194,7 @@ export default function MessagesClient() {
     try {
       const res = await openChat(userId);
   
-      push(`/main/messages/chat/${res.chat_id}`);
+      push(`/main/messages/chat/${res.chat.id}`);
     } catch (err) {
       console.error("Failed to open chat", err);
     }
@@ -634,7 +634,7 @@ export default function MessagesClient() {
 
       <button
         onClick={openDiscoverPanel}
-        className="fixed bottom-28 right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg text-2xl"
+        className="fixed bottom-32 right-6 w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg text-2xl"
       >
         💬
       </button>

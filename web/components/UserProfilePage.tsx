@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation';
 import { useNavigation } from "@/utils/useNavigation"
 import AppLink from '@/components/AppLink';
 import { UserContext } from '@/components/UserContext';
+import { openChat as openPrivateChat } from "@/lib/inbox/openChat";
 import { 
   Home, Star, Camera, Image, Send, Video,
 } from 'lucide-react';
@@ -770,6 +771,20 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
     };
     input.click();
   };
+  
+  const handleOpenChat = async () => {
+    if (!profileUserId) return;
+
+    try {
+      const res = await openPrivateChat(profileUserId);
+  
+      push(
+        `/main/messages/chat/${res.chat.id}`
+      );
+    } catch (err) {
+      console.error("Failed to open chat", err);
+    }
+  };
 
   const handleEditProfile = () => push('/main/edit-profile');
 
@@ -844,7 +859,7 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
     );
 
   return (
-    <div className="max-w-3xl mt-24 space-y-4">
+    <div className="max-w-3xl my-16 space-y-4">
 
       {/* Cover Photo */}
       <div className="relative h-40 overflow-hidden rounded-lg border border-gray-300 dark:border-gray-600 flex items-center justify-center hover:border-indigo-500 transition">
@@ -885,8 +900,46 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
             {profile?.bio && <p className="text-gray-500 dark:text-gray-400 text-sm">{profile?.bio}</p>}
             <div className="grid grid-cols-3 gap-2 mt-2 text-sm text-gray-500 dark:text-gray-400">
               <div><span className="font-semibold">{profile?.posts}</span> Posts</div>
-              <AppLink prefetch={false} href={`/main/stars/received`} className="flex items-center gap-1"><Star className="w-4 h-4 text-yellow-400"/><span className="font-semibold">{formatCount(profile?.stars ?? 0)}</span>{" "}Stars</AppLink>
-              <AppLink prefetch={false} href={`/main/stars/sent`}><span className="font-semibold">{formatCount(profile?.starredBy ?? 0)}</span>{" "}Starred</AppLink>
+              {isMyProfile ? (
+                <AppLink
+                  prefetch={false}
+                  href="/main/stars/received"
+                  className="flex items-center gap-1"
+                >
+                  <Star className="w-4 h-4 text-yellow-400" />
+                  <span className="font-semibold">
+                    {formatCount(profile?.stars ?? 0)}
+                  </span>{" "}
+                  Stars
+                </AppLink>
+              ) : (
+                <div className="flex items-center gap-1">
+                  <Star className="w-4 h-4 text-yellow-400" />
+                  <span className="font-semibold">
+                    {formatCount(profile?.stars ?? 0)}
+                  </span>{" "}
+                  Stars
+                </div>
+              )}
+            
+              {isMyProfile ? (
+                <AppLink
+                  prefetch={false}
+                  href="/main/stars/sent"
+                >
+                  <span className="font-semibold">
+                    {formatCount(profile?.starredBy ?? 0)}
+                  </span>{" "}
+                  Starred
+                </AppLink>
+              ) : (
+                <div>
+                  <span className="font-semibold">
+                    {formatCount(profile?.starredBy ?? 0)}
+                  </span>{" "}
+                  Starred
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -914,6 +967,9 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
                   Connected
                 </button>
               )}
+               {/* <button onClick={handleOpenChat} className="px-4 py-2 bg-indigo-600 text-white rounded-lg">
+                  <Send />
+                </button>*/}
           
               {/* REQUEST SENT */}
               {!relationship.is_connected && relationship.request_sent && (

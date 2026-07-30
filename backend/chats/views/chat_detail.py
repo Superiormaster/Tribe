@@ -49,6 +49,17 @@ def chat_detail(request, chat_id):
         participant.muted_until = None
         participant.save()
 
+    participants = ChatParticipant.objects.filter(chat=chat)
+
+    print("CHAT:", chat.id)
+
+    for p in participants:
+        print(
+            "Participant:",
+            p.user_id,
+            p.user.username,
+        )
+
     other_participant = (
         ChatParticipant.objects
         .select_related("user")
@@ -58,6 +69,14 @@ def chat_detail(request, chat_id):
     )
     
     other_user = other_participant.user if other_participant else None
+
+    if chat.chat_type == "private" and other_user is None:
+      return Response(
+          {
+              "detail": "Chat is missing a participant."
+          },
+          status=409,
+      )
 
     is_message_blocked = False
     blocked_me = False

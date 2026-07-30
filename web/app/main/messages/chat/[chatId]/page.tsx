@@ -110,40 +110,44 @@ export default function ChatPage() {
     if (!chatIdNum) return;
   
     const loadChat = async () => {
-      const chatRes = await apiRequest(
-        `api/chats/${chatIdNum}/detail/`
-      );
-
-      const other = chatRes.other_user;
-    
-      const presence =
-        await apiRequest(
+      try {
+        const chatRes = await apiRequest(
+          `api/chats/${chatIdNum}/detail/`
+        );
+  
+        const other = chatRes.other_user;
+  
+        if (!other) {
+          replace("/main/messages");
+          return;
+        }
+  
+        const presence = await apiRequest(
           `api/users/presence/${other.id}/`
         );
-    
-      setChatUser({
-        ...other,
-        status: presence.status,
-        last_seen:
-          presence.last_seen,
-        is_message_blocked:
-          chatRes.is_message_blocked,
-        blocked_me:
-          chatRes.blocked_me,
-      });
-      
-      await saveChatMeta(
-        chatIdNum,
-        other.id,
-        other.username,
-        other.avatar
-      );
-    
-      setIsMuted(chatRes.is_muted);
-      setMutedUntil(chatRes.muted_until);
-      setLastMessageStatus(
-        chatRes.last_message?.status
-      );
+  
+        setChatUser({
+          ...other,
+          status: presence.status,
+          last_seen: presence.last_seen,
+          is_message_blocked: chatRes.is_message_blocked,
+          blocked_me: chatRes.blocked_me,
+        });
+  
+        await saveChatMeta(
+          chatIdNum,
+          other.id,
+          other.username,
+          other.avatar
+        );
+  
+        setIsMuted(chatRes.is_muted);
+        setMutedUntil(chatRes.muted_until);
+        setLastMessageStatus(chatRes.last_message?.status);
+      } catch (err) {
+        console.error(err);
+        replace("/main/messages");
+      }
     };
   
     loadChat();

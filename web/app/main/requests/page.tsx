@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useNavigation } from "@/utils/useNavigation"
 import { apiRequest } from '@/utils/api';
 import { removeConnection } from '@/lib/api';
+import { openChat as openPrivateChat } from "@/lib/inbox/openChat";
 
 type User = {
   id: number;
@@ -90,15 +91,12 @@ export default function ConnectionsPage() {
     setConnectedUsers(prev => prev.filter(u => u.id !== id));
   };
 
-  const openChat = async (user: any) => {
+  const handleOpenChat = async (user: User) => {
     try {
-      const res = await apiRequest("api/chats/get-or-create/", {
-        method: "POST",
-        data: { user_id: user.id },
-      });
+      const res = await openPrivateChat(user.id);
   
       push(
-        `/main/messages/chat/${res.chat_id}?username=${encodeURIComponent(res.username)}&avatar=${encodeURIComponent(res.avatar || '')}`
+        `/main/messages/chat/${res.chat.id}?username=${encodeURIComponent(res.username)}&avatar=${encodeURIComponent(res.avatar || '')}`
       );
     } catch (err) {
       console.error("Failed to open chat", err);
@@ -203,18 +201,20 @@ export default function ConnectionsPage() {
             <UserCard
               key={user.id}
               user={user}
-              actions={
-                <button
-                  onClick={() => openChat(user)}
-                  className="px-3 py-1 text-sm bg-indigo-600 text-white rounded-lg"
-                >
-                  Chat
-                </button>
-              }
+              actions={null}
             />
           ))}
         </div>
       )}
+      {/*actions={
+                <button
+                  onClick={() => handleOpenChat(user)}
+                  className="px-3 py-1 text-sm bg-indigo-600 text-white rounded-lg"
+                >
+                  Chat
+                </button>
+              }*/}
+      
 
       {/* =========================
           REQUESTS (RECEIVED)
