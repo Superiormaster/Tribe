@@ -12,7 +12,7 @@ type Props = {
 };
 
 export default function CreateCommunity({ onCreated, user }: Props) {
-  const { push } = useNavigation();
+  const { replace } = useNavigation();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -119,7 +119,7 @@ export default function CreateCommunity({ onCreated, user }: Props) {
 
       // Redirect to the new community page
       if (createdCommunity?.id) {
-        push(`/main/community/${createdCommunity.id}`);
+        replace(`/main/community/${createdCommunity.id}`);
       }
 
       // Reset state
@@ -144,7 +144,7 @@ export default function CreateCommunity({ onCreated, user }: Props) {
   };
 
   return (
-    <div className="bg-white dark:bg-gray-900 p-4 mt-20 text-gray-600 rounded-2xl shadow-sm mb-6">
+    <div className="bg-white dark:bg-gray-900 p-4 my-20 text-gray-600 rounded-2xl shadow-sm mb-6">
       <h1 className="text-2xl text-gray-700 dark:text-gray-300 text-center font-bold mb-4">
         Create Community in {tribeName} Tribe
       </h1>

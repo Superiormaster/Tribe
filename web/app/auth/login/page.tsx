@@ -49,6 +49,37 @@ export default function LoginPage() {
     }
   }, [loadingUser, user, replace]);
   
+  useEffect(() => {
+    const checkSession = async () => {
+      if (loadingUser) return;
+  
+      const selected = localStorage.getItem("active_account");
+      if (!selected) return;
+  
+      const refresh = await getRefreshToken(selected);
+      if (!refresh) return;
+  
+      try {
+        const token = await apiRequest("api/users/refresh/", {
+          method: "POST",
+          data: { refresh },
+        });
+  
+        setAccessToken(token.access);
+  
+        const profile = await apiRequest("api/users/me/");
+        setUser(profile);
+  
+        replace("/main/home");
+      } catch {
+        // Session expired.
+        // Stay on the login page.
+      }
+    };
+  
+    checkSession();
+  }, [loadingUser, replace, setUser]);
+  
   // Load Google script
   useEffect(() => {
     if (typeof window === "undefined") return;
