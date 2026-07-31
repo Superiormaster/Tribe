@@ -309,10 +309,6 @@ export default function DiscoverPage() {
             
                 ))}
             
-                {tribe.loading && (
-                  <Skeleton />
-                )}
-            
               </div>
             
             )}

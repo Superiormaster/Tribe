@@ -10,9 +10,9 @@ import { tribe2 } from "@/assets";
 
 export default function Home() {
   const { replace } = useNavigation();
-  const { user, loadingUser } = useContext(UserContext)!;
+  const { user, authReady, loadingUser } = useContext(UserContext)!;
 
-  if (loadingUser) {
+  if (!authReady || loadingUser) {
     return (
       <LoadingScreen
         onComplete={() => {}}

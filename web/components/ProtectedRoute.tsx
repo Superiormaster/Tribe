@@ -15,13 +15,17 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   const { replace } = useNavigation();
 
   useEffect(() => {
-      if (!authReady && !authFailed) return;
-  
-      replace("/auth/login");
+    if (!authReady || loadingUser) return;
+
+    if (authFailed || !user) {
+        replace("/auth/login");
+    }
   }, [
-      authReady,
-      authFailed,
-      replace,
+    authReady,
+    loadingUser,
+    authFailed,
+    user,
+    replace,
   ]);
 
   if (!authReady || loadingUser) {

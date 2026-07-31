@@ -27,7 +27,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState(initialEmail || '');
   const { push, replace } = useNavigation();
 
-  const { user, setUser, loadingUser } = useContext(UserContext)!
+  const { user, authReady, loadingUser } = useContext(UserContext)!
 
   const isVerified = user?.is_verified
   const isGoogleLogin = user?.auth_provider === 'google'
@@ -42,43 +42,12 @@ export default function LoginPage() {
   const [showResend,setShowResend] = useState(false)
   
   useEffect(() => {
-    if (loadingUser) return;
+    if (!authReady || loadingUser) return;
   
     if (user) {
       replace("/main/home");
     }
   }, [loadingUser, user, replace]);
-  
-  useEffect(() => {
-    const checkSession = async () => {
-      if (loadingUser) return;
-  
-      const selected = localStorage.getItem("active_account");
-      if (!selected) return;
-  
-      const refresh = await getRefreshToken(selected);
-      if (!refresh) return;
-  
-      try {
-        const token = await apiRequest("api/users/refresh/", {
-          method: "POST",
-          data: { refresh },
-        });
-  
-        setAccessToken(token.access);
-  
-        const profile = await apiRequest("api/users/me/");
-        setUser(profile);
-  
-        replace("/main/home");
-      } catch {
-        // Session expired.
-        // Stay on the login page.
-      }
-    };
-  
-    checkSession();
-  }, [loadingUser, replace, setUser]);
   
   // Load Google script
   useEffect(() => {

@@ -30,24 +30,22 @@ export default function ExploreCommunities({
                   {communities.map((community) => (
   
                       <AppLink
-                          key={community.id}
-                          href={`/main/community/${community.id}`}
-                          className="flex-none w-28 flex flex-col py-1 items-center rounded-xl shadow"
-                      >
-  
-                          <img
-                              src={community.cover_image}
-                              className="w-20 h-20 rounded-xl object-cover"
-                          />
-  
-                          <p className="mt-2 text-gray-600 dark:text-gray-300 font-medium truncate">
-                              {community.name}
-                          </p>
-  
-                          <p className="text-xs text-gray-500">
-                              {formatCount(community.members_count)} members
-                          </p>
-  
+                        key={community.id}
+                        href={`/main/community/${community.id}`}
+                        className="flex-none w-28 rounded-xl shadow p-2 flex flex-col items-center"
+                    >
+                        <img
+                            src={community.cover_image}
+                            className="w-20 h-20 rounded-xl object-cover"
+                        />
+                    
+                        <p className="mt-2 w-full text-center text-gray-600 dark:text-gray-300 font-medium truncate">
+                            {community.name}
+                        </p>
+                    
+                        <p className="w-full text-center text-xs text-gray-500 truncate">
+                            {formatCount(community.members_count)} members
+                        </p>
                       </AppLink>
   
                   ))}
