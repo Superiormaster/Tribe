@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { apiRequest } from '@/utils/api'
 import { useNavigation } from '@/utils/useNavigation'
 import { useOnboardingGuard } from '@/utils/useOnboardingGuard'
+import { ChevronRight } from 'lucide-react'
 
 interface Community {
   id: number
@@ -11,9 +12,16 @@ interface Community {
 }
 
 interface Tribe {
-  id: number
-  name: string
-  communities: Community[]
+  id: number;
+  name: string;
+  community_count: number;
+
+  expanded?: boolean;
+  loading?: boolean;
+  communityPage?: number;
+  hasMoreCommunities?: boolean;
+
+  communities?: Community[];
 }
 
 export default function DiscoverCommunities() {
@@ -24,49 +32,208 @@ export default function DiscoverCommunities() {
   const [tribes, setTribes] = useState<Tribe[]>([])
   const [selected, setSelected] = useState<number[]>([])
   const [loading, setLoading] = useState(true)
-  const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const initialized = useRef(false);
+  const pageRef = useRef(1);
+  const loadingRef = useRef(false);
 
   useEffect(() => {
+    if (initialized.current) return;
+  
+    initialized.current = true;
     load(1);
-  }, [])
+  }, []);
 
-  async function load(pageNumber = 1) {
-    if (loadingMore || !hasMore) return;
+  async function load(pageNumber = pageRef.current) {
+    if (pageNumber !== 1 && (loadingRef.current || loadingMore || !hasMore)) {
+      return;
+    }
+  
+    loadingRef.current = true;
   
     try {
-      if (pageNumber === 1) {
-        setLoading(true);
-      } else {
-        setLoadingMore(true);
-      }
+      pageNumber === 1
+        ? setLoading(true)
+        : setLoadingMore(true);
   
       const data = await apiRequest(
         `api/users/discover-communities/?page=${pageNumber}`
       );
   
-      const newTribes = data.results || [];
+      const newTribes = data.results.map((tribe: Tribe) => ({
+        ...tribe,
+        expanded: false,
+        loading: false,
+        communityPage: 1,
+        hasMoreCommunities: true,
+        communities: [],
+      }));
   
       if (pageNumber === 1) {
         setTribes(newTribes);
   
-        if (
-          newTribes.length === 0 ||
-          newTribes.every((t: Tribe) => t.communities.length === 0)
-        ) {
+        if (newTribes.length === 0) {
           push("/auth/star");
           return;
         }
       } else {
-        setTribes(prev => [...prev, ...newTribes]);
+        setTribes(prev => {
+          const existing = new Set(prev.map(t => t.id));
+        
+          return [
+            ...prev,
+            ...newTribes.filter((t: any) => !existing.has(t.id)),
+          ];
+        });
       }
   
+      pageRef.current++;
       setHasMore(data.next !== null);
-      setPage(pageNumber);
+  
     } finally {
       setLoading(false);
       setLoadingMore(false);
+      loadingRef.current = false;
+    }
+  }
+  
+  async function toggleTribe(id: number) {
+
+    const tribe = tribes.find(t => t.id === id);
+  
+    if (!tribe) return;
+  
+    if (tribe.expanded) {
+      setTribes(prev =>
+        prev.map((t: any) => ({
+          ...t,
+          expanded: t.id === id,
+        }))
+      );
+  
+      return;
+    }
+  
+    if (tribe.communities!.length > 0) {
+      setTribes(prev =>
+        prev.map((t: any) => ({
+          ...t,
+          expanded: t.id === id,
+        }))
+      );
+  
+      return;
+    }
+  
+    setTribes(prev =>
+      prev.map((t: any) => ({
+        ...t,
+        expanded: t.id === id,
+        loading: t.id === id,
+      }))
+    );
+  
+    try {
+      const data = await apiRequest(
+        `api/users/tribes/${id}/communities/?page=1`
+      );
+    
+      setTribes(prev =>
+        prev.map((t: any) =>
+          t.id === id
+            ? {
+                ...t,
+                expanded: true,
+                loading: false,
+                communities: data.results,
+                communityPage: 2,
+                hasMoreCommunities: data.next !== null,
+              }
+            : t
+        )
+      );
+    } catch (err) {
+      console.error(err);
+    
+      setTribes(prev =>
+        prev.map(t =>
+          t.id === id
+            ? {
+                ...t,
+                loading: false,
+                expanded: false,
+              }
+            : t
+        )
+      );
+    }
+  }
+  
+  async function loadMoreCommunities(id: number) {
+    if (loadingRef.current) return;
+
+    try {
+      const tribe = tribes.find(t => t.id === id);
+    
+      if (
+        !tribe ||
+        tribe.loading ||
+        !tribe.hasMoreCommunities
+      ) {
+        return;
+      }
+
+      loadingRef.current = true;
+    
+      setTribes(prev =>
+        prev.map(t =>
+          t.id === id
+            ? { ...t, loading: true }
+            : t
+        )
+      );
+    
+      try {
+        const data = await apiRequest(
+          `api/users/tribes/${id}/communities/?page=${tribe.communityPage}`
+        );
+      
+        setTribes(prev =>
+          prev.map(t =>
+            t.id === id
+              ? {
+                  ...t,
+                  loading: false,
+                  communities: [
+                    ...t.communities!,
+                    ...data.results,
+                  ],
+                  communityPage:
+                    t.communityPage! + 1,
+                  hasMoreCommunities:
+                    data.next !== null,
+                }
+              : t
+          )
+        );
+      } catch (err) {
+        console.error(err);
+      
+        setTribes(prev =>
+          prev.map(t =>
+            t.id === id
+              ? {
+                  ...t,
+                  loading: false,
+                  expanded: false,
+                }
+              : t
+          )
+        );
+      }
+    } finally {
+      loadingRef.current = false;
     }
   }
   
@@ -76,7 +243,7 @@ export default function DiscoverCommunities() {
         window.innerHeight + window.scrollY >=
         document.documentElement.scrollHeight - 300
       ) {
-        load(page + 1);
+        load();
       }
     }
   
@@ -84,7 +251,7 @@ export default function DiscoverCommunities() {
   
     return () =>
       window.removeEventListener("scroll", handleScroll);
-  }, [page, hasMore, loadingMore]);
+  }, [loadingMore, hasMore]);
 
   function toggle(id: number) {
     setSelected(prev =>
@@ -136,37 +303,78 @@ export default function DiscoverCommunities() {
           className="mb-10"
         >
 
-          <h2 className="font-bold text-xl mb-4">
-            {tribe.name}
-          </h2>
+          <button
+            onClick={() => toggleTribe(tribe.id)}
+            className="w-full flex items-center justify-between mb-4"
+          >
+            <div>
+              <h2 className="font-bold text-xl">
+                {tribe.name}
+              </h2>
+          
+              <p className="text-sm text-gray-500">
+                {tribe.community_count} communities
+              </p>
+            </div>
+          
+            <ChevronRight
+              className={`transition ${
+                tribe.expanded ? "rotate-90" : ""
+              }`}
+            />
+          </button>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {tribe.expanded && (
 
-            {tribe.communities.map(community => {
-
-              const active = selected.includes(
-                community.id
-              )
-
-              return (
-
-                <button
-                  key={community.id}
-                  onClick={() => toggle(community.id)}
-                  className={`rounded-xl border p-4 transition ${
-                    active
-                      ? "bg-indigo-600 text-white border-indigo-600"
-                      : "bg-white dark:bg-gray-900 hover:border-indigo-500"
-                  }`}
-                >
-                  {community.name}
-                </button>
-
-              )
-
-            })}
-
-          </div>
+            <div
+              className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-96 overflow-y-auto"
+              onScroll={(e) => {
+          
+                const el = e.currentTarget;
+          
+                if (
+                  el.scrollTop + el.clientHeight >=
+                  el.scrollHeight - 100
+                ) {
+                  loadMoreCommunities(tribe.id);
+                }
+          
+              }}
+            >
+          
+              {tribe.communities?.map(community => {
+          
+                const active = selected.includes(
+                  community.id
+                );
+          
+                return (
+          
+                  <button
+                    key={community.id}
+                    onClick={() => toggle(community.id)}
+                    className={`rounded-xl border p-4 transition ${
+                      active
+                        ? "bg-indigo-600 text-white border-indigo-600"
+                        : "bg-white dark:bg-gray-900 hover:border-indigo-500"
+                    }`}
+                  >
+                    {community.name}
+                  </button>
+          
+                );
+          
+              })}
+          
+              {tribe.loading && (
+                <div className="col-span-full text-center py-4">
+                  Loading...
+                </div>
+              )}
+          
+            </div>
+          
+          )}
 
         </div>
 

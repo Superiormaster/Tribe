@@ -1271,7 +1271,7 @@ class ExploreCommunitiesView(APIView):
         shuffle(communities)
 
         serializer = CommunitySerializer(
-            communities[:3],
+            communities[:5],
             many=True,
             context={"request": request},
         )

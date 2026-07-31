@@ -1528,7 +1528,6 @@ class ProfileView(generics.RetrieveUpdateAPIView):
 def discover_communities(request):
     queryset = (
         Tribe.objects
-        .prefetch_related("communities")
         .order_by("name")
     )
 
@@ -1537,16 +1536,44 @@ def discover_communities(request):
 
     page = paginator.paginate_queryset(queryset, request)
 
-    serializer = TribeDetailSerializer(
-        page,
-        many=True,
-        context={
-            "request": request,
-            "discover": True,
-        },
+    data = [
+        {
+            "id": tribe.id,
+            "name": tribe.name,
+            "description": tribe.description,
+            "allow_reels": tribe.allow_reels,
+            "community_count": tribe.communities.count(),
+        }
+        for tribe in page
+    ]
+
+    return paginator.get_paginated_response(data)
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def tribe_communities(request, tribe_id):
+    queryset = (
+        Community.objects
+        .filter(tribe_id=tribe_id)
+        .order_by("name")
     )
 
-    return paginator.get_paginated_response(serializer.data)
+    paginator = PageNumberPagination()
+    paginator.page_size = 20
+
+    page = paginator.paginate_queryset(queryset, request)
+
+    data = [
+        {
+            "id": community.id,
+            "name": community.name,
+            "members": community.memberships.count(),
+            "cover_image": community.cover_image,
+        }
+        for community in page
+    ]
+
+    return paginator.get_paginated_response(data)
 
 def join_community(user, community):
     ban = CommunityBan.objects.filter(

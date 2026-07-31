@@ -24,14 +24,14 @@ export default function ExploreCommunities({
                 </AppLink>
             </div>
 
-            <div className="flex gap-1 overflow-x-auto pl-3 scrollbar-hide">
+            <div className="flex flex-nowrap gap-3 overflow-x-auto px-3 scrollbar-hide">
 
                 {communities.map((community) => (
 
                     <AppLink
                         key={community.id}
                         href={`/main/community/${community.id}`}
-                        className="min-w-[110px] w-full flex flex-col py-1 items-center rounded-xl shadow"
+                        className="flex-none w-28 flex flex-col py-1 items-center rounded-xl shadow"
                     >
 
                         <img

@@ -37,6 +37,7 @@ from .views import (
     sent_requests,
     complete_onboarding,
     discover_connect,
+    tribe_communities,
     socket_auth,
     onboarding_status,
     ping,
@@ -92,7 +93,14 @@ urlpatterns = [
     path("profile/<str:username>/", profile_view),
     path("profile/<str:username>/posts/", profile_posts),
     path("discover-join/", discover_join),
-    path("discover-communities/", discover_communities),
+    path(
+        "discover-communities/",
+        discover_communities,
+    ),
+    path(
+        "tribes/<int:tribe_id>/communities/",
+        tribe_communities,
+    ),
     path(
         "users/<str:username>/report/",
         report_user,

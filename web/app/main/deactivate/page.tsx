@@ -29,7 +29,7 @@ export default function DeactivateAccountPage() {
   };
 
   return (
-    <div className="max-w-xl mx-auto p-4 text-gray-700 dark:text-gray-300">
+    <div className="max-w-xl mx-auto p-4 text-gray-700 my-20 dark:text-gray-300">
 
       {/* HEADER */}
       <h1 className="text-2xl font-bold flex items-center gap-2 mb-4">
