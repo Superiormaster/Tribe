@@ -24,32 +24,67 @@ export default function DiscoverCommunities() {
   const [tribes, setTribes] = useState<Tribe[]>([])
   const [selected, setSelected] = useState<number[]>([])
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
-    load()
+    load(1);
   }, [])
 
-  async function load() {
+  async function load(pageNumber = 1) {
+    if (loadingMore || !hasMore) return;
+  
     try {
-      const data = await apiRequest(
-        "api/users/discover-communities/"
-      )
-
-      const tribes = data.results || data;
-
-      setTribes(tribes);
-      
-      if (
-        tribes.length === 0 ||
-        tribes.every((t: any) => t.communities.length === 0)
-      ) {
-        push("/auth/star");
-        return;
+      if (pageNumber === 1) {
+        setLoading(true);
+      } else {
+        setLoadingMore(true);
       }
+  
+      const data = await apiRequest(
+        `api/users/discover-communities/?page=${pageNumber}`
+      );
+  
+      const newTribes = data.results || [];
+  
+      if (pageNumber === 1) {
+        setTribes(newTribes);
+  
+        if (
+          newTribes.length === 0 ||
+          newTribes.every((t: Tribe) => t.communities.length === 0)
+        ) {
+          push("/auth/star");
+          return;
+        }
+      } else {
+        setTribes(prev => [...prev, ...newTribes]);
+      }
+  
+      setHasMore(data.next !== null);
+      setPage(pageNumber);
     } finally {
-      setLoading(false)
+      setLoading(false);
+      setLoadingMore(false);
     }
   }
+  
+  useEffect(() => {
+    function handleScroll() {
+      if (
+        window.innerHeight + window.scrollY >=
+        document.documentElement.scrollHeight - 300
+      ) {
+        load(page + 1);
+      }
+    }
+  
+    window.addEventListener("scroll", handleScroll);
+  
+    return () =>
+      window.removeEventListener("scroll", handleScroll);
+  }, [page, hasMore, loadingMore]);
 
   function toggle(id: number) {
     setSelected(prev =>
@@ -143,6 +178,12 @@ export default function DiscoverCommunities() {
       >
         Continue
       </button>
+  
+      {loadingMore && (
+        <div className="py-6 text-center text-gray-500">
+          Loading more...
+        </div>
+      )}
 
     </div>
   )

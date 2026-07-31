@@ -20,25 +20,52 @@ interface Tribe {
 export default function DiscoverPage() {
   const { push } = useNavigation()
 
-  const [tribes, setTribes] = useState<Tribe[]>([])
-  const [loading, setLoading] = useState(true)
+  const [tribes, setTribes] = useState<Tribe[]>([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     load()
   }, [])
 
-  async function load() {
+  async function load(pageNumber = 1) {
+    if (loading || !hasMore) return;
+  
+    setLoading(true);
+  
     try {
       const data = await apiRequest(
-        "api/users/discover-communities/"
-      )
-
-      setTribes(data.results || data)
-
+        `api/users/discover-communities/?page=${pageNumber}`
+      );
+  
+      setTribes(prev => [...prev, ...data.results]);
+      setHasMore(data.next !== null);
+      setPage(pageNumber);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
+  
+  useEffect(() => {
+    function handleScroll() {
+      if (
+        window.innerHeight + window.scrollY >=
+        document.body.offsetHeight - 300
+      ) {
+        load(page + 1);
+      }
+    }
+  
+    window.addEventListener("scroll", handleScroll);
+  
+    return () =>
+      window.removeEventListener("scroll", handleScroll);
+  }, [page, loading, hasMore]);
+  
+  useEffect(() => {
+    load(1);
+  }, []);
 
   if (loading) {
     return (

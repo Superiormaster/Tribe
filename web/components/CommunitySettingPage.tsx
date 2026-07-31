@@ -82,6 +82,7 @@ export default function CommunitySettingsPage({
     );
 
     alert("Updated successfully");
+    replace(`/main/community/${communityId}`)
   };
 
   if (loading) return <Skeleton />;
