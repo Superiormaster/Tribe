@@ -12,6 +12,7 @@ import { saveAccount, getAccounts, setActiveAccount } from '@/utils/accounts'
 import { handleOnboardingRedirect } from '@/utils/handleOnboardingRedirect';
 import { useSearchParams } from "next/navigation"
 import { storeRefreshToken, getRefreshToken } from "@/lib/keyStore"
+import { saveCachedUser } from "@/lib/userCache"
 import { useNavigation } from "@/utils/useNavigation";
 
 declare global {
@@ -27,7 +28,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState(initialEmail || '');
   const { push, replace } = useNavigation();
 
-  const { user, authReady, loadingUser } = useContext(UserContext)!
+  const { user, setUser, authReady } = useContext(UserContext)!
 
   const isVerified = user?.is_verified
   const isGoogleLogin = user?.auth_provider === 'google'
@@ -42,12 +43,12 @@ export default function LoginPage() {
   const [showResend,setShowResend] = useState(false)
   
   useEffect(() => {
-    if (!authReady || loadingUser) return;
+    if (!authReady) return;
   
     if (user) {
       replace("/main/home");
     }
-  }, [loadingUser, user, replace]);
+  }, [authReady, user, replace]);
   
   // Load Google script
   useEffect(() => {
@@ -131,6 +132,7 @@ export default function LoginPage() {
         method: 'GET',
       });
       setUser(profile);
+      await saveCachedUser(profile);
 
       if (remember) saveAccount(profile, "google");
 
@@ -176,6 +178,7 @@ export default function LoginPage() {
         method: 'GET',
       })
       setUser(profile)
+      await saveCachedUser(profile);
 
       if (remember) saveAccount(profile, "password")
       setActiveAccount(profile.email)
@@ -214,6 +217,9 @@ export default function LoginPage() {
     }
   };
 
+  if (!authReady) {
+    return <></>;
+  }
   return (
     <>
     <AuthLoading

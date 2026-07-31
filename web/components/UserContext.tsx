@@ -8,6 +8,7 @@ import LoadingScreen from '@/components/LoadingScreen';
 import { isSessionExpired, startActivityTracking } from "@/lib/activity";
 import { useNavigation } from "@/utils/useNavigation"
 import { REFRESH_HOME_EVENT } from "@/lib/authEvents";
+import { saveCachedUser, getCachedUser } from "@/lib/userCache";
 import { useNetwork } from "@/components/networkConnection/NetworkContext";
 
 interface UserContextType {
@@ -52,7 +53,15 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
         const selected =
           localStorage.getItem("active_account");
-        
+      
+        if (selected) {
+          const cached = await getCachedUser(selected);
+      
+          if (cached) {
+              setUser(cached);
+          }
+        }
+  
         if (!selected) {
           setAuthFailed(true);
           setUser(null);
@@ -79,6 +88,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         // 4. Fetch user
         const profile = await apiRequest("api/users/me/");
         setUser(profile);
+        await saveCachedUser(profile);
         localStorage.setItem(
           "last_seen",
           Date.now().toString()
@@ -118,6 +128,27 @@ export function UserProvider({ children }: { children: ReactNode }) {
   
   useEffect(() => {
     initAuth();
+  }, [initAuth]);
+  
+  useEffect(() => {
+    const handleAuthChanged = async () => {
+      const active =
+        localStorage.getItem("active_account");
+    
+      if (!active) {
+        setUser(null);
+        setAuthFailed(true);
+        return;
+      }
+    
+      await initAuth();
+    };
+  
+    window.addEventListener("auth-changed", handleAuthChanged);
+  
+    return () => {
+      window.removeEventListener("auth-changed", handleAuthChanged);
+    };
   }, [initAuth]);
   
   useEffect(() => {

@@ -1,5 +1,6 @@
 import { apiRequest, setAccessToken } from "@/utils/api";
 import { deleteRefreshToken } from "@/lib/keyStore";
+import { removeCachedUser } from "@/lib/userCache";
 
 export async function logout() {
   // capture account early (avoid race conditions)
@@ -18,6 +19,10 @@ export async function logout() {
   await Promise.allSettled([
     selectedAccount ? deleteRefreshToken(selectedAccount) : Promise.resolve(),
   ]);
+  
+  if (selectedAccount) {
+    await removeCachedUser(selectedAccount);
+  }
 
   // clear runtime auth state
   setAccessToken(null);

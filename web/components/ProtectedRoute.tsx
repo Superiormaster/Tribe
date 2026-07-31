@@ -3,37 +3,33 @@
 import { useContext, useEffect } from 'react'
 import { useNavigation } from "@/utils/useNavigation"
 import { UserContext } from '@/components/UserContext'
-import LoadingScreen from '@/components/LoadingScreen'
+import { useNetwork } from "@/components/networkConnection/NetworkContext";
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const {
     user,
-    loadingUser,
     authReady,
     authFailed,
   } = useContext(UserContext)!;
+  const { isOnline } = useNetwork();
   const { replace } = useNavigation();
 
   useEffect(() => {
-    if (!authReady || loadingUser) return;
+    if (!authReady) return;
 
+    if (!isOnline) return;
     if (authFailed || !user) {
         replace("/auth/login");
     }
   }, [
     authReady,
-    loadingUser,
     authFailed,
     user,
     replace,
   ]);
 
-  if (!authReady || loadingUser) {
-      return <LoadingScreen onComplete={() => {}} />;
-  }
-  
-  if (authFailed) {
-    return <LoadingScreen onComplete={() => {}} />;
+  if (!authReady) {
+      return null;
   }
 
   return <>{children}</>
