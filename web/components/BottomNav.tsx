@@ -61,17 +61,25 @@ export default function BottomNav() {
       })}
 
       {/* Profile */}
-      {user ? (
-        <AppLink href={`/main/profile/${user.username}`} prefetch={false} className="flex flex-col items-center text-xs">
-          {user.avatar && (
-            <User
-              className={`w-6 h-6 object-cover text-gray-600 ${profileActive ? "text-indigo-600" : ""}`}
-            />
-          )}
-          <span className={profileActive ? "text-indigo-600" : "text-gray-500"}>Profile</span>
+      {user && (
+        <AppLink
+          href={`/main/profile/${user.username}`}
+          prefetch={false}
+          className="flex flex-col items-center text-xs"
+        >
+          <User
+            className={`w-6 h-6 ${
+              profileActive ? "text-indigo-600" : "text-gray-500"
+            }`}
+          />
+          <span
+            className={
+              profileActive ? "text-indigo-600" : "text-gray-500"
+            }
+          >
+            Profile
+          </span>
         </AppLink>
-      ) : (
-        <div className="w-6 h-6 bg-gray-200 rounded-full animate-pulse"></div>
       )}
     </nav>
   );

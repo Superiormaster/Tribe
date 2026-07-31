@@ -84,6 +84,10 @@ class Community(models.Model):
     join_approval_required = models.BooleanField(
         default=False
     )
+    website = models.CharField(
+      max_length=255,
+      blank=True
+    )
     tribe = models.ForeignKey(Tribe, null=True, on_delete=models.SET_NULL, related_name="communities")
     allow_videos = models.BooleanField(null=True, blank=True, default=True)
     override_reels = models.BooleanField(default=False)

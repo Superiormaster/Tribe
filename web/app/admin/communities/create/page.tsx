@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useNavigation } from '@/utils/useNavigation';
 import { apiRequest } from '@/utils/api';
 import { uploadToCloudinary } from '@/utils/cloudinary';
+import {normalizeWebsite} from "@/utils/normalizeWebsite";
 
 import {
   ArrowLeft,
@@ -26,6 +27,7 @@ export default function CreateCommunityPage() {
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [website, setWebsite] = useState('')
 
   const [requireApproval, setRequireApproval] =
     useState(false);
@@ -191,6 +193,7 @@ export default function CreateCommunityPage() {
         name,
 
         description,
+        website: normalizeWebsite(website),
 
         require_post_approval:
           requireApproval,
@@ -296,6 +299,21 @@ export default function CreateCommunityPage() {
             onChange={(e) => setDescription(e.target.value)}
             className="w-full rounded-lg border p-3"
             placeholder="Describe this community..."
+          />
+
+        </div>
+  
+        <div>
+
+          <label className="mb-2 block text-sm font-medium">
+            Community Website
+          </label>
+
+          <input
+            value={website}
+            onChange={(e) => setWebsite(e.target.value)}
+            className="w-full rounded-lg border p-3"
+            placeholder="https:// or www.website.com"
           />
 
         </div>

@@ -1,6 +1,6 @@
 from rest_framework.routers import DefaultRouter
 from django.urls import path
-from .views import CommunityViewSet, TribeViewSet, PublicTribeViewSet, invite_users, send_community_invite, accept_community_invite, decline_community_invite, mute_community_user, unmute_community_user, ban_community_user, unban_community_user, remove_community_user, tribe_requests, tribe_request_detail, get_my_invites, SuggestedCommunityView, ExploreCommunitiesView, joined_communities
+from .views import CommunityViewSet, TribeViewSet, PublicTribeViewSet, invite_users, send_community_invite, accept_community_invite, decline_community_invite, mute_community_user, unmute_community_user, ban_community_user, unban_community_user, remove_community_user, tribe_requests, tribe_request_detail, get_my_invites, SuggestedCommunityView, ExploreCommunitiesView, joined_communities, CommunityDeleteView
 
 router = DefaultRouter()
 router.register(r'communities', CommunityViewSet, basename='community')
@@ -55,6 +55,12 @@ urlpatterns = [
         "communities/<int:community_id>/mute/",
         mute_community_user,
     ),
+  
+    path(
+        "communities/<int:pk>/delete/",
+        CommunityDeleteView.as_view(),
+    ),
+  
     path(
         "communities/<int:community_id>/unmute/",
         unmute_community_user,

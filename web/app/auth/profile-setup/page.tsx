@@ -5,6 +5,7 @@ import { useNavigation } from "@/utils/useNavigation"
 import { countries } from "countries-list"
 import { uploadToCloudinary } from '@/utils/cloudinary';
 import { useOnboardingGuard } from '@/utils/useOnboardingGuard';
+import {normalizeWebsite} from "@/utils/normalizeWebsite";
 import { apiRequest } from '@/utils/api'
 
 export default function ProfileSetup() {
@@ -175,13 +176,9 @@ export default function ProfileSetup() {
   
       formData.append('country', country)
       formData.append('city', city)
-      if (website) {
-        // Ensure it starts with http:// or https://
-        let formattedWebsite = website
-        if (!/^https?:\/\//i.test(website)) {
-          formattedWebsite = 'https://' + website
-        }
-        formData.append('website', formattedWebsite)
+      if (website.trim()) {
+        const formattedWebsite = normalizeWebsite(website);
+        formData.append("website", formattedWebsite);
       }
   
       formData.append('what_do_you_do', whatDoYouDo)

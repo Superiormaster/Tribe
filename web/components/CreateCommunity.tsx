@@ -29,6 +29,7 @@ export default function CreateCommunity({ onCreated, user }: Props) {
   const [videoProgress, setVideoProgress] = useState(0);
 
   const [requireApproval, setRequireApproval] = useState(false);
+  const [website, setWebsite] = useState('')
   const [joinApprovalRequired, setJoinApprovalRequired] = useState(false);
   const [tribeName, setTribeName] = useState("");
   const [selectedTribe, setSelectedTribe] = useState<number | null>(null);
@@ -102,6 +103,7 @@ export default function CreateCommunity({ onCreated, user }: Props) {
       const payload: any = {
         name,
         description,
+        website,
         require_post_approval: requireApproval,
         join_approval_required: joinApprovalRequired,
         tribe: selectedTribe,
@@ -125,6 +127,7 @@ export default function CreateCommunity({ onCreated, user }: Props) {
       // Reset state
       setName('');
       setDescription('');
+      setWebsite('');
       setCoverFile(null);
       setCoverPreview(null);
       setCoverProgress(0);
@@ -144,7 +147,7 @@ export default function CreateCommunity({ onCreated, user }: Props) {
   };
 
   return (
-    <div className="bg-white dark:bg-gray-900 p-4 my-20 text-gray-600 rounded-2xl shadow-sm mb-6">
+    <div className="bg-white dark:bg-gray-900 p-4 my-20 text-gray-600 rounded-2xl shadow-sm">
       <h1 className="text-2xl text-gray-700 dark:text-gray-300 text-center font-bold mb-4">
         Create Community in {tribeName} Tribe
       </h1>
@@ -162,6 +165,13 @@ export default function CreateCommunity({ onCreated, user }: Props) {
         value={description}
         onChange={(e) => setDescription(e.target.value)}
         className="w-full mb-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+      />
+
+      <input
+        value={website}
+        onChange={(e) => setWebsite(e.target.value)}
+        className="w-full px-3 py-2 mb-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+        placeholder="Enter community website"
       />
 
       {/* Require Approval */}

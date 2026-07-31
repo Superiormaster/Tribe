@@ -24,7 +24,10 @@ class User(AbstractUser):
     country = models.CharField(max_length=120, blank=True)
     city = models.CharField(max_length=120, blank=True)
 
-    website = models.URLField(blank=True)
+    website = models.CharField(
+        max_length=255,
+        blank=True
+    )
     role = models.CharField(
         max_length=20,
         default="user",

@@ -8,6 +8,7 @@ import { openChat as openPrivateChat } from "@/lib/inbox/openChat";
 import { 
   Home, Star, Camera, Image, Send, Video,
 } from 'lucide-react';
+import { websiteToUrl, websiteDisplay } from "@/utils/normalizeWebsite";
 import {
   DndContext,
   closestCenter,
@@ -945,8 +946,8 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
         </div>
 
         {profile?.website && (
-          <a href={profile?.website} target="_blank" rel="noopener noreferrer" className="text-indigo-600">
-            {new URL(profile?.website).hostname}
+          <a href={websiteToUrl(profile?.website)} target="_blank" rel="noopener noreferrer" className="text-indigo-600">
+            {websiteDisplay(new URL(profile?.website).hostname)}
           </a>
         )}
 

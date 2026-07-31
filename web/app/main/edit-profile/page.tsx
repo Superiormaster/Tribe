@@ -7,6 +7,7 @@ import Skeleton from '@/components/Skeleton'
 import { useContext } from "react";
 import { UserContext } from "@/components/UserContext"
 import { uploadToCloudinary } from "@/utils/cloudinary"
+import {normalizeWebsite} from "@/utils/normalizeWebsite";
 
 export default function EditProfile() {
   const { push } = useNavigation()
@@ -106,7 +107,7 @@ export default function EditProfile() {
         bio,
         country,
         city,
-        website,
+        website: normalizeWebsite(website),
         what_do_you_do: whatDoYouDo,
         gender,
         date_of_birth: year && month && day ? `${year}-${month}-${day}` : undefined,

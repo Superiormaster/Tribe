@@ -265,7 +265,10 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
           </button>
 
           <button
-            onClick={logout}
+            onClick={() => {
+              closeMenu();
+              logout();
+            }}
             className="text-left text-red-400 px-4 py-2 rounded-lg hover:bg-red-900/30"
           >
             Logout

@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from "react";
-import { MoreVertical, Search } from "lucide-react";
+import { MoreVertical, VolumeX, Volume2, Search } from "lucide-react";
 import AppLink from '@/components/AppLink';
+import { formatCount } from '@/utils/formatCount';
+import { websiteToUrl, websiteDisplay  } from "@/utils/normalizeWebsite";
 
 type Props = {
   community: any;
@@ -40,7 +42,7 @@ export default function CommunityHeader({
         onClick={() => setMuted(prev => !prev)}
         className="absolute top-4 right-4 z-30 bg-black/50 text-white px-3 py-1 rounded-full text-xs"
       >
-        {muted ? "🔊" : "🔇"}
+        {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
       </button>
       {community.intro_video && (
         <video
@@ -78,12 +80,24 @@ export default function CommunityHeader({
           {community.description}
         </p>
 
+        <div>
+          {community.website && (
+            <a
+              href={websiteToUrl(community.website)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-indigo-600"
+            >
+              {websiteDisplay(community.website)}
+            </a>
+          )}
+        </div>
         <div className="flex items-center justify-between mt-3">
 
           <div className="flex items-center gap-3">
 
             <span className="text-white text-sm">
-              {membersCount} members
+              {formatCount(membersCount)} members
             </span>
 
             {!community.joined && !community.requested && !community.invited && (

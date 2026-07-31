@@ -84,6 +84,27 @@ export default function TribeDetailPage() {
     }
 
   }, [tribeId]);
+  
+  async function deleteCommunity(id: number) {
+    const ok = window.confirm(
+      "Delete this community?"
+    );
+  
+    if (!ok) return;
+  
+    try {
+      await apiRequest(
+        `api/communities/${id}/delete/`,
+        {
+          method: "DELETE",
+        }
+      );
+  
+      fetchTribe();
+    } catch (err) {
+      console.error(err);
+    }
+  }
 
   useEffect(() => {
 
@@ -355,7 +376,7 @@ export default function TribeDetailPage() {
 
         ) : (
 
-          <div className="overflow-hidden rounded-xl border">
+          <div className="overflow-x-auto rounded-xl border">
 
             <table className="min-w-full">
 
@@ -369,6 +390,10 @@ export default function TribeDetailPage() {
 
                   <th className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                     Members
+                  </th>
+  
+                  <th className="px-6 py-3 text-right">
+                    Actions
                   </th>
 
                 </tr>
@@ -408,6 +433,18 @@ export default function TribeDetailPage() {
                       </div>
 
                     </td>
+                    
+                    <td
+                        className="px-6 py-4 text-right"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <button
+                          onClick={() => deleteCommunity(community.id)}
+                          className="rounded-lg p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </td>
 
                   </tr>
 

@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { apiRequest } from "@/utils/api";
 import Skeleton from "@/components/Skeleton";
+import { useNavigation } from "@/utils/useNavigation";
+import { Pause, Play, Repeat, VolumeX, Volume2 } from 'lucide-react'
 
 export default function CommunitySettingsPage({
   communityId,
@@ -14,6 +16,7 @@ export default function CommunitySettingsPage({
     owner: {},
     admin: {},
   });
+  const { replace } = useNavigation();
 
   const [loading, setLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -37,6 +40,27 @@ export default function CommunitySettingsPage({
     setPermissions(data.permissions);
     setLoading(false);
   };
+  
+  async function deleteCommunity(id: number) {
+    const ok = window.confirm(
+      "Delete this community?"
+    );
+  
+    if (!ok) return;
+  
+    try {
+      await apiRequest(
+        `api/communities/${id}/delete/`,
+        {
+          method: "DELETE",
+        }
+      );
+  
+      replace("/main/tribe");
+    } catch (err) {
+      console.error(err);
+    }
+  }
 
   const updateSettings = async () => {
     await apiRequest(
@@ -48,6 +72,7 @@ export default function CommunitySettingsPage({
           description: community.description,
           cover_image: community.cover_image,
           intro_video: community.intro_video,
+          website: community.website,
 
           require_post_approval: community.require_post_approval,
           join_approval_required: community.join_approval_required,
@@ -90,7 +115,7 @@ return (
             }}
             className="bg-black/60 text-white px-3 py-1 rounded-full text-xs"
           >
-            {isPlaying ? "⏸ Pause" : "▶ Play"}
+            {isPlaying ? <Pause size={14} /> : <Play size={14} />}
           </button>
 
           <button
@@ -101,7 +126,7 @@ return (
             }}
             className="bg-black/60 text-white px-3 py-1 rounded-full text-xs"
           >
-            {isMuted ? "🔇" : "🔊"}
+            {isMuted ? <VolumeX size={14} /> : <Volume2 size={14} />}
           </button>
 
           <button
@@ -113,7 +138,7 @@ return (
             }}
             className="bg-black/60 text-white px-3 py-1 rounded-full text-xs"
           >
-            🔁
+            <Repeat size={14} />
           </button>
         </div>
       </div>
@@ -192,6 +217,17 @@ return (
       className="w-full bg-indigo-200 text-gray-700 dark:text-white dark:bg-indigo-900 p-2 border rounded"  
     />  
   </div>  
+  
+  <div>  
+    <p className="text-xl font-medium text-gray-700 dark:text-white">Website</p>  
+    <input  
+      value={community.website}  
+      onChange={(e) =>  
+        setCommunity({ ...community, website: e.target.value })  
+      }  
+      className="w-full bg-indigo-200 text-gray-700 dark:text-white dark:bg-indigo-900 p-2 border rounded"  
+    />  
+  </div>  
 
   {/* APPROVAL TOGGLE */}  
   <label className="flex items-center gap-2">  
@@ -263,7 +299,7 @@ return (
     Save Changes  
   </button>  
 
-  <button className="bg-red-500 text-white w-full p-2 rounded">  
+  <button onClick={() => deleteCommunity(community.id)} className="bg-red-500 text-white w-full p-2 rounded">  
     Delete Community  
   </button>  
 </div>

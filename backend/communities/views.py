@@ -478,6 +478,7 @@ class CommunityViewSet(viewsets.ModelViewSet):
                 "id": community.id,
                 "name": community.name,
                 "description": community.description,
+                "website": community.website,
                 "cover_image": community.cover_image,
                 "intro_video": community.intro_video,
                 "require_post_approval": community.require_post_approval,
@@ -528,6 +529,7 @@ class CommunityViewSet(viewsets.ModelViewSet):
 
             community.name = request.data.get("name", community.name)
             community.description = request.data.get("description", community.description)
+            community.website = request.data.get("website", community.website)
             community.cover_image = request.data.get("cover_image", community.cover_image)
             community.intro_video = request.data.get("intro_video", community.intro_video)
             community.require_post_approval = request.data.get(
@@ -1669,3 +1671,33 @@ def joined_communities(request):
     return paginator.get_paginated_response(
         serializer.data
     )
+
+class CommunityDeleteView(APIView):
+    def delete(self, request, pk):
+        try:
+            community = Community.objects.get(pk=pk)
+        except Community.DoesNotExist:
+            return Response(
+                {"detail": "Community not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        user = request.user
+
+        if (
+            community.owner != user
+            and user.role not in ["admin", "superadmin"]
+        ):
+            return Response(
+                {
+                    "detail": "You don't have permission to delete this community."
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        community.delete()
+
+        return Response(
+            {"detail": "Community deleted successfully."},
+            status=status.HTTP_204_NO_CONTENT,
+        )

@@ -159,6 +159,7 @@ class CommunitySerializer(serializers.ModelSerializer):
             'members_count',
             'joined',
             'my_role',
+            'website',
             'invited',
             'requested',
             'permissions',
