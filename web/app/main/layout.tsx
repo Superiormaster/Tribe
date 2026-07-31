@@ -18,18 +18,18 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         <ShareProvider>
           <AccountSwitcherProvider>
             {/* ROOT CONTAINER */}
-            <div className="relative min-h-screen bg-gray-100 dark:bg-gray-900 overflow-x-hidden">
+            <div className="relative min-h-screen bg-gray-100 w-full dark:bg-gray-900 overflow-x-hidden">
     
               {/* NAVBAR */}
               <TopNavWrapper />
     
               {/* PAGE WRAPPER */}
-              <div className="flex justify-center relative z-10">
+              <div className="relative z-10">
     
-                <div className="w-full max-w-6xl flex gap-6">
+                <div className="w-full max-w-6xl gap-6">
     
                   {/* CENTER */}
-                  <main className="flex-1 max-w-2xl">
+                  <main className="max-w-2xl">
                     {children}
                     <NotificationToast />
                   </main>

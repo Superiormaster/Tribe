@@ -731,7 +731,7 @@ export default function HomePage() {
   };
 
   return (
-    <div className="mt-24 mb-14 w-full space-y-4">
+    <div className="mt-24 mb-14 overflow-x-hidden w-full space-y-4">
 
       {/* Toggle */}
       <div className="flex gap-4 justify-center mb-4">

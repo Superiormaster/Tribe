@@ -24,33 +24,35 @@ export default function ExploreCommunities({
                 </AppLink>
             </div>
 
-            <div className="flex flex-nowrap gap-3 overflow-x-auto px-3 scrollbar-hide">
-
-                {communities.map((community) => (
-
-                    <AppLink
-                        key={community.id}
-                        href={`/main/community/${community.id}`}
-                        className="flex-none w-28 flex flex-col py-1 items-center rounded-xl shadow"
-                    >
-
-                        <img
-                            src={community.cover_image}
-                            className="w-20 h-20 rounded-xl object-cover"
-                        />
-
-                        <p className="mt-2 text-gray-600 dark:text-gray-300 font-medium truncate">
-                            {community.name}
-                        </p>
-
-                        <p className="text-xs text-gray-500">
-                            {formatCount(community.members_count)} members
-                        </p>
-
-                    </AppLink>
-
-                ))}
-
+            <div className="w-full overflow-hidden">
+              <div className="flex flex-nowrap gap-3 overflow-x-auto px-1 scrollbar-hide">
+  
+                  {communities.map((community) => (
+  
+                      <AppLink
+                          key={community.id}
+                          href={`/main/community/${community.id}`}
+                          className="flex-none w-28 flex flex-col py-1 items-center rounded-xl shadow"
+                      >
+  
+                          <img
+                              src={community.cover_image}
+                              className="w-20 h-20 rounded-xl object-cover"
+                          />
+  
+                          <p className="mt-2 text-gray-600 dark:text-gray-300 font-medium truncate">
+                              {community.name}
+                          </p>
+  
+                          <p className="text-xs text-gray-500">
+                              {formatCount(community.members_count)} members
+                          </p>
+  
+                      </AppLink>
+  
+                  ))}
+  
+              </div>
             </div>
 
         </div>
