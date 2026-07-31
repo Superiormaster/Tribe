@@ -85,7 +85,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         );
         setAuthFailed(false);
   
-      } catch (err) {
+      } catch (err: any) {
         console.error("Auth init failed", err);
 
         // Network/server issue
