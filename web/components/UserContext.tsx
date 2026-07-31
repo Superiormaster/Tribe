@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useMemo, useState, useEffect, useRef, ReactNode } from "react";
+import { createContext, useMemo, useState, useEffect, useCallback, useRef, ReactNode } from "react";
 import { apiRequest, setAccessToken } from "@/utils/api";
 import { getRefreshToken } from "@/lib/keyStore"
 import { logout } from "@/utils/auth"
@@ -8,11 +8,14 @@ import LoadingScreen from '@/components/LoadingScreen';
 import { isSessionExpired, startActivityTracking } from "@/lib/activity";
 import { useNavigation } from "@/utils/useNavigation"
 import { REFRESH_HOME_EVENT } from "@/lib/authEvents";
+import { useNetwork } from "@/components/networkConnection/NetworkContext";
 
 interface UserContextType {
   user: any | null;
-  setUser: (user: any) => void;
+  setUser: (user: any | null) => void;
   loadingUser: boolean;
+  authReady: boolean;
+  authFailed: boolean;
 }
 
 export const UserContext = createContext<UserContextType | null>(null);
@@ -21,6 +24,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<any | null>(null);
   const [loadingUser, setLoadingUser] = useState(true);
   const [isInactive, setIsInactive] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
+  const [authFailed, setAuthFailed] = useState(false);
+  const { isOnline } = useNetwork();
   const { replace } = useNavigation();
   
   const renders = useRef(0);
@@ -35,29 +41,29 @@ export function UserProvider({ children }: { children: ReactNode }) {
     return cleanup;
   }, []);
 
-  useEffect(() => {
-    const initAuth = async () => {
+  const initAuth = useCallback(async () => {
+      setAuthFailed(false);
+      setLoadingUser(true);
+  
       try {
         if (isSessionExpired()) {
-          setUser(null);
-          setLoadingUser(false);
-          return;
+          console.log("Local session expired. Attempting refresh...");
         }
 
         const selected =
           localStorage.getItem("active_account");
         
         if (!selected) {
+          setAuthFailed(true);
           setUser(null);
-          setLoadingUser(false);
           return;
         }
 
         const refresh = await getRefreshToken(selected); 
   
         if (!refresh) {
+          setAuthFailed(true);
           setUser(null);
-          setLoadingUser(false); 
           return;
         }
   
@@ -73,27 +79,114 @@ export function UserProvider({ children }: { children: ReactNode }) {
         // 4. Fetch user
         const profile = await apiRequest("api/users/me/");
         setUser(profile);
+        localStorage.setItem(
+          "last_seen",
+          Date.now().toString()
+        );
+        setAuthFailed(false);
   
       } catch (err) {
         console.error("Auth init failed", err);
-        setUser(null);
+
+        // Network/server issue
+        if (!isOnline || isNetworkError(err)) {
+          console.log("Offline. Keeping previous session.");
+          return;
+        }
+  
+        // Invalid refresh token
+        if (
+          err?.status === 401 ||
+          err?.status === 403
+        ) {
+          setAuthFailed(true);
+          setUser(null);
+          return;
+        }
+  
+        // Server error (500, timeout, etc.)
+        if (err?.status >= 500) {
+          return;
+        }
+        console.log("Temporary server error.");
       } finally {
         setLoadingUser(false);
+        setAuthReady(true);
       }
-    };
   
-    initAuth();
-  }, []);
+  }, [isOnline]);
   
   useEffect(() => {
-    const interval = setInterval(() => {
-      if (isSessionExpired()) {
-        logout();
+    initAuth();
+  }, [initAuth]);
+  
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      if (!isOnline) {
+        return;
       }
-    }, 60 * 1000); // check every 1 min
+  
+      if (!isSessionExpired()) {
+        return;
+      }
+  
+      try {
+        const selected =
+          localStorage.getItem("active_account");
+  
+        if (!selected) {
+          logout();
+          return;
+        }
+  
+        const refresh =
+          await getRefreshToken(selected);
+  
+        if (!refresh) {
+          logout();
+          return;
+        }
+  
+        const res = await apiRequest(
+          "api/users/refresh/",
+          {
+            method: "POST",
+            data: { refresh },
+          }
+        );
+  
+        setAccessToken(res.access);
+        localStorage.setItem(
+          "last_seen",
+          Date.now().toString()
+        );
+  
+      } catch (err: any) {
+        console.error("Session refresh failed", err);
+  
+        // Network problem or server temporarily unavailable
+        if (!isOnline || isNetworkError(err)) {
+          return;
+        }
+
+        // Refresh token is invalid
+        if (
+          err?.status === 401 ||
+          err?.status === 403
+        ) {
+          logout();
+        }
+  
+        // Ignore 500/502/503/timeouts.
+        // The app will retry on the next interval.
+        if (err?.status >= 500) {
+          return;
+        }
+      }
+    }, 60 * 1000);
   
     return () => clearInterval(interval);
-  }, []);
+  }, [isOnline]);
   
   useEffect(() => {
     const handler = async () => {
@@ -104,7 +197,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
               localStorage.getItem("active_account");
   
           if (!selected) {
-              replace("/");
+              setAuthFailed(true);
+              setUser(null);
               return;
           }
   
@@ -112,7 +206,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
               await getRefreshToken(selected);
   
           if (!refresh) {
-              replace("/");
+              setAuthFailed(true);
+              setUser(null);
               return;
           }
   
@@ -128,9 +223,29 @@ export function UserProvider({ children }: { children: ReactNode }) {
               await apiRequest("api/users/me/");
   
           setUser(profile);
+          localStorage.setItem(
+            "last_seen",
+            Date.now().toString()
+          );
+          setAuthFailed(false);
           replace("/main/home");
-      } catch {
-          logout();
+      } catch (err: any) {
+          console.error(err);
+      
+          if (!isOnline || isNetworkError(err)) {
+              return;
+          }
+      
+          if (err?.status >= 500) {
+            return;
+          }
+    
+          if (
+              err?.status === 401 ||
+              err?.status === 403
+          ) {
+              logout();
+          }
       }
     };
   
@@ -142,11 +257,17 @@ export function UserProvider({ children }: { children: ReactNode }) {
     return () => {
       window.removeEventListener(REFRESH_HOME_EVENT, handler);
     };
-  }, [replace]);
+  }, [replace, isOnline]);
   
   const value = useMemo(
-    () => ({ user, setUser, loadingUser }),
-    [user, loadingUser]
+    () => ({
+      user,
+      setUser,
+      loadingUser,
+      authReady,
+      authFailed,
+    }),
+    [user, loadingUser, authReady, authFailed]
   );
   
   return (
@@ -164,5 +285,20 @@ export function UserProvider({ children }: { children: ReactNode }) {
         {children}
       </UserContext.Provider>
     </>
+  );
+}
+
+function isNetworkError(err: any) {
+  const message = err?.message?.toLowerCase() || "";
+
+  return (
+    err instanceof TypeError ||
+    err?.name === "TypeError" ||
+    err?.name === "NetworkError" ||
+    err?.name === "AbortError" ||
+    err?.code === "ECONNABORTED" ||
+    message.includes("network") ||
+    message.includes("fetch") ||
+    message.includes("timeout")
   );
 }

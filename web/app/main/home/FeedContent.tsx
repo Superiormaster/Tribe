@@ -26,22 +26,6 @@ export default function HomePage() {
   const { user, loadingUser } = useContext(UserContext)!;
   const { replace, push } = useNavigation();
   const installed = useIsInstalled();
-  
-  useEffect(() => {
-    if (loadingUser) return;
-  
-    if (!user) {
-      replace("/");
-    }
-  }, [loadingUser, user, replace]);
-  
-  if (loadingUser) {
-    return <LoadingScreen onComplete={() => {}} />;
-  }
-  
-  if (!user) {
-    return null;
-  }
   const [posts, setPosts] = useState<any[]>([]);
   const pagesCache = useRef<Record<number, any[]>>({});
   const reelsCache = useRef<any[]>([]);
@@ -91,6 +75,28 @@ export default function HomePage() {
     (post: any) => post.content_type !== "short_video"
   );
   
+  useEffect(() => {
+    const check = async () => {
+      if (!navigator.onLine) return;
+  
+      try {
+        const status = await apiRequest(
+          "api/users/onboarding-status/"
+        );
+  
+        if (!status.completed) {
+          replace("/auth/profile-setup");
+        }
+      } catch (err: any) {
+        if (!navigator.onLine) return;
+  
+        console.error(err);
+      }
+    };
+  
+    check();
+  }, [replace]);
+
   useEffect(() => {
     (async () => {
       const res = await apiRequest("api/users/starred/");

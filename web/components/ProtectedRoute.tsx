@@ -3,27 +3,34 @@
 import { useContext, useEffect } from 'react'
 import { useNavigation } from "@/utils/useNavigation"
 import { UserContext } from '@/components/UserContext'
+import LoadingScreen from '@/components/LoadingScreen'
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const ctx = useContext(UserContext)
-  const { replace } = useNavigation()
-
-  if (!ctx) return null
-
-  const { user, loadingUser } = ctx
+  const {
+    user,
+    loadingUser,
+    authReady,
+    authFailed,
+  } = useContext(UserContext)!;
+  const { replace } = useNavigation();
 
   useEffect(() => {
-    if (loadingUser) return
+      if (!authReady && !authFailed) return;
+  
+      replace("/auth/login");
+  }, [
+      authReady,
+      authFailed,
+      replace,
+  ]);
 
-    if (!user) {
-      replace('/auth/login')
-    }
-  }, [user, loadingUser, replace])
-
-  // ⛔ Prevent login flash
-  if (loadingUser) return null
-
-  if (!user) return null
+  if (!authReady || loadingUser) {
+      return <LoadingScreen onComplete={() => {}} />;
+  }
+  
+  if (authFailed) {
+    return <LoadingScreen onComplete={() => {}} />;
+  }
 
   return <>{children}</>
 }
