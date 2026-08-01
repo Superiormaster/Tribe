@@ -9,8 +9,10 @@ from users.models import BlockedUser
 from .weights import get_user_weights
 from .cache import *
 from django.db.models.functions import Least, Cast
+import random
 from users.utils import redis_client, get_interest_map
 from django.db.models import Avg, Count, Sum, Case, When, Value, FloatField, ExpressionWrapper, IntegerField, F, Q, Exists, OuterRef
+from users.models import BlockedUser, Star
 from django.db.models.functions import Coalesce, Least, NullIf
 
 # -----------------------------
@@ -199,19 +201,17 @@ def build_global_feed(
             key=lambda x: x["final_score"],
             reverse=True,
         )
+        items = finalize_feed(items, user)
     
         return items
 
     posts = build_base_queryset(user)
 
     if tribe_id:
-      # STRICT tribe feed
-      posts = posts.filter(
-          community__isnull=False,
-          community__tribe_id=tribe_id,
-      )
-    else:
-      pass
+        posts = posts.filter(
+            community__isnull=False,
+            community__tribe_id=tribe_id,
+        )
 
     posts = annotate_features(
         posts,
@@ -221,9 +221,9 @@ def build_global_feed(
         two_weeks_ago
     )
 
-    posts = compute_main_feed_score(
-        posts,
-        weights
+    posts = (
+      compute_main_feed_score(posts, weights)
+      .order_by("-final_score")[:500]
     )
 
     reposts = Repost.objects.filter(
@@ -286,9 +286,9 @@ def build_global_feed(
         two_weeks_ago
     )
 
-    reposts = compute_main_feed_score(
-        reposts,
-        weights
+    reposts = (
+      compute_main_feed_score(reposts, weights)
+      .order_by("-final_score")[:500]
     )
 
     items = []
@@ -503,7 +503,7 @@ def compute_feed_scores(items, weights):
                 r.repost_count * weights["repost"]
             )
 
-        item["score"] = score
+        item["data"].final_score = score
         scored.append(item)
 
     return scored
@@ -519,6 +519,7 @@ def compute_main_feed_score(qs, weights):
             F("is_starred_by_user") * Value(weights["star"]) +
             F("is_joined_community") * Value(weights["community"]) +
             F("is_recent") * Value(weights["recent"]) +
+            F("skip_rate") * Value(weights["skip"]) +
             F("is_popular") * Value(weights["popular"]) +
             F("is_repost") * Value(weights["repost"]),
             output_field=FloatField(),
@@ -549,10 +550,15 @@ def finalize_feed(items, user):
         digest = hashlib.md5(
             f"{content_id}:{seed}".encode()
         ).hexdigest()
-        
-        shuffle = int(digest[:8], 16) % 100
+  
+        shuffle = ((int(digest[:8], 16) % 1000) / 1000 - 0.5) * 40
 
-        decay = time_decay(item["created_at"])
+        if item["type"] == "post":
+            created_at = item["data"].created_at
+        else:
+            created_at = item["data"].created_at
+        
+        decay = time_decay(created_at)
 
         item["final_score"] = (
             item["score"]
@@ -560,8 +566,77 @@ def finalize_feed(items, user):
             + shuffle * 0.05
             + base_penalty
         )
+  
+    items.sort(key=lambda x: x["final_score"], reverse=True)
 
-    return sorted(items, key=lambda x: x["final_score"], reverse=True)
+    chunk_size = 10
+    
+    result = []
+    
+    rng = random.Random(seed)
+    
+    for i in range(0, min(50, len(items)), chunk_size):
+        chunk = items[i:i + chunk_size]
+        rng.shuffle(chunk)
+        result.extend(chunk)
+    
+    result.extend(items[50:])
+    
+    return result
+
+def build_reels_queryset(user):
+    muted_ids = user.muted_users.values_list(
+        "muted_user_id",
+        flat=True,
+    )
+
+    blocked_ids = user.blocked_users.values_list(
+        "blocked_user_id",
+        flat=True,
+    )
+
+    blocked_me_ids = BlockedUser.objects.filter(
+        blocked_user=user
+    ).values_list(
+        "user_id",
+        flat=True,
+    )
+
+    return (
+        Post.objects.filter(
+            content_type="short_video",
+            is_deleted=False,
+            is_approved=True,
+            community__tribe__allow_reels=True,
+        )
+        .exclude(user_id__in=muted_ids)
+        .exclude(user_id__in=blocked_ids)
+        .exclude(user_id__in=blocked_me_ids)
+        .select_related(
+            "user",
+            "community",
+        )
+        .prefetch_related(
+            "media_files",
+        )
+        .annotate(
+            likes_count=Count("likes", distinct=True),
+            comments_count=Count("comments", distinct=True),
+            shares_count=Count("shares", distinct=True),
+            is_liked=Exists(
+                Like.objects.filter(
+                    post=OuterRef("pk"),
+                    user=user,
+                )
+            ),
+            is_starred=Exists(
+                Star.objects.filter(
+                    star=user,
+                    starred_user=OuterRef("user_id"),
+                )
+            ),
+        )
+    )
 
 def annotate_reels_features(qs, joined_communities):
 
@@ -612,11 +687,62 @@ def compute_reels_score(qs):
             F("shares_count") * 8 +
             F("watch_score") * 4 +
             F("completion_rate") * 10 +
+            F("is_joined_community") * 5 +
             F("skip_rate") * -7 +
             Least(F("replay_count"), Value(5)) * 6,
             output_field=FloatField(),
         )
     )
+
+def finalize_reels(reels, user):
+    seen_ids = set(get_seen_posts(redis_client, user.id))
+    seed = session_seed(user)
+
+    interest_map = get_interest_map(user)
+
+    for reel in reels:
+
+        bonus = sum(
+            interest_map.get(str(topic).lower(), 0)
+            for topic in (reel.topics or [])
+        )
+
+        decay = time_decay(reel.created_at)
+
+        digest = hashlib.md5(
+            f"{reel.id}:{seed}".encode()
+        ).hexdigest()
+
+        shuffle = (
+            ((int(digest[:8], 16) % 1000) / 1000 - 0.5)
+            * 40
+        )
+
+        base_penalty = (
+            -2.5
+            if reel.id in seen_ids
+            else 0
+        )
+
+        reel.final_score += (
+            bonus +
+            decay * 5 +
+            shuffle * 0.15 +
+            base_penalty
+        )
+
+    reels.sort(
+        key=lambda x: x.final_score,
+        reverse=True,
+    )
+
+    top = reels[:50]
+    rest = reels[50:]
+
+    rng = random.Random(seed)
+    rng.shuffle(top)
+
+    return top + rest
 
 def time_decay(created_at):
     now = timezone.now()

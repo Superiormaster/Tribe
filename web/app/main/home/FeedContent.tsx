@@ -205,6 +205,38 @@ export default function HomePage() {
     filter,
     selectedTribe,
   ]);
+  
+  useEffect(() => {
+    const navigation = performance.getEntriesByType(
+      "navigation"
+    )[0] as PerformanceNavigationTiming | undefined;
+  
+    const isReload = navigation?.type === "reload";
+  
+    if (!isReload) return;
+  
+    const refreshOnReload = async () => {
+      try {
+        await apiRequest("api/feed/refresh/", {
+          method: "POST",
+        });
+  
+        resetFeedState();
+  
+        await fetchPosts(
+          1,
+          true,
+          true,
+          filter,
+          selectedTribe
+        );
+      } catch (err) {
+        console.error(err);
+      }
+    };
+  
+    refreshOnReload();
+  }, []);
 
   useEffect(() => {
     const check = async () => {
@@ -743,8 +775,11 @@ export default function HomePage() {
       <div className="flex gap-4 justify-center mb-4">
         <button
           onClick={() => {
-            setFilter('all');
-            refreshFeed();
+            if (filter === "all") {
+                refreshFeed();
+            } else {
+                setFilter("all");
+            }
           }}
           className={`px-4 py-2 rounded-full font-medium ${
             filter === 'all'

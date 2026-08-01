@@ -41,6 +41,7 @@ export default function CommunityPending({
               hideCommunityName
       
               showManageButtons={canModerate}
+              isPending={true}
       
               canBulkSelect={selectMode}
               isSelected={selectedPosts.includes(post.id)}
@@ -60,6 +61,7 @@ export default function CommunityPending({
       
               hideCommunityName
               hideStarButton
+              isPending={true}
       
               showManageButtons={canModerate}
               canBulkSelect={selectMode}

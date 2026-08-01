@@ -514,11 +514,11 @@ export default function CreatePostPage() {
 
       if (isReel) {
         sessionStorage.setItem(
-            "new_reel",
-            JSON.stringify(newPost)
+          "clicked_reel_id",
+          String(newPost.id)
         );
     
-        push("/main/reels");
+        push(`/main/reels/${newPost.id}`);
         return;
       }
       

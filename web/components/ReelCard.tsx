@@ -3,11 +3,13 @@
 import { useNavigation } from "@/utils/useNavigation"
 import React from "react";
 import { useInView } from '@/components/UseInView'
+import toast from "react-hot-toast";
 
 function ReelCard({
   post,
   context = "feed",
   showEntertainment = false,
+  isPending = false,
 }: any) {
   const { push } = useNavigation();
   const { ref, isVisible } = useInView();
@@ -15,6 +17,10 @@ function ReelCard({
 
   const goToReel = (e?: React.MouseEvent) => {
     e?.stopPropagation();
+    if (isPending) {
+      toast("⏳ This reel is pending approval.");
+      return;
+    }
     push(`/main/reels/${post.id}`);
   };
 

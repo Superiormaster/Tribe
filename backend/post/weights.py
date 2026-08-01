@@ -11,6 +11,7 @@ DEFAULT_WEIGHTS = {
     "repost": 2.5,
     "seen_penalty": -2.5,
     "random": 0.3,
+    "skip": -5.0,
 }
 
 def get_user_weights(user):

@@ -8,6 +8,7 @@ import { apiRequest } from '@/utils/api';
 import { starCreator } from '@/lib/api'
 import { Share2, ThumbsUp, AlarmClock, MessageCircle, ChartNoAxesColumn, Edit, Trash2, Repeat, MoreHorizontal } from 'lucide-react';  
 import { timeAgo } from '@/utils/timeAgo'  
+import toast from "react-hot-toast";
 import ShareButton from '@/components/share/ShareButton'
 import { useShareSheet } from '@/components/share/ShareContext'
 import { useSmartPostView } from '@/lib/useSmartPostView'
@@ -78,6 +79,7 @@ type PostCardProps = {
   onReject?: (id: number) => void;
   
   isRepostContext?: boolean;
+  isPending?: boolean;
   repostId?: number;
   repostOwnerId?: number;
   shouldHideStar?: boolean;
@@ -104,7 +106,7 @@ type PostCardProps = {
   showPinnedLabel?: boolean
 }  
   
-function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyProfile, canPin, setSelectMode, isPinnedDraggable, onToggleProfilePin, onLongPress, onToggleCommunityPin, canBulkSelect, canEdit, canRepost, canReport, onApprove, onReject, canDelete, onSelect, isSelected, isEmbedded, isRepostContext, repostId, repostOwnerId, starredUserIds, setStarredUsers, context = "feed",
+function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyProfile, canPin, setSelectMode, isPinnedDraggable, onToggleProfilePin, onLongPress, onToggleCommunityPin, canBulkSelect, canEdit, canRepost, canReport, onApprove, onReject, canDelete, onSelect, isSelected, isPending = false, isEmbedded, isRepostContext, repostId, repostOwnerId, starredUserIds, setStarredUsers, context = "feed",
   handlePostAction, hideCommunityName = false, hideStarButton = false, showJoinButton = false, showManageButtons = false, showPinnedLabel=true }: PostCardProps) {
   const [liked, setLiked] = useState(!!post.is_liked || !!post.liked_by_user)
   const [likes, setLikes] = useState(post.likes_count || 0)
@@ -329,6 +331,10 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
     isPostOwner;
   
   const handleMediaClick = () => {
+    if (isPending) {
+      toast("⏳ This post is pending approval.");
+      return;
+    }
     push(`/main/home/${post.id}`);
   };
   

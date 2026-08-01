@@ -18,6 +18,7 @@ export default function InstallButton() {
 
   const [installed, setInstalled] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [installing, setInstalling] = useState(false);
 
   useEffect(() => {
     const checkInstalled = () => {
@@ -39,9 +40,12 @@ export default function InstallButton() {
 
     const installedHandler = () => {
       console.log("APP INSTALLED EVENT");
+      setInstalling(false);
       setInstalled(true);
       setPromptEvent(null);
-      toast.success("Tribe installed");
+      toast.success("Tribe installed successfully!", {
+        id: "install",
+      });
     };
 
     window.addEventListener(
@@ -80,13 +84,41 @@ export default function InstallButton() {
     console.log("CHOICE", result);
 
     if (result.outcome === "accepted") {
-      toast.success("Installing Tribe...");
+      setInstalling(true);
+      toast.loading("Installing Tribe...", {
+        id: "install",
+      });
     } else {
-      toast.error("Installation cancelled");
+      toast.error("Installation cancelled", {
+        id: "install",
+      });
     }
 
     setPromptEvent(null);
   };
+  
+  useEffect(() => {
+    if (!installing || installed) return;
+  
+    const interval = setInterval(() => {
+      const isInstalled =
+        window.matchMedia("(display-mode: standalone)").matches ||
+        (window.navigator as any).standalone;
+  
+      if (isInstalled) {
+        clearInterval(interval);
+  
+        setInstalling(false);
+        setInstalled(true);
+  
+        toast.success("Tribe installed successfully!", {
+          id: "install",
+        });
+      }
+    }, 1000);
+  
+    return () => clearInterval(interval);
+  }, [installing, installed]);
   
   console.log({
     installed,

@@ -31,6 +31,7 @@ export default function DiscoverPage() {
   const [tribes, setTribes] = useState<Tribe[]>([]);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const initialized = useRef(false);
   const pageRef = useRef(1);
   const loadingRef = useRef(false);
@@ -44,6 +45,9 @@ export default function DiscoverPage() {
     }
   
     setLoading(true);
+    if (pageNumber === 1) {
+      setInitialLoading(true);
+    }
     loadingRef.current = true;
   
     try {
@@ -73,6 +77,9 @@ export default function DiscoverPage() {
       setHasMore(data.next !== null);
     } finally {
       setLoading(false);
+      if (pageNumber === 1) {
+        setInitialLoading(false);
+      }
       loadingRef.current = false;
     }
   }
@@ -218,9 +225,9 @@ export default function DiscoverPage() {
   
     return () =>
       window.removeEventListener("scroll", handleScroll);
-  }, [loading, hasMore]);
+  }, [hasMore]);
 
-  if (loading) {
+  if (initialLoading) {
     return (
       <div className="mt-20">
         <Skeleton />
@@ -318,6 +325,12 @@ export default function DiscoverPage() {
         ))}
 
       </div>
+      
+      {loading && !initialLoading && (
+        <p className="text-center py-6 text-gray-500">
+          Loading...
+        </p>
+      )}
 
     </div>
   )

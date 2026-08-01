@@ -29,7 +29,6 @@ export function useReels(reelId?: number) {
   const [loadingMore, setLoadingMore] = useState(false);
   
   const [currentUser, setCurrentUser] = useState<any>(null);
-  const clickedReelId = reelId;
   const {
     isOnline,
   } = useReelBuffer();
@@ -72,6 +71,10 @@ export function useReels(reelId?: number) {
   
   const fetchInitialReels = async () => {
     setLoading(true);
+    const storedId = Number(sessionStorage.getItem("clicked_reel_id"));
+
+    const clickedReelId =
+      reelId ?? (storedId || null);
 
     try {
 
@@ -86,26 +89,10 @@ export function useReels(reelId?: number) {
                   ...r,
                   id: r.id ?? r.pk ?? r.post_id,
               }));
-
-        const saved = sessionStorage.getItem("new_reel");
-
-        if (saved) {
-            const reel = JSON.parse(saved);
-        
-            const normalizedReel = {
-              ...reel,
-              id: reel.id ?? reel.pk ?? reel.post_id,
-              content_type: reel.content_type ?? "short_video",
-            };
-        
-            if (!normalized.some(r => r.id === normalizedReel.id)) {
-                normalized.unshift(normalizedReel);
-            }
-        
-            sessionStorage.removeItem("new_reel");
-        }
   
         if (clickedReelId) {
+            sessionStorage.removeItem("clicked_reel_id");
+  
             const clicked =
                 normalized.find(
                     (r: Reel) =>
@@ -142,6 +129,27 @@ export function useReels(reelId?: number) {
         setLoading(false);
     }
   };
+  
+  useEffect(() => {
+    const navigation =
+      performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming;
+  
+    const init = async () => {
+      if (navigation?.type === "reload") {
+        await apiRequest("api/post/refresh_reels/", {
+          method: "POST",
+        });
+      }
+  
+      await Promise.all([
+        fetchInitialReels(),
+        fetchCurrentUser(),
+        fetchStarred(),
+      ]);
+    };
+  
+    init();
+  }, []);
   
   const loadMore = async () => {
     if (!isOnline) return;
@@ -324,12 +332,6 @@ export function useReels(reelId?: number) {
   
       return res;
   };
-  
-  useEffect(()=>{
-      fetchInitialReels();
-      fetchCurrentUser();
-      fetchStarred();
-  },[]);
   
   const handleDelete = async (
     postId:number

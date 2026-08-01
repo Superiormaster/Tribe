@@ -16,6 +16,17 @@ def set_cached_feed(redis_client, user_id, post_ids, ttl=300, tribe_id=None):
     key = f"feed:user:{user_id}:tribe:{tribe_id or 'all'}"
     redis_client.setex(key, ttl, json.dumps(post_ids))
 
+def get_cached_reels(redis_client, user_id, tribe_id=None):
+    key = f"reels:user:{user_id}:tribe:{tribe_id or 'all'}"
+    cached = redis_client.get(key)
+    if cached:
+        return json.loads(cached)
+    return None
+
+
+def set_cached_reels(redis_client, user_id, reel_ids, ttl=300, tribe_id=None):
+    key = f"reels:user:{user_id}:tribe:{tribe_id or 'all'}"
+    redis_client.setex(key, ttl, json.dumps(reel_ids))
 
 def get_seen_posts(redis_client, user_id):
     key = f"feed:seen:{user_id}"

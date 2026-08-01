@@ -9,6 +9,7 @@ from users.models import BlockedUser
 from .weights import get_user_weights
 from .cache import *
 from django.db.models.functions import Least, Cast
+import random
 from users.utils import redis_client
 from users.models import Star
 from django.db.models import Avg, Count, Sum, Case, When, Value, FloatField, Exists, OuterRef, ExpressionWrapper, IntegerField, F
@@ -371,7 +372,7 @@ def compute_feed_scores(items, weights):
                 r.repost_count * weights["repost"]
             )
 
-        item["score"] = score
+        item["data"].final_score = score
         scored.append(item)
 
     return scored
@@ -386,6 +387,7 @@ def compute_main_feed_score(qs, weights):
 
             F("is_starred_by_user") * Value(weights["star"]) +
             F("is_joined_community") * Value(weights["community"]) +
+            F("skip_rate") * Value(weights["skip"]) +
             F("is_recent") * Value(weights["recent"]) +
             F("is_popular") * Value(weights["popular"]) +
             F("is_repost") * Value(weights["repost"]),
@@ -417,8 +419,14 @@ def finalize_feed(items, user):
         shuffle = (
             content_id + seed
         ) % 13
+        
 
-        decay = time_decay(item["created_at"])
+        if item["type"] == "post":
+            created_at = item["data"].created_at
+        else:
+            created_at = item["data"].created_at
+        
+        decay = time_decay(created_at)
 
         item["final_score"] = (
             item["score"]
@@ -427,7 +435,22 @@ def finalize_feed(items, user):
             + base_penalty
         )
   
-    return sorted(items, key=lambda x: x["final_score"], reverse=True)
+    items.sort(key=lambda x: x["final_score"], reverse=True)
+
+    chunk_size = 10
+    
+    result = []
+    
+    rng = random.Random(seed)
+    
+    for i in range(0, min(50, len(items)), chunk_size):
+        chunk = items[i:i + chunk_size]
+        rng.shuffle(chunk)
+        result.extend(chunk)
+    
+    result.extend(items[50:])
+    
+    return result
 
 def time_decay(created_at):
     now = timezone.now()

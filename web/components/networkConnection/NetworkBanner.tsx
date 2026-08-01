@@ -81,7 +81,6 @@ export default function NetworkBanner() {
             left-1/2
             -translate-x-1/2
             px-4
-            w-full
             py-2
             rounded-full
             shadow-lg
@@ -89,6 +88,12 @@ export default function NetworkBanner() {
             z-[99999]
             animate-in
             fade-in
+            min-w-[220px]
+            text-center
+            whitespace-nowrap
+            flex
+            items-center
+            justify-center
             slide-in-from-bottom-2
             ${color}
           `}

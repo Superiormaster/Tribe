@@ -3,6 +3,7 @@ from rest_framework import viewsets, permissions, status, generics
 from rest_framework.decorators import action
 from django.db.models import Count, F, Exists, OuterRef, Case, When, Q, Max, FloatField, Value, ExpressionWrapper
 from django.db.models.functions import Mod
+from random import randint
 from django.db.models.functions import Random
 from django.db import transaction
 from rest_framework.pagination import PageNumberPagination
@@ -534,69 +535,14 @@ class PostViewSet(viewsets.ModelViewSet):
     def reels(self, request):
         user = request.user
     
-        qs = Post.objects.filter(
-            content_type='short_video',
-            is_deleted=False,
-            is_approved=True,
-            community__tribe__allow_reels=True
-        ).select_related(
-            'community',
-            'user'
-        ).prefetch_related(
-            'media_files'
-        )
-    
         # 🔥 ENGAGEMENT ANNOTATIONS
-        qs = qs.annotate(
-            likes_count=Count('likes', distinct=True),
-            comments_count=Count('comments', distinct=True),
-            shares_count=Count('shares', distinct=True),
-    
-            is_liked=Exists(
-                Like.objects.filter(
-                    post=OuterRef('pk'),
-                    user=user
-                )
-            ),
-  
-            is_starred=Exists(
-                Star.objects.filter(
-                    star=user,
-                    starred_user=OuterRef("user_id")
-                )
-            )
-        )
-
-        muted_ids = user.muted_users.values_list(
-            "muted_user_id",
-            flat=True
-        )
-
-        blocked_ids = user.blocked_users.values_list(
-            "blocked_user_id",
-            flat=True
-        )
-        
-        blocked_me_ids = BlockedUser.objects.filter(
-            blocked_user=user
-        ).values_list(
-            "user_id",
-            flat=True
-        )
-      
         joined_communities = CommunityMembership.objects.filter(
           user=user
         ).values_list("community_id", flat=True)
   
         two_weeks_ago = timezone.now() - timedelta(days=14)
-    
-        qs = qs.exclude(
-            user_id__in=muted_ids
-        ).exclude(
-            user_id__in=blocked_ids
-        ).exclude(
-            user_id__in=blocked_me_ids
-        )
+  
+        qs = build_reels_queryset(user)
   
         tribe_id = request.query_params.get("tribe")
 
@@ -604,41 +550,70 @@ class PostViewSet(viewsets.ModelViewSet):
             qs = qs.filter(
                 community__tribe_id=tribe_id
             )
-    
+  
+        cached = get_cached_reels(
+            redis_client,
+            user.id,
+            tribe_id,
+        )
+        
+        if cached:
+            qs = qs.filter(id__in=cached)
+        
+            qs = annotate_reels_features(
+                qs,
+                joined_communities,
+            )
+        
+            qs = compute_reels_score(qs)
+        
+            reels = list(qs)
+            reel_map = {r.id: r for r in qs}
+
+            reels = [
+                reel_map[rid]
+                for rid in cached
+                if rid in reel_map
+            ]
+        
+            reels = finalize_reels(
+                reels,
+                user,
+            )
+        
+            page = self.paginate_queryset(reels)
+        
+            if page is not None:
+                serializer = self.get_serializer(
+                    page,
+                    many=True,
+                    context={"request": request},
+                )
+                return self.get_paginated_response(
+                    serializer.data
+                )
+
         # 🔥 REELS SCORING (IMPORTANT)
         qs = annotate_reels_features(qs, joined_communities)
-        qs = compute_reels_score(qs)
+        qs = (
+          compute_reels_score(qs)
+          .order_by("-final_score")[:500]
+        )
     
         # 🔥 ORDER BY SCORE (TikTok style)
-        interest_map = get_interest_map(user)
-
         reels = list(qs)
 
-        seed = session_seed(user)
-
-        for reel in reels:
-            bonus = sum(
-                interest_map.get(topic.lower(), 0)
-                for topic in (reel.topics or [])
-            )
-        
-            decay = time_decay(reel.created_at)
-        
-            digest = hashlib.md5(
-                f"{reel.id}:{seed}".encode()
-            ).hexdigest()
-        
-            shuffle = (int(digest[:8], 16) % 100) * 0.05
-        
-            reel.final_score += (
-                bonus
-                + decay * 5
-                + shuffle
-            )
+        reels = finalize_reels(
+            reels,
+            user,
+        )
   
-        reels.sort(
-            key=lambda x: x.final_score,
-            reverse=True,
+        set_cached_reels(
+            redis_client,
+            user.id,
+            [r.id for r in reels],
+            ttl=300,
+            tribe_id=tribe_id,
         )
     
         # pagination
@@ -650,6 +625,29 @@ class PostViewSet(viewsets.ModelViewSet):
     
         serializer = self.get_serializer(reels, many=True, context={'request': request})
         return Response(serializer.data)
+  
+    @action(detail=False, methods=["post"])
+    def refresh_reels(self, request):
+        user = request.user
+    
+        # New shuffle session
+        redis_client.delete(f"feed_seed:{user.id}")
+    
+        # If you later cache reels
+        for key in redis_client.scan_iter(
+            f"reels:user:{user.id}:tribe:*"
+        ):
+            redis_client.delete(key)
+    
+        redis_client.set(
+            f"feed_seed:{user.id}",
+            randint(1, 999999),
+            ex=1800,
+        )
+    
+        return Response({
+            "status": "reels refreshed"
+        })
 
     @action(detail=True, methods=["post"])
     def share(self, request, pk=None):
@@ -1164,7 +1162,16 @@ class FeedViewSet(viewsets.ModelViewSet):
         user = request.user
     
         # NEW RANDOM FEED SESSION
-        redis_client.delete(f"feed:user:{user.id}")
+        for key in redis_client.scan_iter(
+            f"feed:user:{user.id}:tribe:*"
+        ):
+            redis_client.delete(key)
+  
+        for key in redis_client.scan_iter(
+            f"reels:user:{user.id}:tribe:*"
+        ):
+            redis_client.delete(key)
+  
         redis_client.delete(f"feed:seen:{user.id}")
         redis_client.delete(f"feed_seed:{user.id}")
         redis_client.set(
