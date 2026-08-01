@@ -74,28 +74,6 @@ export default function HomePage() {
   const filteredPosts = posts.filter(
     (post: any) => post.content_type !== "short_video"
   );
-  
-  useEffect(() => {
-    const check = async () => {
-      if (!navigator.onLine) return;
-  
-      try {
-        const status = await apiRequest(
-          "api/users/onboarding-status/"
-        );
-  
-        if (!status.completed) {
-          replace("/auth/profile-setup");
-        }
-      } catch (err: any) {
-        if (!navigator.onLine) return;
-  
-        console.error(err);
-      }
-    };
-  
-    check();
-  }, [replace]);
 
   useEffect(() => {
     (async () => {
