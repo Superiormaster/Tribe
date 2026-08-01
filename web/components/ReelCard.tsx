@@ -37,14 +37,11 @@ function ReelCard({
 
       <div ref={ref} className="relative w-full h-[500px] overflow-hidden rounded-xl bg-black">
         
-        <video
-          src={isVisible ? post.media_files?.[0]?.file_url : undefined}
-          poster={poster}
-          preload="metadata"
-          onError={() => {}}
+         <img
+          src={poster}
+          alt=""
           className="w-full h-full object-cover"
-          muted
-          playsInline
+          loading="lazy"
         />
 
         {/* PLAY BUTTON */}

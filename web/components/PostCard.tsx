@@ -805,14 +805,10 @@ const MediaItem = ({
           onClick={onOpen}
           className="relative cursor-pointer"
         >
-          <video
-            ref={(el): void => {
-              videoRefs.current[index] = el;
-            }}
-            src={media.file_url}
-            poster={media.thumbnail_url}
-            preload="metadata"
-            className="rounded-xl w-full aspect-video max-h-96 object-cover pointer-events-none"
+          <img
+            src={media.thumbnail_url || media.file_url}
+            loading="lazy"
+            className="rounded-xl w-full aspect-video max-h-96 object-cover"
           />
         
           {/* Play icon only */}

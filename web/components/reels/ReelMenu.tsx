@@ -26,7 +26,7 @@ export default function ReelMenu({
 
     return (
 
-        <div className="absolute right-3 bottom-14 bg-white dark:bg-gray-800 border rounded-xl shadow-lg z-50 overflow-hidden">
+        <div onClick={(e) => e.stopPropagation()} className="absolute right-3 bottom-14 bg-white dark:bg-gray-800 border rounded-xl shadow-lg z-50 overflow-hidden">
 
             <div className="flex flex-col">
 
@@ -36,21 +36,30 @@ export default function ReelMenu({
 
                         <button
                             className="px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700"
-                            onClick={onReport}
+                            onClick={(e) => {
+                            e.stopPropagation();
+                            onReport();
+                          }}
                         >
                             Report
                         </button>
 
                         <button
                             className="px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700"
-                            onClick={onMute}
+                            onClick={(e) => {
+                            e.stopPropagation();
+                            onMute();
+                          }}
                         >
                             Mute User
                         </button>
 
                         <button
                             className="px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-gray-700"
-                            onClick={onBlock}
+                            onClick={(e) => {
+                            e.stopPropagation();
+                            onBlock();
+                          }}
                         >
                             Block User
                         </button>
@@ -65,14 +74,20 @@ export default function ReelMenu({
 
                         <button
                           className="px-3 py-2 text-left text-gray-700 text-sm dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-                            onClick={onEdit}
+                            onClick={(e) => {
+                            e.stopPropagation();
+                            onEdit();
+                          }}
                         >
                             Edit
                         </button>
 
                         <button
                             className="px-3 py-2 text-left text-red-600 hover:bg-gray-100 dark:hover:bg-gray-700"
-                            onClick={onDelete}
+                            onClick={(e) => {
+                            e.stopPropagation();
+                            onDelete();
+                          }}
                         >
                             Delete
                         </button>
@@ -83,7 +98,10 @@ export default function ReelMenu({
 
                 <button
                     className="px-3 py-2 bg-gray-100 dark:bg-gray-700"
-                    onClick={onClose}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onClose();
+                    }}
                 >
                     Close
                 </button>

@@ -1,10 +1,11 @@
 'use client';
-import { useState, useEffect, useContext } from 'react';
+import { useState, useRef, useEffect, useContext } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useNavigation } from "@/utils/useNavigation"
 import AppLink from '@/components/AppLink';
 import toast from 'react-hot-toast';
 import { Toaster } from 'react-hot-toast';
+import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import {
   saveAutoPostDraft,
   saveManualPostDraft,
@@ -15,6 +16,7 @@ import {
 import ButtonLoader from "@/components/ButtonLoader";
 import Skeleton from '@/components/Skeleton';
 import { apiRequest } from '@/utils/api';
+import { buildUploadedMedia } from "@/utils/media";
 import { uploadToCloudinary } from '@/utils/cloudinary';
 
 type ExistingVideo = {
@@ -32,8 +34,12 @@ export default function CreatePostPage() {
   const [video, setVideo] = useState<
     File | ExistingVideo | null
   >(null);
+  const { isOnline } = useNetwork();
   const [loading, setLoading] = useState(false);
   const [fileProgress, setFileProgress] = useState<Record<string, number>>({});
+  const [videoPreview, setVideoPreview] = useState("");
+  const [uploadedMedia, setUploadedMedia] = useState<any[]>([]);
+  const [uploading, setUploading] = useState(false);
   const { push } = useNavigation()
   const isEdit = searchParams.get('edit') === 'true';
   const postId = searchParams.get('postId');
@@ -59,6 +65,7 @@ export default function CreatePostPage() {
     allow_reels: false,
     allow_videos: false,
   });
+  const uploadPromiseRef = useRef<Promise<UploadedMedia[]> | null>(null);
   const isGlobal = mode === 'global';
   const isCommunity = mode === 'community';
   const isReel = mode === 'reel';
@@ -97,7 +104,14 @@ export default function CreatePostPage() {
   
               imageUrls,
   
-              video,
+              video: video
+                ? video instanceof File
+                    ? video
+                    : {
+                          url: video.url,
+                          thumbnail: video.thumbnail,
+                      }
+                : null,
   
               selectedCommunity,
   
@@ -140,7 +154,17 @@ export default function CreatePostPage() {
   
           setImageUrls(draft.imageUrls || []);
   
-          setVideo(draft.video || null);
+          if (draft.video) {
+            setVideo(draft.video);
+        
+            if (draft.video instanceof File) {
+                setVideoPreview(
+                    URL.createObjectURL(draft.video)
+                );
+            } else {
+                setVideoPreview(draft.video.url);
+            }
+          }
   
           setSelectedCommunity(
               draft.selectedCommunity || null
@@ -168,7 +192,14 @@ export default function CreatePostPage() {
   
           imageUrls,
   
-          video,
+          video: video
+            ? video instanceof File
+                ? video
+                : {
+                      url: video.url,
+                      thumbnail: video.thumbnail,
+                  }
+            : null,
   
           selectedCommunity,
       });
@@ -178,12 +209,6 @@ export default function CreatePostPage() {
   
       toast.success("Draft saved");
   };
-
-  useEffect(() => {
-    setImageUrls([]);
-    setImageFiles([]);
-    setVideo(null);
-  }, [selectedCommunity]);
 
   // Handle adding images
   const handleImagesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -200,27 +225,20 @@ export default function CreatePostPage() {
   };
 
   // Handle video selection (max 1)
-  const handleVideoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleVideoChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     if (!e.target.files?.[0]) return;
-
+  
     const file = e.target.files[0];
   
-    if (allowReel) {
-      // ✅ ONLY REELS
-      setVideo(file);
-      setImageFiles([]);
-      setImageUrls([]);
-      return;
-    }
-  
-    if (!allowVideo) {
-      alert("Video not allowed here");
-      return;
-    }
+    const url = URL.createObjectURL(file);
   
     setVideo(file);
-    setImageUrls([]);
+    setVideoPreview(url);
+  
     setImageFiles([]);
+    setImageUrls([]);
   };
 
   const removeImage = (index: number) => {
@@ -241,17 +259,52 @@ export default function CreatePostPage() {
   
         setContent(data.caption || "");
   
+        setSelectedCommunity(data.community);
+
+        if (data.content_type === "short_video") {
+            setMode("reel");
+        } else if (data.community) {
+            setMode("community");
+        } else {
+            setMode("global");
+        }
+        
         if (data.media_files?.length) {
-          let imageUrls: string[] = [];
-  
           data.media_files.forEach((m: any) => {
             if (m.media_type === "video") {
-              setVideo({
-                url: m.file_url,
-                thumbnail: m.thumbnail_url,
-              });
+              const existingVideo = {
+                  url: m.file_url,
+                  thumbnail: m.thumbnail_url,
+              };
+              
+              setVideo(existingVideo);
+              
+              setVideoPreview(existingVideo.url);
+              
+              setUploadedMedia([
+                  {
+                      url: existingVideo.url,
+                      thumbnail: existingVideo.thumbnail,
+                      type: "video",
+                  },
+              ]);
             } else if (m.media_type === "image") {
-              imageUrls.push(m.file_url);
+              const images = data.media_files
+                  .filter((m: any) => m.media_type === "image")
+                  .map((m: any) => m.file_url);
+              
+              setImageUrls(images);
+              setImageFiles(images as any);
+              
+              setUploadedMedia(
+                  data.media_files
+                      .filter((m: any) => m.media_type === "image")
+                      .map((m: any) => ({
+                          url: m.file_url,
+                          thumbnail: m.file_url,
+                          type: "image",
+                      }))
+              );
             }
           });
   
@@ -267,9 +320,56 @@ export default function CreatePostPage() {
   
     fetchPost();
   }, [isEdit, postId]);
+  
+  const previewImages = [
+    ...imageUrls,
+    ...imageFiles,
+  ];
 
   const handlePost = async () => {
-    if (!content.trim() && imageFiles.length === 0 && !video) return;
+    if (!isOnline) {
+      await saveAutoPostDraft({
+          draftId: selectedCommunity
+              ? `auto-community-${selectedCommunity}`
+              : "auto-global",
+  
+          title: selectedCommunity
+              ? `${communityData?.tribe?.name} • ${communityData?.name}`
+              : "Global Post",
+  
+          content,
+          imageFiles,
+          imageUrls,
+          video,
+          selectedCommunity,
+          communityName: communityData?.name || "",
+      });
+  
+      toast.error("You're offline. Draft saved.");
+      return;
+    }
+  
+    const hasText = content.trim().length > 0;
+
+    const hasImages =
+        imageFiles.length > 0 ||
+        imageUrls.length > 0;
+  
+    const hasVideo = !!video;
+  
+    const hasUploadedMedia =
+        uploadedMedia.length > 0;
+  
+    if (
+        !hasText &&
+        !hasImages &&
+        !hasVideo &&
+        !hasUploadedMedia
+    ) {
+        toast.error("Write something or attach media.");
+        return;
+    }
+
     if ((mode === "community" || mode === "reel") && !selectedCommunity) {
       alert("Please select a community");
       return;
@@ -279,45 +379,6 @@ export default function CreatePostPage() {
     setFileProgress({});
   
     try {
-      let mediaUrls: any[] = [];
-
-      const filesToUpload = [
-          ...imageFiles.filter(
-              (i): i is File => i instanceof File
-          ),
-      
-          ...(video instanceof File ? [video] : []),
-      ];
-
-      for (let file of filesToUpload) {
-        const url = await uploadToCloudinary({
-          file,
-          onProgress: (percent) => {
-            setFileProgress((prev) => ({ ...prev, [file.name]: percent }));
-          },
-        });
-        mediaUrls.push({
-          url,
-          type: file.type.startsWith("video") ? "video" : "image",
-          thumbnail: file.type.startsWith("video")
-            ? url.replace("/upload/", "/upload/so_0,w_300,h_300,c_fill/")
-            : null
-        });
-      }
-      
-      const existingMedia = [
-        ...imageFiles.filter(i => typeof i === "string").map(url => ({ url, type: "image" })),
-        ...(video &&
-          typeof video !== "string" &&
-          !(video instanceof File)
-            ? [{
-                url: video.url,
-                type: "video",
-                thumbnail: video.thumbnail,
-              }]
-            : [])
-      ];
-
       let contentType = "text";
 
       if (video) {
@@ -335,30 +396,98 @@ export default function CreatePostPage() {
       
       contentType = String(contentType);
       
+      let media = uploadedMedia;
+
+      if (uploadPromiseRef.current) {
+        const toastId = toast.loading("Finishing upload...");
+    
+        media = await uploadPromiseRef.current;
+
+        if (!isOnline) {
+          await saveAutoPostDraft({
+            draftId: selectedCommunity
+                ? `auto-community-${selectedCommunity}`
+                : "auto-global",
+            title: selectedCommunity
+                ? `${communityData?.tribe?.name} • ${communityData?.name}`
+                : "Global Post",
+            content,
+            imageFiles,
+            imageUrls,
+            video,
+            selectedCommunity,
+            communityName: communityData?.name || "",
+          });
+      
+          toast.dismiss(toastId);
+          toast.error("You're offline. Draft saved.");
+          return;
+        }
+    
+        uploadPromiseRef.current = null;
+    
+        toast.dismiss(toastId);
+      }
+    
+      const hasText = content.trim().length > 0;
+
+      const hasMedia = media.length > 0;
+      
+      if (!hasText && !hasMedia) {
+          await saveAutoPostDraft({
+              draftId: selectedCommunity
+                  ? `auto-community-${selectedCommunity}`
+                  : "auto-global",
+      
+              title: selectedCommunity
+                  ? `${communityData?.tribe?.name} • ${communityData?.name}`
+                  : "Global Post",
+      
+              content,
+              imageFiles,
+              imageUrls,
+              video,
+              selectedCommunity,
+              communityName: communityData?.name || "",
+          });
+
+          toast.error("Nothing to post. Draft saved.");
+      
+          return;
+      }
+
       const payload = {
-        caption: content,
-        content_type: contentType,
-        media_files: [...existingMedia, ...mediaUrls],
-        community: selectedCommunity,
+          caption: content,
+          content_type: contentType,
+          media_files: media,
+          community: selectedCommunity,
       };
   
       let newPost = null;
 
       if (isEdit) {
         await apiRequest(`api/post/${postId}/`, {
-          method: "PUT",
-          data: payload,
+            method: "PUT",
+            data: payload,
         });
-  
+    
         toast.success("Post updated!");
-      } else {
-        newPost = await apiRequest(`api/post/`, {
-          method: "POST",
-          data: payload,
-        });
-  
-        toast.success("Post created!");
+        push("/main/home");
+        return;
       }
+
+      if (
+          payload.caption.trim() === "" &&
+          payload.media_files.length === 0
+      ) {
+          toast.error("Cannot create an empty post.");
+          return;
+      }
+  
+      newPost = await apiRequest(`api/post/`, {
+        method: "POST",
+        data: payload,
+      });
   
       setContent('');
       setImageUrls([]);
@@ -374,16 +503,30 @@ export default function CreatePostPage() {
       if (draftId) {
           await deletePostDraft(draftId);
       }
-
-      if (newPost.is_approved) {
-          sessionStorage.setItem(
-              "new_post",
-              JSON.stringify(newPost)
-          );
-      } else {
-          toast.success("Post submitted for approval.");
+      
+      if (!newPost?.is_approved) {
+        toast.success("Post submitted for approval.");
+        push("/main/home");
+        return;
       }
 
+      toast.success("Post created!");
+
+      if (isReel) {
+        sessionStorage.setItem(
+            "new_reel",
+            JSON.stringify(newPost)
+        );
+    
+        push("/main/reels");
+        return;
+      }
+      
+      sessionStorage.setItem(
+        "new_post",
+        JSON.stringify(newPost)
+      );
+      
       push("/main/home");
     } catch (err:any) {
       console.log("FULL ERROR:", err.data || err);
@@ -437,6 +580,191 @@ export default function CreatePostPage() {
       );
     };
   
+  async function getVideoDimensions(file: File) {
+    return new Promise<{ width: number; height: number }>((resolve, reject) => {
+      const video = document.createElement("video");
+  
+      video.preload = "metadata";
+  
+      video.onloadedmetadata = () => {
+        URL.revokeObjectURL(video.src);
+  
+        resolve({
+          width: video.videoWidth,
+          height: video.videoHeight,
+        });
+      };
+  
+      video.onerror = reject;
+  
+      video.src = URL.createObjectURL(file);
+    });
+  }
+  
+  const uploadSelectedMedia = async (
+    files: File[],
+    contentType: string
+  ): Promise<any[]> => {
+    return Promise.all(
+      files.map(async (file) => {
+        let isPortrait = false;
+  
+        if (file.type.startsWith("video")) {
+          const { width, height } =
+            await getVideoDimensions(file);
+  
+          isPortrait = height > width;
+        }
+  
+        const secureUrl = await uploadToCloudinary({
+          file,
+          onProgress: (percent) => {
+            setFileProgress(prev => ({
+              ...prev,
+              [file.name]: percent,
+            }));
+          },
+        });
+  
+        return buildUploadedMedia(
+          secureUrl,
+          file,
+          contentType,
+          isPortrait
+        );
+      })
+    );
+  };
+  
+  useEffect(() => {
+    if (!(video instanceof File)) return;
+
+    let cancelled = false;
+
+    async function upload() {
+      setUploading(true);
+  
+      try {
+          uploadPromiseRef.current = uploadSelectedMedia(
+              [video],
+              isReel ? "short_video" : "long_video"
+            );
+
+          const media = await uploadPromiseRef.current;
+          
+          if (cancelled) return;
+          
+          setUploadedMedia(media);
+      } catch (err: any) {
+          uploadPromiseRef.current = null;
+      
+          setUploadedMedia([]);
+      
+          // Keep File objects in draft
+          await saveAutoPostDraft({
+              content,
+              imageFiles,
+              imageUrls,
+              video,
+              selectedCommunity,
+          });
+      
+          toast.error("Upload interrupted. Saved as draft.");
+      } finally {
+          uploadPromiseRef.current = null;
+          if (!cancelled)
+              setUploading(false);
+      }
+    }
+
+    upload();
+
+    return () => {
+        cancelled = true;
+    };
+  }, [video]);
+
+  useEffect(() => {
+    const files =
+        imageFiles.filter(
+            (f): f is File =>
+                f instanceof File
+        );
+
+    if (!files.length) return;
+
+    let cancelled = false;
+
+    async function upload() {
+      setUploading(true);
+  
+      try {
+          uploadPromiseRef.current = uploadSelectedMedia(files, "image");
+  
+          const media = await uploadPromiseRef.current;
+  
+          if (cancelled) return;
+  
+          setUploadedMedia(media);
+      } catch (err: any) {
+        uploadPromiseRef.current = null;
+    
+        setUploadedMedia([]);
+    
+        // Keep File objects in draft
+        await saveAutoPostDraft({
+            content,
+            imageFiles,
+            imageUrls,
+            video,
+            selectedCommunity,
+        });
+    
+        toast.error("Upload interrupted. Saved as draft.");
+      } finally {
+          uploadPromiseRef.current = null;
+          if (!cancelled)
+              setUploading(false);
+      }
+    }
+
+    upload();
+
+    return () => {
+        cancelled = true;
+    };
+
+  }, [imageFiles]);
+  
+  useEffect(() => {
+    const handleOffline = async () => {
+        uploadPromiseRef.current = null;
+        setUploadedMedia([]);
+
+        await saveAutoPostDraft({
+            content,
+            imageFiles,
+            imageUrls,
+            video,
+            selectedCommunity,
+        });
+
+        toast("Connection lost. Draft saved.");
+    };
+
+    window.addEventListener("offline", handleOffline);
+
+    return () =>
+        window.removeEventListener("offline", handleOffline);
+  }, [
+    content,
+    imageFiles,
+    imageUrls,
+    video,
+    selectedCommunity,
+  ]);
+  
+  
   if (loadingCommunity) {
     return <Skeleton />;
   }
@@ -450,11 +778,18 @@ export default function CreatePostPage() {
 
   return (
     <div className="max-w-3xl mx-auto p-4 my-20 space-y-4">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{allowReel
-        ? `Create ${communityData?.tribe?.name} Post`
-        : selectedCommunity ? "Create Community Post"
-        : isEdit ? "Edit Post" 
-        : "Create Post"}
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+        {isEdit
+          ? allowReel
+            ? `Edit ${communityData?.tribe?.name} Post`
+            : selectedCommunity
+            ? `Edit ${communityData?.name} Post`
+            : "Edit Post"
+          : allowReel
+          ? `Create ${communityData?.tribe?.name} Post`
+          : selectedCommunity
+          ? `Create ${communityData?.name} Post`
+          : "Create Post"}
       </h1>
 
       <div className="bg-white dark:bg-gray-900 p-4 rounded-2xl shadow-sm transition-colors space-y-3">
@@ -505,7 +840,7 @@ export default function CreatePostPage() {
           )}
         
         </div>
-        <AppLink href="/main/draft" className="absolute top-36 right-10 border rounded-xl text-sm p-3 text-gray-700 dark:text-gray-200 font-bold mb-6">
+        <AppLink href="/main/draft" className="absolute top-16 right-10 border rounded-xl text-sm p-3 text-gray-700 dark:text-gray-200 font-bold mb-6">
           Drafts • {draftCount}
         </AppLink>
 
@@ -519,27 +854,37 @@ export default function CreatePostPage() {
         />
 
         {/* Images Preview */}
-        {imageFiles.length > 0 && (
+        {previewImages.length > 0 && (
           <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
-            {imageFiles.map((file, idx) => (
+            {previewImages.map((file, idx) => (
               <div key={idx} className="relative group">
                 <img
-                  alt={`preview-${idx}`}
                   src={
-                      file instanceof File
-                          ? URL.createObjectURL(file)
-                          : file
+                    file instanceof File
+                      ? URL.createObjectURL(file)
+                      : file
                   }
+                  alt={`preview-${idx}`}
                   className="w-full h-24 object-cover rounded-lg"
-              />
+                />
+        
                 <button
-                  onClick={() => removeImage(idx)}
+                  onClick={() => {
+                    if (imageFiles.length > 0) {
+                      removeImage(idx);
+                    } else {
+                      setImageUrls(prev =>
+                        prev.filter((_, i) => i !== idx)
+                      );
+                    }
+                  }}
                   className="absolute top-1 right-1 bg-gray-800 text-white rounded-full w-5 h-5 flex items-center justify-center opacity-80 hover:opacity-100 transition"
-                  title="Remove image"
                 >
                   ×
                 </button>
-                {file instanceof File && loading && renderProgressBar(file)}
+        
+                {file instanceof File && loading &&
+                  renderProgressBar(file)}
               </div>
             ))}
           </div>
@@ -551,14 +896,20 @@ export default function CreatePostPage() {
             <video
               src={
                 video instanceof File
-                  ? URL.createObjectURL(video)
-                  : video?.url
+                  ? videoPreview
+                  : video.url
               }
               poster={
                 video instanceof File
                   ? undefined
                   : video?.thumbnail
               }
+              preload="metadata"
+              onLoadedMetadata={(e) => {
+                if (video instanceof File) {
+                  e.currentTarget.currentTime = 0.01;
+                }
+              }}
               controls
               className={`w-full ${allowReel ? 'h-[500px] object-cover' : 'max-h-48 object-contain'} rounded-lg`} />
             <button

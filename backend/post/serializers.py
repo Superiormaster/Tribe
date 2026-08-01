@@ -33,27 +33,18 @@ class PostMediaSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PostMedia
-        fields = ["id", "media_type", "file_url", "thumbnail_url"]
+        fields = (
+            "id",
+            "media_type",
+            "file_url",
+            "thumbnail_url",
+        )
 
     def get_file_url(self, obj):
-        if obj.file:
-            return obj.file if obj.file else None
-        return None
+        return obj.file
 
     def get_thumbnail_url(self, obj):
-        if not obj.file:
-            return None
-
-        if obj.media_type == "video":
-            return obj.thumbnail or obj.file.replace(
-                "/upload/",
-                "/upload/so_0,w_300,h_300,c_fill/"
-            )
-
-        return obj.thumbnail or obj.file.replace(
-            "/upload/",
-            "/upload/w_300,h_300,c_fill/"
-        )
+        return obj.thumbnail
 
 class PostSerializer(serializers.ModelSerializer):
     user = UserMiniSerializer(read_only=True)

@@ -81,6 +81,7 @@ export default function NetworkBanner() {
             left-1/2
             -translate-x-1/2
             px-4
+            w-full
             py-2
             rounded-full
             shadow-lg

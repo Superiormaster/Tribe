@@ -418,44 +418,33 @@ def finalize_feed(items, user):
             content_id + seed
         ) % 13
 
-        age_score = (
-            1.0 if item["created_at"] > timezone.now() - timedelta(hours=24)
-            else 0.5
-        )
+        decay = time_decay(item["created_at"])
 
         item["final_score"] = (
             item["score"]
-            + age_score * 2
-            + shuffle * 0.3
+            + decay * 3
+            + shuffle * 0.05
             + base_penalty
         )
-
+  
     return sorted(items, key=lambda x: x["final_score"], reverse=True)
-
-def compute_reels_score(qs):
-
-    return qs.annotate(
-        final_score=ExpressionWrapper(
-            F("avg_watch_time") * 4 +
-            F("completion_rate") * 10 +
-            Least(F("replay_count"), Value(5)) * 6 +
-            F("shares_count") * 8 -
-            F("skip_rate") * 7,
-            output_field=FloatField(),
-        )
-    )
 
 def time_decay(created_at):
     now = timezone.now()
     hours = (now - created_at).total_seconds() / 3600
 
-    if hours < 24:
-        return 1.0
-    elif hours < 168:
-        return 0.7
-    elif hours < 336:
-        return 0.4
-    return 0.2
+    if hours <= 24:
+        return 1.0          # first day
+    elif hours <= 72:
+        return 0.9          # 3 days
+    elif hours <= 168:
+        return 0.75         # 1 week
+    elif hours <= 336:
+        return 0.55         # 2 weeks
+    elif hours <= 720:
+        return 0.35         # 1 month
+    else:
+        return 0.15         # older
 
 # -----------------------------
 # SESSION RANDOMNESS (TIKTOK STYLE)

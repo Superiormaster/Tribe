@@ -207,6 +207,41 @@ class PostViewSet(viewsets.ModelViewSet):
         ).data
 
         return Response(data, status=status.HTTP_201_CREATED)
+  
+    def update(self, request, *args, **kwargs):
+      partial = kwargs.pop("partial", False)
+  
+      instance = self.get_object()
+  
+      serializer = self.get_serializer(
+          instance,
+          data=request.data,
+          partial=partial,
+      )
+      serializer.is_valid(raise_exception=True)
+  
+      self.perform_update(serializer)
+  
+      instance.refresh_from_db()
+  
+      instance = (
+          Post.objects
+          .select_related("user", "community")
+          .prefetch_related("media_files", "likes", "comments")
+          .annotate(
+              likes_count=Count("likes", distinct=True),
+              comments_count=Count("comments", distinct=True),
+              shares_count=Count("shares", distinct=True),
+          )
+          .get(pk=instance.pk)
+      )
+  
+      return Response(
+          PostSerializer(
+              instance,
+              context={"request": request},
+          ).data
+      )
 
     # ✅ Create post with moderation
     def perform_create(self, serializer):
@@ -270,30 +305,43 @@ class PostViewSet(viewsets.ModelViewSet):
       is_moderator = CommunityMembership.objects.filter(
           community=instance.community,
           user=user,
-          role__in=["admin", "moderator"]
+          role__in=["admin", "moderator"],
       ).exists()
   
       if (
-          instance.user != user and
-          instance.community.owner != user and
-          not is_moderator
+          instance.user != user
+          and instance.community.owner != user
+          and not is_moderator
       ):
           raise PermissionDenied("You cannot edit this post")
   
-      # 🔥 capture what is being changed
-      changed_fields = serializer.validated_data.keys()
-  
-      # save first
       old_caption = instance.caption
-      old_media_count = instance.media_files.count()
-      
+      old_files = list(
+        instance.media_files.values_list("file", flat=True)
+      )
+  
       updated_instance = serializer.save()
-      
-      new_media_count = updated_instance.media_files.count()
-      
+  
+      media_files = self.request.data.get("media_files")
+  
+      if media_files is not None:
+          updated_instance.media_files.all().delete()
+  
+          for media in media_files:
+              PostMedia.objects.create(
+                  post=updated_instance,
+                  file=media["url"],
+                  thumbnail=media.get("thumbnail"),
+                  media_type=media["type"],
+              )
+  
+      new_files = list(
+        updated_instance.media_files.values_list("file", flat=True)
+      )
+  
       if (
-          updated_instance.caption != old_caption or
-          new_media_count != old_media_count
+          updated_instance.caption != old_caption
+          or old_files != new_files
       ):
           updated_instance.is_edited = True
           updated_instance.save(update_fields=["is_edited"])
@@ -539,6 +587,8 @@ class PostViewSet(viewsets.ModelViewSet):
         joined_communities = CommunityMembership.objects.filter(
           user=user
         ).values_list("community_id", flat=True)
+  
+        two_weeks_ago = timezone.now() - timedelta(days=14)
     
         qs = qs.exclude(
             user_id__in=muted_ids
@@ -564,17 +614,28 @@ class PostViewSet(viewsets.ModelViewSet):
 
         reels = list(qs)
 
+        seed = session_seed(user)
+
         for reel in reels:
-            bonus = 0
-    
-            for topic in (reel.topics or []):
-                bonus += interest_map.get(
-                    topic.lower(),
-                    0
-                )
+            bonus = sum(
+                interest_map.get(topic.lower(), 0)
+                for topic in (reel.topics or [])
+            )
         
-            reel.final_score += bonus
+            decay = time_decay(reel.created_at)
         
+            digest = hashlib.md5(
+                f"{reel.id}:{seed}".encode()
+            ).hexdigest()
+        
+            shuffle = (int(digest[:8], 16) % 100) * 0.05
+        
+            reel.final_score += (
+                bonus
+                + decay * 5
+                + shuffle
+            )
+  
         reels.sort(
             key=lambda x: x.final_score,
             reverse=True,

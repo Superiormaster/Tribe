@@ -233,7 +233,7 @@ export default function HomePage() {
   useEffect(() => {
     reels.slice(0, 3).forEach((reel) => {
   
-      const url = reel.media_files?.[0]?.thumbnail;
+      const url = reel.media_files?.[0]?.thumbnail_url;
   
       if (!url) return;
   

@@ -7,6 +7,7 @@ import {
 } from "react";
 import { apiRequest } from '@/utils/api';
 import { useReelBuffer } from '@/reelsHook/useReelBuffer';
+import { useNavigation } from "@/utils/useNavigation";
 
 type Reel = {
   id: number;
@@ -22,6 +23,7 @@ export function useReels(reelId?: number) {
   const [reels, setReels] = useState<Reel[]>([]);
   const [page, setPage] = useState(1);
   const [hasNext, setHasNext] = useState(true);
+  const { push } = useNavigation();
   
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -85,6 +87,24 @@ export function useReels(reelId?: number) {
                   id: r.id ?? r.pk ?? r.post_id,
               }));
 
+        const saved = sessionStorage.getItem("new_reel");
+
+        if (saved) {
+            const reel = JSON.parse(saved);
+        
+            const normalizedReel = {
+              ...reel,
+              id: reel.id ?? reel.pk ?? reel.post_id,
+              content_type: reel.content_type ?? "short_video",
+            };
+        
+            if (!normalized.some(r => r.id === normalizedReel.id)) {
+                normalized.unshift(normalizedReel);
+            }
+        
+            sessionStorage.removeItem("new_reel");
+        }
+  
         if (clickedReelId) {
             const clicked =
                 normalized.find(
@@ -311,16 +331,6 @@ export function useReels(reelId?: number) {
       fetchStarred();
   },[]);
   
-  const handleCopyLink = async (
-    postId:number
-  )=>{
-    const url =
-        `${window.location.origin}/main/home/${postId}`;
-
-    await navigator.clipboard.writeText(url);
-    alert("Copied");
-  };
-  
   const handleDelete = async (
     postId:number
   )=>{
@@ -339,32 +349,8 @@ export function useReels(reelId?: number) {
     );
   };
   
-  const handleEdit = async (
-    postId:number,
-    data:any
-  )=>{
-
-    const res =
-        await apiRequest(
-            `api/post/${postId}/`,
-            {
-                method:"PATCH",
-                data,
-            }
-        );
-
-    setReels(prev=>
-        prev.map(r=>
-            r.id===postId
-                ?{
-                    ...r,
-                    ...res,
-                }
-                :r
-        )
-    );
-
-    return res;
+  const handleEdit = (postId: number) => {
+    push(`/main/create-post?edit=true&postId=${postId}`);
   };
   
   return {
@@ -384,7 +370,6 @@ export function useReels(reelId?: number) {
       handleBlock,
       handleDelete,
       handleEdit,
-      handleCopyLink,
   
       loadMore,
   };

@@ -11,6 +11,7 @@ from .cache import *
 from django.db.models.functions import Least, Cast
 from users.utils import redis_client, get_interest_map
 from django.db.models import Avg, Count, Sum, Case, When, Value, FloatField, ExpressionWrapper, IntegerField, F, Q, Exists, OuterRef
+from django.db.models.functions import Coalesce, Least, NullIf
 
 # -----------------------------
 # BASE QUERYSET
@@ -47,6 +48,8 @@ def build_base_queryset(user):
     ).select_related(
         "user",
         "community"
+    ).prefetch_related(
+      "media_files"
     ).annotate(
         likes_count=Count("likes", distinct=True),
         comments_count=Count("comments", distinct=True),
@@ -367,15 +370,15 @@ def build_global_feed(
 def annotate_features(qs, user, joined_communities, starred_ids, two_weeks_ago):
 
     return qs.annotate(
-        total_views=F("views_count"),
         total_skipped=F("skipped_views"),
-        skip_rate = Case(
-            When(total_views=0, then=Value(0.0)),
-            default=ExpressionWrapper(
-                F("total_skipped") * 1.0 / F("total_views"),
-                output_field=FloatField()
-            ),
-            output_field=FloatField()
+
+        skip_rate=Coalesce(
+          ExpressionWrapper(
+              F("total_skipped") * 1.0 /
+              NullIf(F("views_count"), Value(0)),
+              output_field=FloatField(),
+          ),
+          Value(0.0),
         ),
 
         is_joined_community=Case(
@@ -420,17 +423,15 @@ def annotate_repost_features(
     two_weeks_ago
 ):
     return qs.annotate(
-        total_views=F("views_count"),
         total_skipped=F("skipped_views"),
 
-        skip_rate=Case(
-            When(total_views=0, then=Value(0.0)),
-            default=ExpressionWrapper(
-                F("total_skipped") * 1.0 /
-                F("total_views"),
-                output_field=FloatField()
-            ),
-            output_field=FloatField()
+        skip_rate=Coalesce(
+          ExpressionWrapper(
+              F("total_skipped") * 1.0 /
+              NullIf(F("views_count"), Value(0)),
+              output_field=FloatField(),
+          ),
+          Value(0.0),
         ),
 
         is_joined_community=Case(
@@ -551,14 +552,11 @@ def finalize_feed(items, user):
         
         shuffle = int(digest[:8], 16) % 100
 
-        age_score = (
-            1.0 if item["created_at"] > timezone.now() - timedelta(hours=24)
-            else 0.5
-        )
+        decay = time_decay(item["created_at"])
 
         item["final_score"] = (
             item["score"]
-            + age_score * 2
+            + decay * 3
             + shuffle * 0.05
             + base_penalty
         )
@@ -566,33 +564,45 @@ def finalize_feed(items, user):
     return sorted(items, key=lambda x: x["final_score"], reverse=True)
 
 def annotate_reels_features(qs, joined_communities):
+
     return qs.annotate(
-        skip_rate=Case(
-            When(views_count=0, then=Value(0.0)),
-            default=ExpressionWrapper(
-                F("skipped_views") * 1.0 / F("views_count"),
-                output_field=FloatField()
-            ),
-            output_field=FloatField()
+        skip_rate=Coalesce(
+          ExpressionWrapper(
+              F("skipped_views") * 1.0 /
+              NullIf(F("views_count"), Value(0)),
+              output_field=FloatField(),
+          ),
+          Value(0.0),
         ),
-        completion_rate=ExpressionWrapper(
-            Value(1.0) - F("skipped_views") * 1.0 / F("views_count"),
-            output_field=FloatField()
+
+        completion_rate=Coalesce(
+          ExpressionWrapper(
+              Value(1.0) -
+              (
+                  F("skipped_views") * 1.0 /
+                  NullIf(F("views_count"), Value(0))
+              ),
+              output_field=FloatField(),
+          ),
+          Value(0.0),
         ),
+
         watch_score=ExpressionWrapper(
-            F("views_count") + (F("replay_count") * 2),
-            output_field=FloatField()
+            F("views_count") +
+            F("replay_count") * 2,
+            output_field=FloatField(),
         ),
+
         is_joined_community=Case(
             When(
                 community_id__in=joined_communities,
-                then=Value(1.5)
+                then=Value(1.5),
             ),
             default=Value(0.0),
             output_field=FloatField(),
-        )
+        ),
     )
-
+  
 def compute_reels_score(qs):
     return qs.annotate(
         final_score=ExpressionWrapper(
@@ -612,13 +622,18 @@ def time_decay(created_at):
     now = timezone.now()
     hours = (now - created_at).total_seconds() / 3600
 
-    if hours < 24:
-        return 1.0
-    elif hours < 168:
-        return 0.7
-    elif hours < 336:
-        return 0.4
-    return 0.2
+    if hours <= 24:
+        return 1.0          # first day
+    elif hours <= 72:
+        return 0.9          # 3 days
+    elif hours <= 168:
+        return 0.75         # 1 week
+    elif hours <= 336:
+        return 0.55         # 2 weeks
+    elif hours <= 720:
+        return 0.35         # 1 month
+    else:
+        return 0.15         # older
 
 # -----------------------------
 # SESSION RANDOMNESS (TIKTOK STYLE)
