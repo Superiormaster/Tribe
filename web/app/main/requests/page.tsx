@@ -191,6 +191,25 @@ export default function ConnectionsPage() {
         </button>
 
       </div>
+  
+      <div className="mb-5 rounded-2xl border dark:border-gray-800 p-4 flex items-center justify-between">
+        <div>
+          <h3 className="font-semibold text-gray-900 dark:text-white">
+            Find new people
+          </h3>
+      
+          <p className="text-sm text-gray-500">
+            Discover people nearby and grow your network.
+          </p>
+        </div>
+      
+        <button
+          onClick={() => push("/main/discover")}
+          className="rounded-xl bg-indigo-600 px-4 py-2 text-white font-medium hover:bg-indigo-700"
+        >
+          Discover
+        </button>
+      </div>
 
       {/* =========================
           CONNECTIONS

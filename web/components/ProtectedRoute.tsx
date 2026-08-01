@@ -10,15 +10,21 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     user,
     authReady,
     authFailed,
+    loadingUser,
   } = useContext(UserContext)!;
   const { isOnline } = useNetwork();
   const { replace } = useNavigation();
 
   useEffect(() => {
-    if (!authReady) return;
-
+    if (!authReady || loadingUser) return;
     if (!isOnline) return;
-    if (authFailed || !user) {
+
+    if (authFailed) {
+        replace("/auth/login");
+        return;
+    }
+
+    if (!user) {
         replace("/auth/login");
     }
   }, [
@@ -26,6 +32,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
     authFailed,
     user,
     replace,
+    loadingUser,
   ]);
 
   if (!authReady) {

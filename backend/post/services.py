@@ -171,6 +171,8 @@ def build_global_feed(
                     items.append({
                         "type": "post",
                         "data": obj,
+                        "score": obj.final_score,
+                        "created_at": obj.created_at,
                     })
     
             else:
@@ -181,6 +183,8 @@ def build_global_feed(
                     items.append({
                         "type": "repost",
                         "data": obj,
+                        "score": obj.final_score,
+                        "created_at": obj.created_at,
                     })
     
         for item in items:

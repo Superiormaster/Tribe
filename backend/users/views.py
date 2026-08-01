@@ -1173,23 +1173,29 @@ def discover_connect(request):
     # FALLBACK (FIXED)
     # =========================
     if not nearby:
-        fallback = []
-
-        for u in users:  # ✅ already filtered users
-            rel = get_relationship(user, u)
-
-            fallback.append({
-                "id": u.id,
-                "username": u.username,
-                "avatar": get_avatar(u),
-                "bio": u.bio,
-                "distance": None,
-                "connected": rel["is_connected"],
-                "requestPending": rel["request_sent"],
-                "requestReceived": rel["request_received"],
-            })
-
-        return Response(fallback)
+      fallback = []
+  
+      for u in users:
+          rel = get_relationship(user, u)
+  
+          fallback.append({
+              "id": u.id,
+              "username": u.username,
+              "avatar": get_avatar(u),
+              "bio": u.bio,
+              "distance": None,
+              "connected": rel["is_connected"],
+              "requestPending": rel["request_sent"],
+              "requestReceived": rel["request_received"],
+          })
+  
+      paginator = NearbyPagination()
+      page = paginator.paginate_queryset(
+          fallback,
+          request
+      )
+  
+      return paginator.get_paginated_response(page)
 
     paginator = NearbyPagination()
     page = paginator.paginate_queryset(

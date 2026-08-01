@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { apiRequest } from '@/utils/api';
 import { connectUser, removeConnection, cancelConnection } from '@/lib/api';
 import { motion } from 'framer-motion';
+import { useInviteSheet } from "@/components/invite/InviteContext";
 
 type User = {
   id: number;
@@ -17,6 +18,7 @@ type User = {
 export default function DiscoverPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
+  const { showInvite } = useInviteSheet();
 
   useEffect(() => {
     fetchUsers();
@@ -79,6 +81,33 @@ export default function DiscoverPage() {
       console.error(err);
     }
   };
+  
+  if (!loading && users.length === 0) {
+    return (
+      <div className="my-20 flex flex-col items-center justify-center px-6 text-center">
+  
+        <div className="w-24 h-24 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-5xl">
+          🚀
+        </div>
+  
+        <h2 className="mt-6 text-2xl font-bold text-gray-900 dark:text-white">
+          Help Grow Your Tribe
+        </h2>
+  
+        <p className="mt-3 max-w-md text-gray-500 dark:text-gray-400">
+          We couldn't find anyone to connect with right now.
+          Invite your friends to join Tribe and be among the first to build an amazing community together.
+        </p>
+  
+        <button
+          onClick={showInvite}
+          className="mt-8 rounded-xl bg-indigo-600 px-6 py-3 font-semibold text-white hover:bg-indigo-700 transition"
+        >
+          Invite Friends
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 my-20 max-w-2xl mx-auto">

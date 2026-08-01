@@ -5,11 +5,39 @@ import InstallButton from "@/components/InstallButton";
 
 export const metadata = {
   title: "Tribe",
-  description: "Tribe Social Network",
+  description: "Find your tribe, join communities, chat, watch reels and make new friends.",
+  applicationName: "Tribe",
   manifest: "/manifest.json",
   themeColor: "#4f46e5",
-  applicationName: "Tribe",
+
+  openGraph: {
+    title: "Tribe",
+    description:
+      "Find your tribe, join communities, chat, watch reels and make new friends.",
+    url: "https://tribe-app.app",
+    siteName: "Tribe",
+    images: [
+      {
+        url: "https://tribe-app.app/assets/advert_PWAFacebook.png",
+        width: 1200,
+        height: 630,
+        alt: "Tribe",
+      },
+    ],
+    type: "website",
+  },
+
+  twitter: {
+    card: "summary_large_image",
+    title: "Tribe",
+    description:
+      "Find your tribe, join communities, chat, watch reels and make new friends.",
+    images: [
+      "https://tribe-app.app/assets/advert_PWAFacebook.png",
+    ],
+  },
 };
+
 export const viewport = {
   themeColor: "#4f46e5",
 };

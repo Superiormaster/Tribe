@@ -9,6 +9,7 @@ import { apiRequest } from '@/utils/api';
 import { useTheme } from "next-themes";
 import Image from "next/image";
 import { useAccountSwitcher } from "@/components/AccountSwitcherContext";
+import { useInviteSheet } from "@/components/invite/InviteContext";
 
 import {
   LayoutDashboard,
@@ -18,6 +19,7 @@ import {
   Sun,
   Laptop,
   X,
+  Share2,
   Users,
   Search,
   Plus,
@@ -45,6 +47,7 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
   const { push, replace } = useNavigation();
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
+  const { showInvite } = useInviteSheet();
   const context = useContext(UserContext);
   const [inviteCount, setInviteCount] = useState(0);
   const [invites, setInvites] = useState<any[]>([]);
@@ -230,6 +233,17 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
               </span>
             )}
           </AppLink>
+          
+          <button
+            onClick={() => {
+              closeMenu();
+              showInvite();
+            }}
+            className={navItem}
+          >
+            <Share2 size={20} />
+            <span>Invite Friends</span>
+          </button>
 
         </ul>
 
@@ -263,7 +277,7 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
             <Moon size={18} />
             Dark
           </button>
-
+  
           <button
             onClick={() => {
               closeMenu();
@@ -277,7 +291,6 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
         </div>
 
       </nav>
-
     </aside>
   );
 }
