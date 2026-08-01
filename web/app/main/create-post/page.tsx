@@ -16,7 +16,7 @@ import {
 import ButtonLoader from "@/components/ButtonLoader";
 import Skeleton from '@/components/Skeleton';
 import { apiRequest } from '@/utils/api';
-import { buildUploadedMedia } from "@/utils/media";
+import { buildUploadedMedia, type UploadedMedia } from "@/utils/media";
 import { uploadToCloudinary } from '@/utils/cloudinary';
 
 type ExistingVideo = {
@@ -638,6 +638,7 @@ export default function CreatePostPage() {
   
   useEffect(() => {
     if (!(video instanceof File)) return;
+    const file = video; 
 
     let cancelled = false;
 
@@ -646,7 +647,7 @@ export default function CreatePostPage() {
   
       try {
           uploadPromiseRef.current = uploadSelectedMedia(
-              [video],
+              [file],
               isReel ? "short_video" : "long_video"
             );
 
@@ -682,7 +683,7 @@ export default function CreatePostPage() {
     return () => {
         cancelled = true;
     };
-  }, [video]);
+  }, [video, isReel]);
 
   useEffect(() => {
     const files =
