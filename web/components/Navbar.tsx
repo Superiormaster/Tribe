@@ -40,7 +40,7 @@ export default function Navbar() {
 
         <button
           onClick={() => setMenuOpen(true)}
-          className="p-2 text-gray-700 dark:text-white rounded-lg hover:bg-gray-200"
+          className="p-2 text-gray-700 dark:text-white rounded-lg"
         >
           <Menu size={24} />
         </button>
@@ -78,7 +78,7 @@ export default function Navbar() {
               >
                 <Icon className={active
                       ? "text-indigo-600"
-                      : "hover:bg-gray-200 dark:hover:bg-zinc-800"
+                      : ""
                   } />
                 {name === "Notifications" && count > 0 && (
                   <span className="absolute -top-1 right-4 bg-red-500 text-white text-[10px] px-1 rounded-full">
@@ -87,7 +87,7 @@ export default function Navbar() {
                 )}
                 <span className={active
                       ? "text-indigo-600"
-                      : "hover:bg-gray-200 dark:hover:bg-zinc-800"
+                      : ""
                   }>{name}</span>
               </AppLink>
             );

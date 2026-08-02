@@ -17,6 +17,7 @@ interface UserContextType {
   loadingUser: boolean;
   authReady: boolean;
   authFailed: boolean;
+  setAuthFailed: (v: boolean) => void;
 }
 
 export const UserContext = createContext<UserContextType | null>(null);
@@ -29,11 +30,45 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [authFailed, setAuthFailed] = useState(false);
   const { isOnline } = useNetwork();
   const { replace } = useNavigation();
+  const isOnlineRef = useRef(isOnline);
+  
+  useEffect(() => {
+    isOnlineRef.current = isOnline;
+  }, [isOnline]);
   
   const renders = useRef(0);
   renders.current++;
   
-  console.log("UserProvider", renders.current);
+  const previous = useRef({
+      user,
+      loadingUser,
+      authReady,
+      authFailed,
+      isInactive,
+  });
+  
+  useEffect(() => {
+      console.log({
+          userChanged: previous.current.user !== user,
+          loadingChanged:
+              previous.current.loadingUser !== loadingUser,
+          readyChanged:
+              previous.current.authReady !== authReady,
+          failedChanged:
+              previous.current.authFailed !== authFailed,
+          inactiveChanged:
+              previous.current.isInactive !== isInactive,
+      });
+  
+      previous.current = {
+          user,
+          loadingUser,
+          authReady,
+          authFailed,
+          isInactive,
+      };
+  });
+  
   useEffect(() => {
     const cleanup = startActivityTracking(() => {
       setIsInactive(true);
@@ -50,16 +85,19 @@ export function UserProvider({ children }: { children: ReactNode }) {
         if (isSessionExpired()) {
           console.log("Local session expired. Attempting refresh...");
         }
+  
+        const selected = localStorage.getItem("active_account");
+        console.log("selected", selected);
 
-        const selected =
-          localStorage.getItem("active_account");
-      
+        let cached = null;
+        
         if (selected) {
-          const cached = await getCachedUser(selected);
-      
-          if (cached) {
-              setUser(cached);
-          }
+            cached = await getCachedUser(selected);
+        
+            if (cached) {
+                setUser(cached);
+                setLoadingUser(false);
+            }
         }
   
         if (!selected) {
@@ -69,6 +107,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         }
 
         const refresh = await getRefreshToken(selected); 
+        console.log("refresh exists", !!refresh);
   
         if (!refresh) {
           setAuthFailed(true);
@@ -84,11 +123,27 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
         // 3. Restore access token in memory
         setAccessToken(res.access);
+        
+        console.log("refresh success");
   
         // 4. Fetch user
         const profile = await apiRequest("api/users/me/");
-        setUser(profile);
+        console.log("profile", profile);
+  
+        const sameUser =
+            cached &&
+            cached.id === profile.id &&
+            cached.username === profile.username &&
+            cached.avatar === profile.avatar &&
+            cached.tokens === profile.tokens;
+        
+        if (!sameUser) {
+          setUser(profile);
+          await saveCachedUser(profile);
+        }
+
         await saveCachedUser(profile);
+
         localStorage.setItem(
           "last_seen",
           Date.now().toString()
@@ -99,9 +154,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
         console.error("Auth init failed", err);
 
         // Network/server issue
-        if (!isOnline || isNetworkError(err)) {
-          console.log("Offline. Keeping previous session.");
-          return;
+        if (!isOnlineRef.current || isNetworkError(err)) {
+            console.log("Offline. Keeping previous session.");
+            return;
         }
   
         // Invalid refresh token
@@ -124,7 +179,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setAuthReady(true);
       }
   
-  }, [isOnline]);
+  }, []);
   
   useEffect(() => {
     initAuth();
@@ -132,8 +187,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
   
   useEffect(() => {
     const handleAuthChanged = async () => {
+      console.log("auth-changed fired");
       const active =
         localStorage.getItem("active_account");
+      console.log("active account:", active);
     
       if (!active) {
         setUser(null);
@@ -142,6 +199,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       }
     
       await initAuth();
+      console.log("initAuth finished");
     };
   
     window.addEventListener("auth-changed", handleAuthChanged);
@@ -258,6 +316,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
             "last_seen",
             Date.now().toString()
           );
+          await saveCachedUser(profile);
           setAuthFailed(false);
           replace("/main/home");
       } catch (err: any) {
@@ -290,6 +349,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
     };
   }, [replace, isOnline]);
   
+  useEffect(() => {
+    console.log("UserContext user =", user);
+  }, [user]);
+  
   const value = useMemo(
     () => ({
       user,
@@ -297,8 +360,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
       loadingUser,
       authReady,
       authFailed,
+      setAuthFailed,
     }),
-    [user, loadingUser, authReady, authFailed]
+    [user, loadingUser, authReady, authFailed, setAuthFailed]
   );
   
   return (

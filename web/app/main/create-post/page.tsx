@@ -5,19 +5,16 @@ import { useNavigation } from "@/utils/useNavigation"
 import AppLink from '@/components/AppLink';
 import toast from 'react-hot-toast';
 import { Toaster } from 'react-hot-toast';
+import { useCommunityPermissions } from "@/hooks/createPost/useCommunityPermissions";
+import { useEditPost } from "@/hooks/createPost/useEditPost";
+import { usePostMedia } from "@/hooks/createPost/usePostMedia";
+import { usePostDraft } from "@/hooks/createPost/usePostDraft";
+import { useMediaUpload } from "@/hooks/createPost/useMediaUpload";
 import { useNetwork } from "@/components/networkConnection/NetworkContext";
-import {
-  saveAutoPostDraft,
-  saveManualPostDraft,
-  getPostDraft,
-  deletePostDraft,
-  getAllPostDrafts,
-} from "@/lib/messageDB";
+import { deletePostDraft } from "@/lib/messageDB";
 import ButtonLoader from "@/components/ButtonLoader";
 import Skeleton from '@/components/Skeleton';
 import { apiRequest } from '@/utils/api';
-import { buildUploadedMedia, type UploadedMedia } from "@/utils/media";
-import { uploadToCloudinary } from '@/utils/cloudinary';
 
 type ExistingVideo = {
   url: string;
@@ -27,24 +24,13 @@ type ExistingVideo = {
 export default function CreatePostPage() {
   const [content, setContent] = useState('');
   const searchParams = useSearchParams();
-  const [loadingCommunity, setLoadingCommunity] = useState(false);
   const draftId = searchParams.get("draftId");
-  const [imageFiles, setImageFiles] = useState<(File | string)[]>([]);
-  const [imageUrls, setImageUrls] = useState<string[]>([]);
-  const [video, setVideo] = useState<
-    File | ExistingVideo | null
-  >(null);
   const { isOnline } = useNetwork();
   const [loading, setLoading] = useState(false);
-  const [fileProgress, setFileProgress] = useState<Record<string, number>>({});
-  const [videoPreview, setVideoPreview] = useState("");
-  const [uploadedMedia, setUploadedMedia] = useState<any[]>([]);
-  const [uploading, setUploading] = useState(false);
   const { push } = useNavigation()
   const isEdit = searchParams.get('edit') === 'true';
   const postId = searchParams.get('postId');
   const modeParam = searchParams.get('mode');
-  const [draftCount, setDraftCount] = useState(0);
 
   const [mode, setMode] = useState<'global' | 'community' | 'reel'>(
     modeParam === 'reel'
@@ -58,292 +44,116 @@ export default function CreatePostPage() {
   const [selectedCommunity, setSelectedCommunity] = useState<number | null>(
     searchParams.get('communityId') ? Number(searchParams.get('communityId')) : null
   );
-  const isCommunityPost = !!selectedCommunity;
-  
-  const [communityData, setCommunityData] = useState<any>(null);
-  const [permissions, setPermissions] = useState({
-    allow_reels: false,
-    allow_videos: false,
-  });
-  const uploadPromiseRef = useRef<Promise<UploadedMedia[]> | null>(null);
+
   const isGlobal = mode === 'global';
   const isCommunity = mode === 'community';
   const isReel = mode === 'reel';
   
+  const {
+    communityData,
+    permissions,
+    loadingCommunity,
+  } = useCommunityPermissions({
+    selectedCommunity,
+    setMode,
+  });
+  
   const allowReel = permissions.allow_reels;
   const allowVideo = isGlobal || permissions.allow_videos;
   const allowImages = true;
-
-  const MAX_IMAGES = 5;
-
-  useEffect(() => {
-    const loadCount = async () => {
-      const drafts = await getAllPostDrafts();
-      setDraftCount(drafts.length);
-    };
   
-    loadCount();
-  }, []);
-
-  useEffect(() => {
-      if (isEdit || draftId) return;
+  const {
+    imageFiles,
+    imageUrls,
+    video,
+    videoPreview,
+    previewImages,
   
-      const timer = setTimeout(async () => {
-          await saveAutoPostDraft({
-              draftId: selectedCommunity
-                  ? `auto-community-${selectedCommunity}`
-                  : "auto-global",
+    hasImages,
+    hasVideo,
   
-              title: selectedCommunity
-                ? `${communityData?.tribe?.name} • ${communityData?.name}`
-                : "Global Post",
+    setImageFiles,
+    setImageUrls,
+    setVideo,
+    setVideoPreview,
   
-              content,
+    handleImagesChange,
+    handleVideoChange,
   
-              imageFiles,
+    removeImage,
+    removeVideo,
   
-              imageUrls,
+    clearMedia,
+  } = usePostMedia({
+    allowImages: true,
+    allowVideo,
+    maxImages: 5,
+  });
   
-              video: video
-                ? video instanceof File
-                    ? video
-                    : {
-                          url: video.url,
-                          thumbnail: video.thumbnail,
-                      }
-                : null,
+  const {
+    uploadedMedia,
+    uploading,
+    fileProgress,
+    uploadPromiseRef,
+    setUploadedMedia,
+    setFileProgress,
+  } = useMediaUpload({
+    content,
+    imageFiles,
+    imageUrls,
+    video,
+    selectedCommunity,
+    isReel,
+  });
   
-              selectedCommunity,
+  const {
+    draftCount,
+    saveDraft,
+    saveAutoDraft,
+  } = usePostDraft({
+    isEdit,
+    draftId,
   
-              communityName:
-                  communityData?.name || "",
-          });
-      }, 1000);
+    content,
+    imageFiles,
+    imageUrls,
+    video,
   
-      return () => clearTimeout(timer);
-  }, [
-      content,
-      imageFiles,
-      imageUrls,
-      video,
-      selectedCommunity,
-      communityData,
-  ]);
-
-  useEffect(() => {
-
-      if (isEdit) return;
+    selectedCommunity,
+    communityData,
   
-      const load = async () => {
-  
-          const id =
-              draftId ??
-              (
-                  selectedCommunity
-                      ? `auto-community-${selectedCommunity}`
-                      : "auto-global"
-              );
-  
-          const draft = await getPostDraft(id);
-  
-          if (!draft) return;
-  
-          setContent(draft.content || "");
-  
-          setImageFiles(draft.imageFiles || []);
-  
-          setImageUrls(draft.imageUrls || []);
-  
-          if (draft.video) {
-            setVideo(draft.video);
-        
-            if (draft.video instanceof File) {
-                setVideoPreview(
-                    URL.createObjectURL(draft.video)
-                );
-            } else {
-                setVideoPreview(draft.video.url);
-            }
-          }
-  
-          setSelectedCommunity(
-              draft.selectedCommunity || null
-          );
-      };
-  
-      load();
-  
-  }, [draftId]);
-  
-  const handleSaveDraft = async () => {
-
-      await saveManualPostDraft({
-  
-          title: selectedCommunity
-            ? `${communityData?.tribe?.name} • ${communityData?.name}`
-            : "Global Post",
-  
-          communityName:
-              communityData?.name || "",
-  
-          content,
-  
-          imageFiles,
-  
-          imageUrls,
-  
-          video: video
-            ? video instanceof File
-                ? video
-                : {
-                      url: video.url,
-                      thumbnail: video.thumbnail,
-                  }
-            : null,
-  
-          selectedCommunity,
-      });
-  
-      const drafts = await getAllPostDrafts();
-      setDraftCount(drafts.length);
-  
-      toast.success("Draft saved");
-  };
-
-  // Handle adding images
-  const handleImagesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!allowImages) return;
-
-    if (!e.target.files) return;
-    const files = Array.from(e.target.files);
-    if (files.length + imageFiles.length > MAX_IMAGES) {
-      alert(`You can only upload up to ${MAX_IMAGES} images`);
-      return;
-    }
-    setImageFiles(prev => [...prev, ...files]);
-    setVideo(null); 
-  };
-
-  // Handle video selection (max 1)
-  const handleVideoChange = (
-    e: React.ChangeEvent<HTMLInputElement>
-  ) => {
-    if (!e.target.files?.[0]) return;
-  
-    const file = e.target.files[0];
-  
-    const url = URL.createObjectURL(file);
-  
-    setVideo(file);
-    setVideoPreview(url);
-  
-    setImageFiles([]);
-    setImageUrls([]);
-  };
-
-  const removeImage = (index: number) => {
-    setImageFiles(prev => prev.filter((_, i) => i !== index));
-  };
-
-  const removeVideo = () => setVideo(null);
+    setContent,
+    setImageFiles,
+    setImageUrls,
+    setVideo,
+    setVideoPreview,
+    setSelectedCommunity,
+  });
   
   // =============================
   // 🔥 EDIT MODE LOAD
   // =============================
-  useEffect(() => {
-    if (!isEdit || !postId) return;
+  useEditPost({
+    isEdit,
+    postId,
   
-    const fetchPost = async () => {
-      try {
-        const data = await apiRequest(`api/post/${postId}/`);
+    setContent,
+    setSelectedCommunity,
   
-        setContent(data.caption || "");
+    setMode,
   
-        setSelectedCommunity(data.community);
-
-        if (data.content_type === "short_video") {
-            setMode("reel");
-        } else if (data.community) {
-            setMode("community");
-        } else {
-            setMode("global");
-        }
-        
-        if (data.media_files?.length) {
-          data.media_files.forEach((m: any) => {
-            if (m.media_type === "video") {
-              const existingVideo = {
-                  url: m.file_url,
-                  thumbnail: m.thumbnail_url,
-              };
-              
-              setVideo(existingVideo);
-              
-              setVideoPreview(existingVideo.url);
-              
-              setUploadedMedia([
-                  {
-                      url: existingVideo.url,
-                      thumbnail: existingVideo.thumbnail,
-                      type: "video",
-                  },
-              ]);
-            } else if (m.media_type === "image") {
-              const images = data.media_files
-                  .filter((m: any) => m.media_type === "image")
-                  .map((m: any) => m.file_url);
-              
-              setImageUrls(images);
-              setImageFiles(images as any);
-              
-              setUploadedMedia(
-                  data.media_files
-                      .filter((m: any) => m.media_type === "image")
-                      .map((m: any) => ({
-                          url: m.file_url,
-                          thumbnail: m.file_url,
-                          type: "image",
-                      }))
-              );
-            }
-          });
+    setVideo,
+    setVideoPreview,
   
-          setImageUrls(imageUrls);
-        }
+    setImageUrls,
+    setImageFiles,
   
-        setSelectedCommunity(data.community);
+    setUploadedMedia,
+  });
   
-      } catch (err) {
-        console.error("Failed to fetch post", err);
-      }
-    };
-  
-    fetchPost();
-  }, [isEdit, postId]);
-  
-  const previewImages = [
-    ...imageUrls,
-    ...imageFiles,
-  ];
-
   const handlePost = async () => {
     if (!isOnline) {
-      await saveAutoPostDraft({
-          draftId: selectedCommunity
-              ? `auto-community-${selectedCommunity}`
-              : "auto-global",
-  
-          title: selectedCommunity
-              ? `${communityData?.tribe?.name} • ${communityData?.name}`
-              : "Global Post",
-  
-          content,
-          imageFiles,
-          imageUrls,
-          video,
-          selectedCommunity,
-          communityName: communityData?.name || "",
-      });
+      await saveAutoDraft();
   
       toast.error("You're offline. Draft saved.");
       return;
@@ -398,32 +208,20 @@ export default function CreatePostPage() {
       
       let media = uploadedMedia;
 
-      if (uploadPromiseRef.current) {
+      if (uploading && uploadPromiseRef.current) {
         const toastId = toast.loading("Finishing upload...");
     
         media = await uploadPromiseRef.current;
 
         if (!isOnline) {
-          await saveAutoPostDraft({
-            draftId: selectedCommunity
-                ? `auto-community-${selectedCommunity}`
-                : "auto-global",
-            title: selectedCommunity
-                ? `${communityData?.tribe?.name} • ${communityData?.name}`
-                : "Global Post",
-            content,
-            imageFiles,
-            imageUrls,
-            video,
-            selectedCommunity,
-            communityName: communityData?.name || "",
-          });
+          await saveAutoDraft();
       
           toast.dismiss(toastId);
           toast.error("You're offline. Draft saved.");
           return;
         }
     
+        await new Promise(resolve => setTimeout(resolve, 500));
         uploadPromiseRef.current = null;
     
         toast.dismiss(toastId);
@@ -434,22 +232,7 @@ export default function CreatePostPage() {
       const hasMedia = media.length > 0;
       
       if (!hasText && !hasMedia) {
-          await saveAutoPostDraft({
-              draftId: selectedCommunity
-                  ? `auto-community-${selectedCommunity}`
-                  : "auto-global",
-      
-              title: selectedCommunity
-                  ? `${communityData?.tribe?.name} • ${communityData?.name}`
-                  : "Global Post",
-      
-              content,
-              imageFiles,
-              imageUrls,
-              video,
-              selectedCommunity,
-              communityName: communityData?.name || "",
-          });
+          await saveAutoDraft();
 
           toast.error("Nothing to post. Draft saved.");
       
@@ -522,12 +305,19 @@ export default function CreatePostPage() {
         return;
       }
       
+      const feedPost = {
+          ...newPost,
+          feed_type: "post",
+          is_starred_by_user: false,
+      };
+      
       sessionStorage.setItem(
-        "new_post",
-        JSON.stringify(newPost)
+          "new_post",
+          JSON.stringify(feedPost)
       );
       
       push("/main/home");
+      return;
     } catch (err:any) {
       console.log("FULL ERROR:", err.data || err);
       console.error(err);
@@ -537,35 +327,6 @@ export default function CreatePostPage() {
       setLoading(false);
     }
   };
-  
-  useEffect(() => {
-    if (!selectedCommunity) return;
-
-    const fetchCommunity = async () => {
-        try {
-            setLoadingCommunity(true);
-
-            const data = await apiRequest(
-                `api/communities/${selectedCommunity}/`
-            );
-
-            setCommunityData(data);
-            setPermissions(data.permissions);
-            setMode(
-              data.permissions.allow_reels
-                ? "reel"
-                : "community"
-            );
-
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoadingCommunity(false);
-        }
-    };
-
-    fetchCommunity();
-  }, [selectedCommunity]);
   
   // Render individual progress bar
     const renderProgressBar = (file: File) => {
@@ -580,202 +341,9 @@ export default function CreatePostPage() {
       );
     };
   
-  async function getVideoDimensions(file: File) {
-    return new Promise<{ width: number; height: number }>((resolve, reject) => {
-      const video = document.createElement("video");
-  
-      video.preload = "metadata";
-  
-      video.onloadedmetadata = () => {
-        URL.revokeObjectURL(video.src);
-  
-        resolve({
-          width: video.videoWidth,
-          height: video.videoHeight,
-        });
-      };
-  
-      video.onerror = reject;
-  
-      video.src = URL.createObjectURL(file);
-    });
-  }
-  
-  const uploadSelectedMedia = async (
-    files: File[],
-    contentType: string
-  ): Promise<any[]> => {
-    return Promise.all(
-      files.map(async (file) => {
-        let isPortrait = false;
-  
-        if (file.type.startsWith("video")) {
-          const { width, height } =
-            await getVideoDimensions(file);
-  
-          isPortrait = height > width;
-        }
-  
-        const secureUrl = await uploadToCloudinary({
-          file,
-          onProgress: (percent) => {
-            setFileProgress(prev => ({
-              ...prev,
-              [file.name]: percent,
-            }));
-          },
-        });
-  
-        return buildUploadedMedia(
-          secureUrl,
-          file,
-          contentType,
-          isPortrait
-        );
-      })
-    );
-  };
-  
-  useEffect(() => {
-    if (!(video instanceof File)) return;
-    const file = video; 
-
-    let cancelled = false;
-
-    async function upload() {
-      setUploading(true);
-  
-      try {
-          uploadPromiseRef.current = uploadSelectedMedia(
-              [file],
-              isReel ? "short_video" : "long_video"
-            );
-
-          const media = await uploadPromiseRef.current;
-          
-          if (cancelled) return;
-          
-          setUploadedMedia(media);
-      } catch (err: any) {
-          uploadPromiseRef.current = null;
-      
-          setUploadedMedia([]);
-      
-          // Keep File objects in draft
-          await saveAutoPostDraft({
-              content,
-              imageFiles,
-              imageUrls,
-              video,
-              selectedCommunity,
-          });
-      
-          toast.error("Upload interrupted. Saved as draft.");
-      } finally {
-          uploadPromiseRef.current = null;
-          if (!cancelled)
-              setUploading(false);
-      }
-    }
-
-    upload();
-
-    return () => {
-        cancelled = true;
-    };
-  }, [video, isReel]);
-
-  useEffect(() => {
-    const files =
-        imageFiles.filter(
-            (f): f is File =>
-                f instanceof File
-        );
-
-    if (!files.length) return;
-
-    let cancelled = false;
-
-    async function upload() {
-      setUploading(true);
-  
-      try {
-          uploadPromiseRef.current = uploadSelectedMedia(files, "image");
-  
-          const media = await uploadPromiseRef.current;
-  
-          if (cancelled) return;
-  
-          setUploadedMedia(media);
-      } catch (err: any) {
-        uploadPromiseRef.current = null;
-    
-        setUploadedMedia([]);
-    
-        // Keep File objects in draft
-        await saveAutoPostDraft({
-            content,
-            imageFiles,
-            imageUrls,
-            video,
-            selectedCommunity,
-        });
-    
-        toast.error("Upload interrupted. Saved as draft.");
-      } finally {
-          uploadPromiseRef.current = null;
-          if (!cancelled)
-              setUploading(false);
-      }
-    }
-
-    upload();
-
-    return () => {
-        cancelled = true;
-    };
-
-  }, [imageFiles]);
-  
-  useEffect(() => {
-    const handleOffline = async () => {
-        uploadPromiseRef.current = null;
-        setUploadedMedia([]);
-
-        await saveAutoPostDraft({
-            content,
-            imageFiles,
-            imageUrls,
-            video,
-            selectedCommunity,
-        });
-
-        toast("Connection lost. Draft saved.");
-    };
-
-    window.addEventListener("offline", handleOffline);
-
-    return () =>
-        window.removeEventListener("offline", handleOffline);
-  }, [
-    content,
-    imageFiles,
-    imageUrls,
-    video,
-    selectedCommunity,
-  ]);
-  
-  
   if (loadingCommunity) {
     return <Skeleton />;
   }
-  
-  if (
-    loading &&
-    !video &&
-    imageFiles.length === 0 &&
-    imageUrls.length === 0
-  ) return <Skeleton onComplete={() => setLoading(false)} />;
 
   return (
     <div className="max-w-3xl mx-auto p-4 my-20 space-y-4">
@@ -959,7 +527,7 @@ export default function CreatePostPage() {
         {/* Post button */}
         <div className="flex gap-3">
             <button
-                onClick={handleSaveDraft}
+                onClick={saveDraft}
                 className="w-full py-2 rounded-lg text-gray-700 dark:text-white border border-gray-300"
             >
                 Save Draft

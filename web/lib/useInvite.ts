@@ -4,7 +4,7 @@ export function useInvite() {
   async function inviteFriends() {
     const url = "https://tribe-app.app";
 
-    const response = await fetch("https://tribe-app.app/assets/advert_PWAFacebook.png");
+    const response = await fetch("https://tribe-app.app/advert_PWAFacebook.png");
     const blob = await response.blob();
 
     const file = new File(

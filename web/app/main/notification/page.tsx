@@ -35,10 +35,6 @@ export default function NotificationsPage() {
   
     setPage(pageToLoad + 1);
   };
-
-  useEffect(() => {
-    markAllRead();
-  }, []);
   
   useEffect(() => {
 
@@ -88,12 +84,6 @@ export default function NotificationsPage() {
     };
   
   }, []);
-
-  const markAllRead = async () => {
-    await apiRequest("api/notifications/read-all/", { method: "POST" })
-    setNotifications(n => n.map(x => ({ ...x, read: true })))
-    setCount(0)
-  }
   
   const openNotification = async (notification: any) => {
 
@@ -172,13 +162,6 @@ export default function NotificationsPage() {
             </span>
           )}
         </div>
-
-        <button
-          onClick={markAllRead}
-          className="text-sm text-indigo-600"
-        >
-          Mark all as read
-        </button>
       </div>
 
       {notifications.map(n => {

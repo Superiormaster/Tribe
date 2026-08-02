@@ -1,5 +1,5 @@
 'use client';
-import { useState, useRef, useMemo, useEffect, useContext } from 'react';
+import { useState, useRef, useEffect, useContext } from 'react';
 import { useNavigation } from "@/utils/useNavigation"
 import PostCard from '@/components/PostCard';
 import ExploreCommunities from '@/components/ExploreCommunities';
@@ -8,6 +8,12 @@ import ReelCard from '@/components/ReelCard';
 import RepostCard from '@/components/repost/RepostCard';
 import LoadingScreen from '@/components/LoadingScreen';
 import Skeleton from '@/components/Skeleton';
+import useImagePreloader from "@/hooks/homePage/useImagePreloader";
+import { useSuggestedCommunities } from "@/hooks/homePage/useSuggestedCommunities";
+import { useTribes } from "@/hooks/homePage/useTribes";
+import { useHomeFeed } from "@/hooks/homePage/useHomeFeed";
+import { useReconnect } from "@/hooks/homePage/useReconnect";
+import { useHomeInitialization } from "@/hooks/homePage/useHomeInitialization";
 import { UserContext } from "@/components/UserContext";
 import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import { apiRequest } from '@/utils/api';
@@ -26,670 +32,131 @@ export default function HomePage() {
   const { user, loadingUser } = useContext(UserContext)!;
   const { replace, push } = useNavigation();
   const installed = useIsInstalled();
-  const [posts, setPosts] = useState<any[]>([]);
-  const pagesCache = useRef<Record<number, any[]>>({});
-  const reelsCache = useRef<any[]>([]);
-  const lastPageRef = useRef(1);
-  const [feedResponse, setFeedResponse] = useState<any>(null);
-  const [reels, setReels] = useState<any[]>([]);
-  const [reachedLimit, setReachedLimit] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [suggestedCommunities, setSuggestedCommunities] = useState<any[]>([]);
-  const [initialLoad, setInitialLoad] = useState(true);
-  const preloaded = useRef(new Set());
-  const [starredUsers, setStarredUsers] = useState<Set<number>>(new Set());
-  const loadingRef = useRef(false);
-  const loadingMoreRef = useRef(false);
-  const hasMoreRef = useRef(true);
-  const hasCacheRef = useRef(false);
   const [filter, setFilter] = useState<'all' | 'tribes'>('all');
-  const [tribes, setTribes] = useState<any[]>([]);
-  const [selectedTribe, setSelectedTribe] = useState<number | null>(null);
-  const [showAllTribes, setShowAllTribes] = useState(false);
-  const visibleTribes = showAllTribes ? tribes : tribes.slice(0, 3);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const MAX_PAGES = 5;
   const {
     isOnline,
     reconnecting,
     finishReconnect,
   } = useNetwork();
-  const [loadingMore, setLoadingMore] = useState(false);
-  const postsRequestIdRef =
-    useRef(0);
-  const reelsRequestIdRef =
-    useRef(0);
-  const currentTribe = tribes.find((t: any) => t.id === selectedTribe);
-  const loadMoreRef = useRef<HTMLDivElement>(null);
   const [refreshingFeed, setRefreshingFeed] =
     useState(false);
-  const showLoading =
-    initialLoad &&
-    loading &&
-    isOnline;
+  
+  const {
+    suggestedCommunities,
+    loadingSuggested,
+    fetchSuggested,
+  } = useSuggestedCommunities(filter);
+  
+  const {
+    tribes,
+    selectedTribe,
+    setSelectedTribe,
+    showAllTribes,
+    setShowAllTribes,
+    visibleTribes,
+    currentTribe,
+    loadingTribes,
+  } = useTribes(filter);
+  
+  const {
+    posts,
+    setPosts,
+    reels,
+    loading,
+    loadingMore,
+    initialLoad,
+    hasMore,
+    page,
+    setReels,
+    setLoading,
+    setInitialLoad,
+    hasCacheRef,
+    fetchPosts,
+    fetchReels,
+    resetFeedState,
+    reachedLimit,
+    feedResponse,
+    loadMoreRef,
+    starredUserIds,
+    setStarredUsers,
+    starredUsers,
 
-  const isEntertainment =
-  currentTribe?.name?.toLowerCase() === "entertainment";
+    refreshFeed,
+    loadMore,
+    incrementPostView,
+  } = useHomeFeed({
+    filter,
+    selectedTribe,
+  });
+  
   const filteredPosts = posts.filter(
     (post: any) => post.content_type !== "short_video"
   );
-
-  useEffect(() => {
-    (async () => {
-      const res = await apiRequest("api/users/starred/");
-      setStarredUsers(new Set(res.starred_users));
-    })();
-  }, []);
   
-  const fetchSuggested = async () => {
-    try {
-        const data = await apiRequest(
-            "api/communities/explore/"
-        );
-
-        setSuggestedCommunities(data);
-    } catch (err) {
-        console.error(err);
-    }
-  };
-  
-  useEffect(() => {
-    if (filter !== "all") return;
-
-    fetchSuggested();
-  }, [filter]);
-  
-  const resetFeedState = () => {
-    pagesCache.current = {};
-    lastPageRef.current = 1;
-  
-    setPosts([]);
-    setPage(1);
-    setHasMore(true);
-    setReachedLimit(false);
-  
-    loadingMoreRef.current = false;
-    hasMoreRef.current = true;
-  };
-  
-  useEffect(() => {
-    const refresh = async () => {
-        setRefreshingFeed(true);
-        await refreshFeed();
-
-        if (filter === "all") {
-            await fetchReels();
-        }
-        setRefreshingFeed(false);
-    };
-
-    window.addEventListener(
-        REFRESH_HOME_EVENT,
-        refresh
-    );
-
-    return () =>
-        window.removeEventListener(
-            REFRESH_HOME_EVENT,
-            refresh
-        );
-  }, [filter, selectedTribe]);
-  
-  useEffect(() => {
-    if (
-      !isOnline ||
-      !reconnecting
-    ) {
-      return;
-    }
-  
-    let cancelled = false;
-  
-    const reconnectFeed = async () => {
-      try {
-        setRefreshingFeed(true);
-        resetFeedState();
-    
-        await fetchPosts(1, true, true, filter, selectedTribe);
-    
-        if (
-          cancelled ||
-          !navigator.onLine
-        ) {
-          return;
-        }
-    
-        if (filter === "all") {
-          await fetchReels();
-        }
-    
-        finishReconnect();
-      } finally {
-        if (!cancelled) {
-          setRefreshingFeed(false);
-        }
-      }
-    };
-  
-    reconnectFeed();
-  
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    isOnline,
-    reconnecting,
+  useHomeInitialization({
     filter,
     selectedTribe,
-  ]);
+    setPosts,
+    setReels,
+    setLoading,
+    setInitialLoad,
+    hasCacheRef,
+    fetchPosts,
+    fetchReels,
+  });
+  
+  useImagePreloader({
+    posts,
+    reels,
+  });
+  
+  useReconnect({
+    isOnline,
+    reconnecting,
+    finishReconnect,
+    filter,
+    selectedTribe,
+    fetchPosts,
+    fetchReels,
+    setRefreshingFeed,
+  });
   
   useEffect(() => {
-    const navigation = performance.getEntriesByType(
-      "navigation"
-    )[0] as PerformanceNavigationTiming | undefined;
+    if (loadingUser) return;
+    if (!user) return;
   
-    const isReload = navigation?.type === "reload";
-  
-    if (!isReload) return;
-  
-    const refreshOnReload = async () => {
+    const check = async () => {
       try {
-        await apiRequest("api/feed/refresh/", {
-          method: "POST",
-        });
-  
-        resetFeedState();
-  
-        await fetchPosts(
-          1,
-          true,
-          true,
-          filter,
-          selectedTribe
+        const status = await apiRequest(
+          "api/users/onboarding-status/"
         );
+  
+        if (!status.completed) {
+          replace("/auth/profile-setup");
+        }
       } catch (err) {
         console.error(err);
       }
     };
   
-    refreshOnReload();
-  }, []);
-
-  useEffect(() => {
-    const check = async () => {
-      const status = await apiRequest("api/users/onboarding-status/");
-  
-      if (!status.completed) {
-        replace("/auth/profile-setup");
-      }
-    };
-  
     check();
-  }, []);
+  }, [loadingUser, user]);
   
   useEffect(() => {
-    loadingRef.current = loading;
-  }, [loading]);
+    if (filter !== "tribes" || !selectedTribe) return;
   
-  useEffect(() => {
-    loadingMoreRef.current = loadingMore;
-  }, [loadingMore]);
+    resetFeedState();
   
-  useEffect(() => {
-    hasMoreRef.current = hasMore;
-  }, [hasMore]);
-  
-  useEffect(() => {
-    reels.slice(0, 3).forEach((reel) => {
-  
-      const url = reel.media_files?.[0]?.thumbnail_url;
-  
-      if (!url) return;
-  
-      if (preloaded.current.has(url)) return;
-  
-      preloaded.current.add(url);
-  
-      const img = new Image();
-      img.loading = "eager";
-      img.decoding = "async";
-      img.src = url;
-  
-    });
-  }, [reels]);
-  
-  useEffect(() => {
-    posts.slice(0, 10).forEach((post) => {
-  
-      if (post.user?.avatar &&
-          !preloaded.current.has(post.user.avatar)) {
-  
-        preloaded.current.add(post.user.avatar);
-  
-        const img = new Image();
-        img.loading = "eager";
-        img.decoding = "async";
-        img.src = post.user.avatar;
-      }
-  
-      post.media_files?.forEach((file: MediaFile) => {
-  
-        const url = file.thumbnail_url ?? file.file_url;
-  
-        if (!url) return;
-  
-        if (preloaded.current.has(url)) return;
-  
-        preloaded.current.add(url);
-  
-        const img = new Image();
-        img.loading = "eager";
-        img.decoding = "async";
-        img.src = url;
-      });
-  
-    });
-  }, [posts]);
-
-  const fetchReels = async () => {
-    if (!isOnline) return;
-  
-    const requestId =
-      ++reelsRequestIdRef.current;
-  
-    try {
-      let url =
-        "api/post/reels/?";
-  
-      if (
-        filter === "tribes" &&
-        isEntertainment &&
-        selectedTribe
-      ) {
-        url += `&tribe=${selectedTribe}`;
-      }
-  
-      const data =
-        await apiRequest(url);
-  
-      if (
-        !navigator.onLine 
-      ) {
-        return;
-      }
-  
-      if (
-        requestId !==
-        reelsRequestIdRef.current
-      ) {
-        return;
-      }
-  
-      const results =
-        data.results ?? data;
-  
-      const validReels =
-        results.filter(
-          (reel: any) =>
-            reel?.media_files?.some(
-              (m: any) => m?.file_url
-            )
-        );
-  
-      const shuffled =
-        [...validReels].sort(
-          () => Math.random() - 0.5
-        );
-  
-      reelsCache.current = shuffled;
-      setReels(shuffled);
-      saveReels(filter, selectedTribe, shuffled);
-    } catch (err) {
-      console.error(
-        "Failed to fetch reels",
-        err
-      );
-    }
-  };
-  
-  const starredUserIds = useMemo<Set<number>>(() => {
-    return new Set<number>(
-      (feedResponse?.starred_user_ids ?? []) as number[]
-    );
-  }, [feedResponse]);
-  
-  useEffect(() => {
-    const target = loadMoreRef.current;
-  
-    if (!target) return;
-  
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          loadMore();
-        }
-      },
-      {
-        rootMargin: "500px",
-      }
-    );
-  
-    observer.observe(target);
-  
-    return () => observer.disconnect();
-  }, [page, hasMore, loading, loadingMore]);
-  
-  // --- Fetch posts ---
-  const fetchPosts = async (
-    pageNumber = 1,
-    replace = false,
-    showSkeleton = true,
-    currentFilter = filter,
-    currentTribe = selectedTribe
-  ) => {
-    if (
-      loadingMore ||
-      !hasMoreRef.current ||
-      loadingMoreRef.current
-    ) {
-      return;
-    }
-  
-    const requestId =
-      ++postsRequestIdRef.current;
-  
-    try {
-      if (showSkeleton && !hasCacheRef.current && pageNumber === 1) {
-        setLoading(true);
-      } else {
-        setLoadingMore(true);
-      }
-  
-      loadingMoreRef.current = true;
-  
-      let url = `api/feed/?page=${pageNumber}`;
-  
-      if (
-          currentFilter === "tribes" &&
-          currentTribe
-      ) {
-          url += `&tribe=${currentTribe}`;
-      }
-  
-      const data =
-        await apiRequest(url);
-  
-      /*
-        User went offline while request
-        was running.
-      */
-      if (
-        !navigator.onLine 
-      ) {
-        return;
-      }
-  
-      /*
-        Another request started after
-        this one.
-      */
-      if (
-        requestId !==
-        postsRequestIdRef.current
-      ) {
-        return;
-      }
-  
-      const results = data.results ?? [];
-
-      if (!data.next) {
-        hasMoreRef.current = false;
-      }
-
-      setHasMore(!!data.next);
-  
-      setFeedResponse(data);
-  
-      const newItems = results.map((item: any) => ({
-        id: item.type === "repost"
-          ? `repost-${item.data.id}`
-          : item.data.id,
-        ...item.data,
-        feed_type: item.type,
-        is_starred_by_user: starredUserIds.has(item.data.user?.id),
-      }));
-
-      await saveFeed(currentFilter, currentTribe, pageNumber, newItems);
-
-      pagesCache.current[pageNumber] = newItems;
-      
-      const merged = Object.keys(pagesCache.current)
-        .map(Number)
-        .sort((a, b) => a - b)
-        .flatMap(page => pagesCache.current[page]);
-  
-      if (replace || pageNumber === 1) {
-        const saved = sessionStorage.getItem("new_post");
-      
-        if (saved) {
-          const localPost = JSON.parse(saved);
-      
-          if (!merged.some(p => p.id === localPost.id)) {
-            merged.unshift(localPost);
-          }
-      
-          sessionStorage.removeItem("new_post");
-        }
-      }
-      
-      setPosts(merged);
-  
-      lastPageRef.current = pageNumber;
-      setPage(pageNumber);
-    } catch (err) {
-      console.error(
-        "Failed to fetch posts",
-        err
-      );
-      window.dispatchEvent(
-        new CustomEvent("network-error", {
-            detail: "Failed to fetch posts",
-        })
-      );
-    } finally {
-      loadingMoreRef.current = false;
-  
-      setLoading(false);
-      setLoadingMore(false);
-      if (initialLoad) {
-        setInitialLoad(false);
-      }
-    }
-  };
-  
-  const incrementPostView = (postId: number) => {
-
-    setPosts((prev: any[]) =>
-      prev.map((post: any) =>
-        post.id === postId
-          ? {
-              ...post,
-              views_count:
-                (post.views_count || 0) + 1
-            }
-          : post
-      )
-    );
-  };
-  
-  const refreshFeed = async () => {
-    if (loadingMore || loadingMoreRef.current) return;
-  
-    await clearFeed(
+    fetchPosts(
+      1,
+      true,
+      true,
       filter,
       selectedTribe
     );
-    await clearReels(filter, selectedTribe);
-    hasCacheRef.current = false;
   
-    resetFeedState();
-    setInitialLoad(true); 
-    setLoading(true);
-  
-    try {
-      await apiRequest("api/feed/refresh/", {
-        method: "POST"
-      });
-
-      await fetchPosts(1, true, true, filter, selectedTribe);
-    } catch(err) {
-      window.dispatchEvent(
-        new CustomEvent("network-error", {
-            detail: "Couldn't refresh feed",
-        })
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  const loadMore = async () => {
-    if (
-      loading ||
-      loadingMore ||
-      !hasMore ||
-      reachedLimit ||
-      loadingMoreRef.current ||
-      loadingRef.current ||
-      !hasMoreRef.current
-    ) {
-      return;
-    }
-  
-    if (page >= MAX_PAGES) {
-      setReachedLimit(true);
-      return;
-    }
-  
-    const nextPage = page + 1;
-  
-    // Show cached page instantly if available
-    const cached = await getFeed(
-      filter,
-      selectedTribe,
-      nextPage
-    );
-  
-    if (cached.length) {
-      pagesCache.current[nextPage] = cached;
-  
-      const merged = Object.keys(pagesCache.current)
-        .map(Number)
-        .sort((a, b) => a - b)
-        .flatMap(page => pagesCache.current[page]);
-  
-      setPosts(merged);
-    }
-  
-    // Refresh the page from the server
-    await fetchPosts(nextPage);
-  };
-
-  // --- Fetch tribes user belongs to ---
-  const fetchUserTribes = async () => {
-    try {
-      const data = await apiRequest('api/tribes/');
-      setTribes(data);
-  
-      if (data.length > 0) {
-        setSelectedTribe(data[0].id);
-      }
-    } catch (err) {
-      console.error('Failed to fetch tribes', err);
-    }
-  };
-
-  useEffect(() => {
-    if (filter === 'all') {
-      fetchReels();
-    } else {
-      setReels([]);
-    }
-  }, [filter]);
-
-  useEffect(() => {
-    if (filter === "tribes") {
-        fetchUserTribes();
-    } else {
-        setTribes([]);
-        setSelectedTribe(null);
-        setShowAllTribes(false);
-    }
-  }, [filter]);
-  
-  useEffect(() => {
-    if (filter !== "tribes") return;
-    if (!selectedTribe) return;
-
-    hasCacheRef.current = false;
-
-    resetFeedState();
-
-    fetchPosts(1, true, true, "tribes", selectedTribe);
-
-    if (isEntertainment) {
-        fetchReels();
-    }
+    fetchReels();
   }, [selectedTribe]);
-  
-  useEffect(() => {
-    (async () => {
-      try {
-        const cachedPosts = await getFeed(
-            filter,
-            selectedTribe,
-            1
-        );
-
-        const cachedReels = await getReels(
-            filter,
-            selectedTribe
-        );
-
-        hasCacheRef.current = cachedPosts.length > 0;
-
-        if (cachedPosts.length) {
-            setPosts(cachedPosts);
-            setInitialLoad(false);
-            setLoading(false);
-        }
-
-        if (cachedReels.length) {
-            setReels(cachedReels);
-        }
-
-        if (!cachedPosts.length) {
-            await fetchPosts(1, true, true, filter, selectedTribe);
-        } else {
-            fetchPosts(1, true, false, filter, selectedTribe);
-        }
-
-        if (filter === "all") {
-            fetchReels();
-        }
-      } catch(err) {
-        console.error("Error:", err);
-      }
-    })();
-  }, [filter, selectedTribe]);
-  
-  useEffect(() => {
-    return () => {
-      postsRequestIdRef.current++;
-      reelsRequestIdRef.current++;
-    };
-  }, []);
 
   const handlePostAction = async (
     action: string,
@@ -745,6 +212,25 @@ export default function HomePage() {
         break;
     }
   };
+  
+  const showLoading =
+    initialLoad &&
+    loading &&
+    isOnline;
+
+  console.log(
+    "POST IDS",
+    posts.map((p) => p.id)
+  );
+  
+  const duplicates = posts.filter(
+    (p, i, arr) =>
+      arr.findIndex(
+        x => x.reactKey === p.reactKey
+      ) !== i
+  );
+  
+  console.log("DUPLICATES", duplicates);
 
   return (
     <div className="mt-24 mb-14 overflow-x-hidden w-full space-y-4">
@@ -848,7 +334,7 @@ export default function HomePage() {
         {filteredPosts.map((post: any, index: number) => {
           if (post.content_type === "short_video") return null;
           return (
-            <div key={post.id}>
+            <div key={post.reactKey}>
               {/* REPOST */}
               {post.feed_type === "repost" ? (
               

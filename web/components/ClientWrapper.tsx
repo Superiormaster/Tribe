@@ -1,7 +1,7 @@
 "use client";
 
 import { ThemeProvider } from "next-themes";
-import { UserProvider, UserContext } from "@/components/UserContext";
+import { UserProvider } from "@/components/UserContext";
 import RouteLoader from "@/components/RouteLoader";
 import NProgressInit from "@/components/NProgressInit";
 import NetworkBannerWrapper from "@/components/networkConnection/NetworkBannerWrapper";
@@ -9,38 +9,9 @@ import {
   NetworkProvider,
 } from "@/components/networkConnection/NetworkContext";
 import { apiRequest } from "@/utils/api";
-import { useContext, useEffect } from "react";
+import { useEffect } from "react";
 
 function AppContent({ children }: { children: React.ReactNode }) {
-  const context = useContext(UserContext);
-  const { user, loadingUser } = useContext(UserContext)!
-  
-  useEffect(() => {
-    const handler = async () => {
-      try {
-        const profile = await apiRequest(
-          "api/users/me/"
-        )
-  
-        context?.setUser(profile)
-  
-      } catch (err) {
-        console.error(err)
-      }
-    }
-  
-    window.addEventListener(
-      "auth-changed",
-      handler
-    )
-  
-    return () => {
-      window.removeEventListener(
-        "auth-changed",
-        handler
-      )
-    }
-  }, [context])
  
   useEffect(() => {
 
@@ -71,12 +42,12 @@ export default function ClientWrapper({ children }: { children: React.ReactNode 
       <RouteLoader />
 
       <ThemeProvider attribute="class">
-        <UserProvider>
-          <NetworkProvider>
-            <NetworkBannerWrapper />
+        <NetworkProvider>
+          <NetworkBannerWrapper />
+          <UserProvider>
             <AppContent>{children}</AppContent>
-          </NetworkProvider>
-        </UserProvider>
+          </UserProvider>
+        </NetworkProvider>
       </ThemeProvider>
     </>
   );

@@ -45,6 +45,5 @@ export const switchAccount =
     new Event("auth-changed")
   )
 
-  window.location.href =
-    "/main/home"
+  //window.location.href = "/main/home"
 }

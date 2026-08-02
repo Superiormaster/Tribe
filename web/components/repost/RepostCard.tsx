@@ -7,6 +7,7 @@ import { timeAgo } from '@/utils/timeAgo'
 import { starCreator } from '@/lib/api'
 import PostCard from '@/components/PostCard';
 import { apiRequest } from '@/utils/api';
+import { useNavigation } from "@/utils/useNavigation";
 
 type CardContext =
   | "feed"
@@ -39,6 +40,7 @@ export default function RepostCard({
   const isSearch = context === "search";
 
   const currentUserId = Number(currentUser?.id);
+  const { push } = useNavigation();
   const repostUserId = Number(repost.user.id);
   const isOwnProfile = currentUserId === repostUserId;
   const hideStar =
@@ -224,9 +226,7 @@ export default function RepostCard({
         )}
       </div>
 
-      <AppLink
-        href={`/main/reposts/${repost.id}`}
-        prefetch={false}>
+      <div onClick={() => push(`/main/reposts/${repost.id}`)}>
         {/* QUOTE TEXT */}
         {repost.repost_type === 'quote' && repost.quote_text && (
           <div className="text-gray-800 dark:text-gray-200 mb-1 whitespace-pre-line">
@@ -261,7 +261,7 @@ export default function RepostCard({
             />
           )}
         </div>
-      </AppLink>
+      </div>
 
     </div>
   );

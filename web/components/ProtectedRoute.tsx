@@ -16,28 +16,35 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   const { replace } = useNavigation();
 
   useEffect(() => {
+    console.log("ProtectedRoute", {
+        authReady,
+        loadingUser,
+        authFailed,
+        user,
+    });
+
     if (!authReady || loadingUser) return;
     if (!isOnline) return;
 
     if (authFailed) {
+        console.log("Redirect because authFailed");
         replace("/auth/login");
         return;
     }
 
     if (!user) {
+        console.log("Redirect because user is null");
         replace("/auth/login");
     }
-  }, [
-    authReady,
-    authFailed,
-    user,
-    replace,
-    loadingUser,
-  ]);
+  }, [authReady, loadingUser, authFailed, user, isOnline]);
 
-  if (!authReady) {
+  if (!authReady || loadingUser) {
+    return null;
+  }
+  
+  if (authFailed || !user) {
       return null;
   }
-
-  return <>{children}</>
+  
+  return children;
 }

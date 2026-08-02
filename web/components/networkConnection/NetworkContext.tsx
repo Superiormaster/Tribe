@@ -58,6 +58,7 @@ export function NetworkProvider({
   const [isOnline, setIsOnline] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [latency, setLatency] = useState<number | null>(null);
+  const timeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [networkStatus, setNetworkStatus] = useState<
     "offline" | "poor" | "slow" | "good"
   >("good");
@@ -72,6 +73,7 @@ export function NetworkProvider({
   }, []);
   
   const [socketConnected, setSocketConnected] = useState(false);
+  const firedReconnect = useRef(false);
   
   const [
     connectionType,
@@ -97,75 +99,72 @@ export function NetworkProvider({
     setReconnecting] =
     useState(false);
 
-  useEffect(() => {
-    const onSocketConnected = () => setSocketConnected(true);
-    const onSocketDisconnected = () => setSocketConnected(false);
-  
-    window.addEventListener("socket-connected", onSocketConnected);
-    window.addEventListener("socket-disconnected", onSocketDisconnected);
-  
-    return () => {
-      window.removeEventListener("socket-connected", onSocketConnected);
-      window.removeEventListener("socket-disconnected", onSocketDisconnected);
-    };
-  }, []);
-
   const updateConnection =
     () => {
-      const online =
-        navigator.onLine;
-
-      setIsOnline(online);
-
-      const connection =
-        (
-          navigator as any
-        ).connection ||
-        (
-          navigator as any
-        ).mozConnection ||
-        (
-          navigator as any
-        ).webkitConnection;
-
-      if (!connection) {
-        setIsSlowConnection(false);
-        setConnectionType('unknown');
-        return;
+      if (timeout.current) {
+        clearTimeout(timeout.current);
       }
-
-      const type =
-        connection.type === "wifi"
-          ? "wifi"
-          : connection.type === "cellular"
-          ? "cellular"
-          : "unknown";
   
-      setConnectionType(type);
-
-      const slow =
-        connection.effectiveType ===
-          'slow-2g' ||
-        connection.effectiveType ===
-          '2g' ||
-        connection.downlink < 1;
-
-      setIsSlowConnection(slow);
+      timeout.current = setTimeout(() => {
+        const online =
+          navigator.onLine;
+  
+        setIsOnline(prev => prev === online ? prev : online);
+  
+        const connection =
+          (
+            navigator as any
+          ).connection ||
+          (
+            navigator as any
+          ).mozConnection ||
+          (
+            navigator as any
+          ).webkitConnection;
+  
+        if (!connection) {
+          setIsSlowConnection(false);
+          setConnectionType('unknown');
+          return;
+        }
+  
+        const type =
+          connection.type === "wifi"
+            ? "wifi"
+            : connection.type === "cellular"
+            ? "cellular"
+            : "unknown";
+  
+        setConnectionType(prev =>
+          prev === type ? prev : type
+        );
+  
+        const slow =
+          connection.effectiveType ===
+            'slow-2g' ||
+          connection.effectiveType ===
+            '2g' ||
+          connection.downlink < 1;
+  
+        setIsSlowConnection(prev =>
+          prev === slow ? prev : slow
+        );
+      }, 500);
     };
 
   const handleOffline =
     () => {
-      setIsOnline(false);
-      setServerReachable(false);
+      setIsOnline(prev => prev ? false : prev);
+      setServerReachable(prev => prev ? false : prev);
+      setReconnecting(prev => prev ? false : prev);
       previousReachable.current =
         false;
-      setReconnecting(false);
     };
 
   const handleOnline = async () => {
     updateConnection();
   
-    setIsOnline(true);
+    setIsOnline(prev => prev === true ? prev : true);
   
     const ok = await checkServer();
   
@@ -258,39 +257,52 @@ export function NetworkProvider({
           const response = await apiRequest("api/users/ping/");
       
           const time = performance.now() - start;
+          const rounded = Math.round(time / 100) * 100;
+
+          const status =
+              time < 300
+                  ? "good"
+                  : time < 1000
+                  ? "slow"
+                  : "poor";
+
+          setLatency(prev =>
+              prev === rounded ? prev : rounded
+          );
       
-          setLatency(time);
-      
-          if (time < 300) {
-              setNetworkStatus("good");
-          } else if (time < 1000) {
-              setNetworkStatus("slow");
-          } else {
-              setNetworkStatus("poor");
-          }
+          setNetworkStatus(prev =>
+            prev === status ? prev : status
+          );
       
           const ok = response?.status === "ok";
-          setServerReachable(ok);
-  
-          if (
-            ok &&
-            !previousReachable.current
-          ) {
-            startReconnect();
+          setServerReachable(prev =>
+            prev === ok ? prev : ok
+          );
+
+          if (ok && !previousReachable.current && !firedReconnect.current) {
+              firedReconnect.current = true;
           
-            window.dispatchEvent(
-              new Event(
-                "network-reconnected"
-              )
-            );
+              startReconnect();
+          
+              window.dispatchEvent(
+                  new Event("network-reconnected")
+              );
           }
-  
+          
+          if (!ok) {
+              firedReconnect.current = false;
+          }
+
           previousReachable.current = ok;
           return ok;
       } catch {
           previousReachable.current = false;
-          setNetworkStatus("offline");
-          setServerReachable(false);
+          setNetworkStatus(prev =>
+            prev === "offline" ? prev : "offline"
+          );
+          setServerReachable(prev =>
+            prev ? false : prev
+          );
           return false;
       }
     }, []);
@@ -308,7 +320,7 @@ export function NetworkProvider({
     const interval =
       setInterval(
         checkServer,
-        10000
+        60000 
       );
   
     return () => {
@@ -324,15 +336,15 @@ export function NetworkProvider({
   useEffect(() => {
     const disconnected =
       () => {
-        setServerReachable(
-          false
+        setServerReachable(prev =>
+          prev ? false : prev
         );
       };
   
     const connected =
       () => {
-        setServerReachable(
-          true
+        setServerReachable(prev =>
+          prev === true ? prev : true
         );
       };
   
@@ -357,6 +369,10 @@ export function NetworkProvider({
         connected
       );
     };
+  }, []);
+  
+  useEffect(() => {
+    return () => clearTimeout(timeout.current!);
   }, []);
   
   const value = useMemo(() => ({

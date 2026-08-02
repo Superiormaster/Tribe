@@ -28,7 +28,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState(initialEmail || '');
   const { push, replace } = useNavigation();
 
-  const { user, setUser, authReady } = useContext(UserContext)!
+  const { user, setUser, authReady, setAuthFailed } = useContext(UserContext)!
 
   const isVerified = user?.is_verified
   const isGoogleLogin = user?.auth_provider === 'google'
@@ -50,57 +50,67 @@ export default function LoginPage() {
     }
   }, [authReady, user, replace]);
   
-  // Load Google script
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    // Avoid adding script multiple times
-    if (document.getElementById("google-client-script")) return;
-
-    const script = document.createElement("script");
-    script.src = "https://accounts.google.com/gsi/client";
-    script.async = true;
-    script.id = "google-client-script";
-    document.body.appendChild(script);
-
-    script.onload = () => {
-      if (!window?.google?.accounts?.id) return;
-
-      // Initialize Google Sign-In
-      window.google.accounts.id.initialize({
-        client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!,
-        callback: handleGoogleResponse,
-      });
-
-      // Render the button
-      const googleButtonDiv = document.getElementById("googleSignInDiv");
-      if (googleButtonDiv) {
-        window.google.accounts.id.renderButton(googleButtonDiv, {
-          theme: "outline",
-          size: "large",
-        });
-      }
-
-      // Optional: auto prompt
-      // window.google.accounts.id.prompt();
-    };
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return; 
-    // Check if a selected account exists
+  const initGoogle = () => {
+    if (!window.google?.accounts?.id) return;
+  
+    window.google.accounts.id.initialize({
+      client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID!,
+      callback: handleGoogleResponse,
+    });
+  
+    const div = document.getElementById("googleSignInDiv");
+  
+    if (!div) return;
+  
+    // Clear any previous button
+    div.innerHTML = "";
+  
+    // Render button
+    window.google.accounts.id.renderButton(div, {
+      theme: "outline",
+      size: "large",
+    });
+  
+    // Auto prompt for previously selected Google account
     const selectedEmail = localStorage.getItem("active_account");
-    const accounts = getAccounts();
-    const account = accounts.find(acc => acc.email === selectedEmail);
+    const account = getAccounts().find(
+      acc => acc.email === selectedEmail
+    );
   
-    if (!account) return;
-  
-    if (account.type === "google" && window.google?.accounts?.id && document.getElementById("googleSignInDiv")) {
-      // Auto-prompt Google One Tap
+    if (account?.type === "google") {
       window.google.accounts.id.prompt();
-    } else if (account.type === "password") {
-      // Prefill email
+    } else if (account?.type === "password") {
       setEmail(account.email);
     }
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+  
+    if (window.google?.accounts?.id) {
+      initGoogle();
+    } else {
+      let script = document.getElementById(
+        "google-client-script"
+      ) as HTMLScriptElement | null;
+  
+      if (!script) {
+        script = document.createElement("script");
+        script.src = "https://accounts.google.com/gsi/client";
+        script.async = true;
+        script.id = "google-client-script";
+        script.onload = initGoogle;
+        document.body.appendChild(script);
+      } else {
+        script.onload = initGoogle;
+      }
+    }
+  
+    return () => {
+      if (window.google?.accounts?.id) {
+        window.google.accounts.id.cancel();
+      }
+    };
   }, []);
   
   useEffect(() => {
@@ -132,6 +142,8 @@ export default function LoginPage() {
         method: 'GET',
       });
       setUser(profile);
+      console.log("After login setUser", profile);
+      setAuthFailed(false);
       await saveCachedUser(profile);
 
       if (remember) saveAccount(profile, "google");
@@ -178,6 +190,8 @@ export default function LoginPage() {
         method: 'GET',
       })
       setUser(profile)
+      console.log("After login setUser", profile);
+      setAuthFailed(false);
       await saveCachedUser(profile);
 
       if (remember) saveAccount(profile, "password")
@@ -217,9 +231,6 @@ export default function LoginPage() {
     }
   };
 
-  if (!authReady) {
-    return <></>;
-  }
   return (
     <>
     <AuthLoading

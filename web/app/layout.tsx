@@ -5,10 +5,15 @@ import InstallButton from "@/components/InstallButton";
 
 export const metadata = {
   title: "Tribe",
-  description: "Find your tribe, join communities, chat, watch reels and make new friends.",
+  description:
+    "Find your tribe, join communities, chat, watch reels and make new friends.",
   applicationName: "Tribe",
   manifest: "/manifest.json",
   themeColor: "#4f46e5",
+
+  alternates: {
+    canonical: "https://tribe-app.app",
+  },
 
   openGraph: {
     title: "Tribe",
@@ -16,15 +21,16 @@ export const metadata = {
       "Find your tribe, join communities, chat, watch reels and make new friends.",
     url: "https://tribe-app.app",
     siteName: "Tribe",
+    locale: "en_US",
+    type: "website",
     images: [
       {
-        url: "https://tribe-app.app/assets/advert_PWAFacebook.png",
+        url: "https://tribe-app.app/advert_PWAFacebook.png",
         width: 1200,
         height: 630,
         alt: "Tribe",
       },
     ],
-    type: "website",
   },
 
   twitter: {
@@ -33,13 +39,9 @@ export const metadata = {
     description:
       "Find your tribe, join communities, chat, watch reels and make new friends.",
     images: [
-      "https://tribe-app.app/assets/advert_PWAFacebook.png",
+      "https://tribe-app.app/advert_PWAFacebook.png",
     ],
   },
-};
-
-export const viewport = {
-  themeColor: "#4f46e5",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -61,8 +63,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   
         <InstallButton />
 
-        <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-        <script dangerouslySetInnerHTML={{ __html: "eruda.init();" }} />
+        {/*}<script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+        <script dangerouslySetInnerHTML={{ __html: "eruda.init();" }} />*/}
 
       </body>
     </html>
