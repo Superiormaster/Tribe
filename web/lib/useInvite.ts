@@ -26,7 +26,7 @@ export function useInvite() {
       console.log("Couldn't load image. Sharing without it.");
     }
   
-    const shareData = {
+    const shareData: ShareData = {
       title: "Tribe",
       text: `🚀 Tribe Is Finally Here!
 
@@ -45,7 +45,7 @@ ${url}`,
       if (
         file &&
         navigator.canShare &&
-        navigator.canShare?.({
+        navigator.canShare({
           files: [file],
         })
       ) {
