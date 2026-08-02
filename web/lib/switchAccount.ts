@@ -5,9 +5,11 @@ import {
   getRefreshToken,
   storeRefreshToken
 } from "@/lib/keyStore"
+import NProgress from "nprogress";
 
 export const switchAccount =
   async (email: string) => {
+  NProgress.start();
 
   localStorage.setItem(
     "active_account",
@@ -18,6 +20,7 @@ export const switchAccount =
     await getRefreshToken(email)
 
   if (!refresh) {
+    NProgress.done();
     window.location.href =
       "/auth/login"
 
@@ -44,6 +47,4 @@ export const switchAccount =
   window.dispatchEvent(
     new Event("auth-changed")
   )
-
-  //window.location.href = "/main/home"
 }

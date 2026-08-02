@@ -27,8 +27,9 @@ export const metadata = {
       {
         url: "https://tribe-app.app/advert_PWAFacebook.png",
         width: 1200,
-        height: 630,
-        alt: "Tribe",
+        height: 1200,
+        alt: "Tribe - Find Your Tribe",
+        type: "image/png",
       },
     ],
   },
@@ -39,7 +40,13 @@ export const metadata = {
     description:
       "Find your tribe, join communities, chat, watch reels and make new friends.",
     images: [
-      "https://tribe-app.app/advert_PWAFacebook.png",
+      {
+        url: "https://tribe-app.app/advert_PWAFacebook.png",
+        width: 1200,
+        height: 1200,
+        alt: "Tribe - Find Your Tribe",
+        type: "image/png",
+      },
     ],
   },
 };

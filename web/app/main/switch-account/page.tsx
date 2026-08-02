@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { CheckCircle } from "lucide-react";
 import { getAccounts, getActiveAccount } from "@/utils/accounts";
 import { switchAccount } from "@/lib/switchAccount";
+import { useNavigation } from "@/utils/useNavigation";
 import { logout } from "@/utils/auth"
 
 type Account = {
@@ -16,6 +17,7 @@ type Account = {
 export default function SwitchAccountPage() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [activeAccount, setActiveAccount] = useState<string | null>(null);
+  const { push } = useNavigation();
 
   // ✅ Use helper (clean)
   useEffect(() => {
@@ -100,14 +102,7 @@ export default function SwitchAccountPage() {
       </div>
 
       <button
-        onClick={async () => {
-
-          await logout()
-
-          window.location.href =
-            "/auth/login"
-
-        }}
+        onClick={() => push("/auth/login")}
         className="mt-6 text-indigo-600 font-medium"
       >
         + Add another account

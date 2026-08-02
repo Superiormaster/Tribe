@@ -4,17 +4,28 @@ export function useInvite() {
   async function inviteFriends() {
     const url = "https://tribe-app.app";
 
-    const response = await fetch("https://tribe-app.app/advert_PWAFacebook.png");
-    const blob = await response.blob();
+    let file: File | undefined;
 
-    const file = new File(
-      [blob],
-      "advert_PWAFacebook.png",
-      {
-        type: "image/png",
+    try {
+      const response = await fetch(
+        "https://tribe-app.app/advert_PWAFacebook.png"
+      );
+    
+      if (response.ok) {
+        const blob = await response.blob();
+    
+        file = new File(
+          [blob],
+          "advert_PWAFacebook.png",
+          {
+            type: "image/png",
+          }
+        );
       }
-    );
-
+    } catch {
+      console.log("Couldn't load image. Sharing without it.");
+    }
+  
     const shareData = {
       title: "Tribe",
       text: `🚀 Tribe Is Finally Here!
@@ -24,13 +35,17 @@ Find your tribe, join communities, chat, watch reels and make new friends.
 Download now:
 ${url}`,
       url,
-      files: [file],
     };
+  
+    if (file) {
+      shareData.files = [file];
+    }
 
     try {
       if (
+        file &&
         navigator.canShare &&
-        navigator.canShare({
+        navigator.canShare?.({
           files: [file],
         })
       ) {

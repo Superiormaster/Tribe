@@ -76,7 +76,7 @@ ${url}`;
 
   const twitter = () => {
     window.open(
-      `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`,
+      `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}`,
       "_blank"
     );
 

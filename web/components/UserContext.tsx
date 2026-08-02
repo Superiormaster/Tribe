@@ -200,6 +200,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
     
       await initAuth();
       console.log("initAuth finished");
+      window.dispatchEvent(
+        new Event("auth-changed-complete")
+      );
     };
   
     window.addEventListener("auth-changed", handleAuthChanged);
@@ -208,6 +211,23 @@ export function UserProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("auth-changed", handleAuthChanged);
     };
   }, [initAuth]);
+
+  useEffect(() => {
+    const done = () => {
+      replace("/main/home");
+    };
+  
+    window.addEventListener(
+      "auth-changed-complete",
+      done
+    );
+  
+    return () =>
+      window.removeEventListener(
+        "auth-changed-complete",
+        done
+      );
+  }, [replace]);
   
   useEffect(() => {
     const interval = setInterval(async () => {

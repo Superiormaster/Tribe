@@ -42,14 +42,6 @@ export default function LoginPage() {
   const [message,setMessage] = useState('')
   const [showResend,setShowResend] = useState(false)
   
-  useEffect(() => {
-    if (!authReady) return;
-  
-    if (user) {
-      replace("/main/home");
-    }
-  }, [authReady, user, replace]);
-  
   const initGoogle = () => {
     if (!window.google?.accounts?.id) return;
   
