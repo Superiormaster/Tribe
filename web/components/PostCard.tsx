@@ -882,8 +882,8 @@ const MediaItem = ({
           e.stopPropagation();
           onOpen(index);
         }}
-        loading={index < 6 ? "eager" : "lazy"}
-        fetchPriority={index < 6 ? "high" : "auto"}
+        loading={index < 2 ? "eager" : "auto"}
+        fetchPriority={index < 2 ? "high" : "auto"}
         className="rounded-xl w-full aspect-square max-h-96 object-cover"
       />
     );

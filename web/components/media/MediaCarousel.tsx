@@ -34,9 +34,12 @@ export default function MediaCarousel({
   
   return (
     <Swiper
+      onSwiper={(swiper) => {
+        swiperRef.current = swiper;
+        swiper.slideTo(index, 0);
+      }}
       allowTouchMove={!isZoomed}
       modules={[Pagination]}
-      initialSlide={index}
       pagination={{
         clickable: true,
       }}

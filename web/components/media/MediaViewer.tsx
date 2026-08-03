@@ -36,7 +36,7 @@ export default function MediaViewer({
   onMore,
   more,
 }: Props) {
-  const [index, setIndex] = useState(0);
+  const [index, setIndex] = useState(startIndex);
 
   useEffect(() => {
     if (open) {
