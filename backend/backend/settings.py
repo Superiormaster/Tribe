@@ -24,7 +24,14 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 BREVO_API_KEY = os.getenv("BREVO_API_KEY")
 NODE_URL = os.getenv("NODE_URL")
 
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+FRONTEND_URLS = os.getenv(
+    "FRONTEND_URL",
+    "http://localhost:3000"
+).split(",")
+
+# Primary frontend URL (used for emails)
+FRONTEND_URL = FRONTEND_URLS[0]
+
 LOGO_URL = f"{FRONTEND_URL}/tribe2.png"
 UNSUBSCRIBE_URL = f"{FRONTEND_URL}/unsubscribe"
 
@@ -39,10 +46,9 @@ ALLOWED_HOSTS = os.getenv(
     "127.0.0.1,localhost"
 ).split(",")
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOWED_ORIGINS = os.getenv(
-    "CORS_ALLOWED_ORIGINS",
-    "http://localhost:3000,http://127.0.0.1:3000"
-).split(",")
+CORS_ALLOWED_ORIGINS = FRONTEND_URLS + [
+    "http://127.0.0.1:3000",
+]
 CORS_ALLOW_HEADERS = [
     "authorization",
     "content-type",

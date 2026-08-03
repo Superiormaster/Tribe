@@ -36,11 +36,21 @@ app.use(
   express.json()
 );
 
-const CLIENT_URL =
-  process.env.CLIENT_URL;
+const CLIENT_URL = (
+  process.env.CLIENT_URL ||
+  "http://localhost:3000"
+)
+  .split(",")
+  .map(url => url.trim());
 
 app.use(cors({
-  origin: CLIENT_URL,
+  origin(origin, callback) {
+    if (!origin || CLIENT_URLS.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error("Origin not allowed"));
+  },
   credentials: true,
 }));
 
@@ -54,7 +64,13 @@ const server =
 
 const io = new Server(server, {
   cors: {
-    origin: CLIENT_URL,
+    origin(origin, callback) {
+      if (!origin || CLIENT_URLS.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Origin not allowed"));
+    },
     credentials: true,
   },
 });
