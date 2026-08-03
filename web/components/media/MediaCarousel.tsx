@@ -5,7 +5,7 @@ import { Pagination } from "swiper/modules";
 
 import "swiper/css";
 import "swiper/css/pagination";
-import { useState } from 'react'
+import { useEffect, useRef, useState } from "react";
 
 import {
   TransformWrapper,
@@ -24,6 +24,13 @@ export default function MediaCarousel({
   setIndex,
 }: Props) {
   const [isZoomed, setIsZoomed] = useState(false);
+  const swiperRef = useRef<any>(null);
+  
+  useEffect(() => {
+    if (swiperRef.current) {
+      swiperRef.current.slideTo(index, 0);
+    }
+  }, [index]);
   
   return (
     <Swiper

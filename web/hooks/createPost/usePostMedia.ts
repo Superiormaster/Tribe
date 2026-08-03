@@ -18,7 +18,7 @@ type UsePostMediaProps = {
 export function usePostMedia({
   allowImages = true,
   allowVideo = true,
-  maxImages = 5,
+  maxImages = 15,
 }: UsePostMediaProps = {}) {
   const [imageFiles, setImageFiles] = useState<(File | string)[]>([]);
   const [imageUrls, setImageUrls] = useState<string[]>([]);

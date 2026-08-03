@@ -87,7 +87,7 @@ export default function CreatePostPage() {
   } = usePostMedia({
     allowImages: true,
     allowVideo,
-    maxImages: 5,
+    maxImages: 15,
   });
   
   const {
@@ -150,6 +150,27 @@ export default function CreatePostPage() {
   
     setUploadedMedia,
   });
+  
+  const handleSaveDraft = async () => {
+    if (
+      !content.trim() &&
+      imageFiles.length === 0 &&
+      imageUrls.length === 0 &&
+      !video
+    ) {
+      toast.error("Nothing to save as draft");
+      return;
+    }
+  
+    await saveDraft();
+  
+    setContent("");
+    clearMedia();
+    setUploadedMedia([]);
+    setFileProgress({});
+  
+    toast.success("Draft saved");
+  };
   
   const handlePost = async () => {
     if (!isOnline) {
@@ -494,20 +515,26 @@ export default function CreatePostPage() {
 
         {/* Upload buttons */}
         <div className="flex gap-4 mt-2">
-          <label
-            className={`flex-1 flex items-center justify-center gap-2 border-2 border-dashed p-2 rounded-lg cursor-pointer transition 
-            ${!allowImages ? 'opacity-50 cursor-not-allowed' : 'hover:border-indigo-500'}`}
-          >
-            <span className="text-gray-500 dark:text-gray-400 text-sm">Add Images</span>
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={handleImagesChange}
-              className="hidden"
-              disabled={!!video}
-            />
-          </label>
+          {previewImages.length < 15 && (
+            <label
+              className="flex-1 flex items-center justify-center gap-2 border-2 border-dashed p-2 rounded-lg cursor-pointer transition hover:border-indigo-500"
+            >
+              <span className="text-gray-500 dark:text-gray-400 text-sm">
+                {previewImages.length > 0
+                  ? `Images ${previewImages.length}/15`
+                  : "Add Images"}
+              </span>
+          
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleImagesChange}
+                className="hidden"
+                disabled={!!video}
+              />
+            </label>
+          )}
 
           <label
             className={`flex-1 flex items-center justify-center gap-2 border-2 border-dashed p-2 rounded-lg cursor-pointer transition 
@@ -527,7 +554,7 @@ export default function CreatePostPage() {
         {/* Post button */}
         <div className="flex gap-3">
             <button
-                onClick={saveDraft}
+                onClick={handleSaveDraft}
                 className="w-full py-2 rounded-lg text-gray-700 dark:text-white border border-gray-300"
             >
                 Save Draft

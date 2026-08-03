@@ -40,7 +40,7 @@ export default function MediaActions({
       <button
         onClick={onLike}
         className={`flex items-center gap-1 ${
-          liked ? "text-indigo-600":""
+          liked ? "text-blue-600":""
         }`}
       >
         <ThumbsUp size={20}/>

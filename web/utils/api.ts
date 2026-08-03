@@ -8,7 +8,7 @@ import { getFingerprint } from "@/lib/fingerprint";
 
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL;
-console.log(process.env.NEXT_PUBLIC_API_URL)
+console.log("API_URL =", API_URL);
 
 let accessToken: string | null = null;
 
@@ -266,6 +266,10 @@ export async function apiRequest(
       };
     }
 
+    console.log("REQUEST:", {
+      url: `${API_URL}${endpoint}`,
+      method: options.method || "GET",
+    });
     const response =
       await apiClient.request({
         url: endpoint,
@@ -290,10 +294,11 @@ export async function apiRequest(
       };
     }
 
-    console.error(
-      "FULL ERROR:",
-      err
-    );
+    console.error("FULL ERROR:", err);
+    console.error("MESSAGE:", err.message);
+    console.error("CODE:", err.code);
+    console.error("CONFIG:", err.config);
+    console.error("RESPONSE:", err.response);
 
     throw err;
   }

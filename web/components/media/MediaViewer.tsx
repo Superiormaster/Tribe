@@ -36,11 +36,13 @@ export default function MediaViewer({
   onMore,
   more,
 }: Props) {
-  const [index, setIndex] = useState(startIndex);
+  const [index, setIndex] = useState(0);
 
   useEffect(() => {
-    setIndex(startIndex);
-  }, [startIndex]);
+    if (open) {
+      setIndex(startIndex);
+    }
+  }, [startIndex, open]);
   
   useEffect(() => {
     if (!open) return;

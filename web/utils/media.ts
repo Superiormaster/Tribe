@@ -21,12 +21,13 @@ export type UploadedMedia = {
  * Convert a Cloudinary upload URL into
  * the media object expected by the backend.
  */
-export function buildUploadedMedia(
+ export function buildUploadedMedia(
   secureUrl: string,
   file: File,
   contentType: string,
   isPortrait = false
 ): UploadedMedia {
+
   const isVideo = file.type.startsWith("video");
 
   let thumbnail = secureUrl;
@@ -34,16 +35,23 @@ export function buildUploadedMedia(
   if (isVideo) {
 
     const transform =
-      contentType === "short_video"
-        ? "so_0,c_fill,g_auto,ar_9:16,w_720,h_1280,q_auto:best,f_jpg/"
-        : isPortrait
-        ? "so_0,c_fill,g_auto,ar_9:16,w_720,h_1280,q_auto:best,f_jpg/"
-        : "so_0,c_fill,g_auto,ar_16:9,w_1280,h_720,q_auto:best,f_jpg/";
-  
+      contentType === "short_video" || isPortrait
+        ? "so_0,c_fill,g_auto,ar_9:16,w_720,h_1280,q_auto,f_jpg/"
+        : "so_0,c_fill,g_auto,ar_16:9,w_1280,h_720,q_auto,f_jpg/";
+
     thumbnail = secureUrl.replace(
       "/video/upload/",
       `/video/upload/${transform}`
     );
+
+  } else {
+
+    // Image thumbnail
+    thumbnail = secureUrl.replace(
+      "/image/upload/",
+      "/image/upload/c_fill,g_auto,w_720,h_720,q_auto,f_auto/"
+    );
+
   }
 
   return {

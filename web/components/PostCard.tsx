@@ -680,24 +680,50 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
               </button>
             )}
           </div>
-        )}  
+        )}
         {post.media_files?.length > 0 && (
-          <div className={`grid gap-2 ${
-            post.media_files.length === 1
-              ? "grid-cols-1"
-              : post.media_files.length === 2
-                ? "grid-cols-2"
+          <div
+            className={`grid gap-2 ${
+              post.media_files.length === 1
+                ? "grid-cols-1"
                 : "grid-cols-2 md:grid-cols-3"
-          }`}>
-            {post.media_files.map((media, index) => (
-              <MediaItem
-                key={index}
-                media={media}
-                index={index}
-                videoRefs={videoRefs}
-                onOpen={openViewer}
-              />
-            ))}
+            }`}
+          >
+            {post.media_files
+              .slice(0, 4)
+              .map((media, index) => {
+                const remaining =
+                  post.media_files.length - 4;
+        
+                const showOverlay =
+                  index === 3 && remaining > 0;
+        
+                return (
+                  <div
+                    key={index}
+                    className="relative"
+                  >
+                    <MediaItem
+                      media={media}
+                      index={index}
+                      videoRefs={videoRefs}
+                      onOpen={openViewer}
+                    />
+        
+                    {showOverlay && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openViewer(index);
+                        }}
+                        className="absolute inset-0 bg-black/50 flex items-center justify-center rounded-xl text-white text-3xl font-bold"
+                      >
+                        +{remaining}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
           </div>
         )}
       </div>  
