@@ -36,7 +36,8 @@ export default function DiscoverCommunities() {
   const [loadingMore, setLoadingMore] = useState(false);
   const initialized = useRef(false);
   const pageRef = useRef(1);
-  const loadingRef = useRef(false);
+  const loadingTribesRef = useRef(false);
+  const loadingCommunitiesRef = useRef<Record<number, boolean>>({});
 
   useEffect(() => {
     if (initialized.current) return;
@@ -46,11 +47,11 @@ export default function DiscoverCommunities() {
   }, []);
 
   async function load(pageNumber = pageRef.current) {
-    if (pageNumber !== 1 && (loadingRef.current || loadingMore || !hasMore)) {
+    if (pageNumber !== 1 && (loadingTribesRef.current || loadingMore || !hasMore)) {
       return;
     }
   
-    loadingRef.current = true;
+    loadingTribesRef.current = true;
   
     try {
       pageNumber === 1
@@ -94,7 +95,7 @@ export default function DiscoverCommunities() {
     } finally {
       setLoading(false);
       setLoadingMore(false);
-      loadingRef.current = false;
+      loadingTribesRef.current = false;
     }
   }
   
@@ -108,7 +109,7 @@ export default function DiscoverCommunities() {
       setTribes(prev =>
         prev.map((t: any) => ({
           ...t,
-          expanded: t.id === id,
+          expanded: t.id === id ? !t.expanded : false,
         }))
       );
   
@@ -119,7 +120,7 @@ export default function DiscoverCommunities() {
       setTribes(prev =>
         prev.map((t: any) => ({
           ...t,
-          expanded: t.id === id,
+          expanded: t.id === id ? !t.expanded : false,
         }))
       );
   
@@ -171,7 +172,9 @@ export default function DiscoverCommunities() {
   }
   
   async function loadMoreCommunities(id: number) {
-    if (loadingRef.current) return;
+    if (loadingCommunitiesRef.current[id]) return;
+  
+    loadingCommunitiesRef.current[id] = true;
 
     try {
       const tribe = tribes.find(t => t.id === id);
@@ -183,8 +186,6 @@ export default function DiscoverCommunities() {
       ) {
         return;
       }
-
-      loadingRef.current = true;
     
       setTribes(prev =>
         prev.map(t =>
@@ -200,22 +201,26 @@ export default function DiscoverCommunities() {
         );
       
         setTribes(prev =>
-          prev.map(t =>
-            t.id === id
-              ? {
-                  ...t,
-                  loading: false,
-                  communities: [
-                    ...t.communities!,
-                    ...data.results,
-                  ],
-                  communityPage:
-                    t.communityPage! + 1,
-                  hasMoreCommunities:
-                    data.next !== null,
-                }
-              : t
-          )
+          prev.map(t => {
+            if (t.id !== id) return t;
+        
+            const existing = new Set(
+              t.communities!.map(c => c.id)
+            );
+        
+            return {
+              ...t,
+              loading: false,
+              communities: [
+                ...t.communities!,
+                ...data.results.filter(
+                  (c: Community) => !existing.has(c.id)
+                ),
+              ],
+              communityPage: t.communityPage! + 1,
+              hasMoreCommunities: data.next !== null,
+            };
+          })
         );
       } catch (err) {
         console.error(err);
@@ -233,25 +238,30 @@ export default function DiscoverCommunities() {
         );
       }
     } finally {
-      loadingRef.current = false;
+      loadingCommunitiesRef.current[id] = false;
     }
   }
   
   useEffect(() => {
-    function handleScroll() {
+    const handleScroll = () => {
+      if (
+        loadingTribesRef.current ||
+        !hasMore
+      ) return;
+  
       if (
         window.innerHeight + window.scrollY >=
         document.documentElement.scrollHeight - 300
       ) {
         load();
       }
-    }
+    };
   
     window.addEventListener("scroll", handleScroll);
   
     return () =>
       window.removeEventListener("scroll", handleScroll);
-  }, [loadingMore, hasMore]);
+  }, [hasMore]);
 
   function toggle(id: number) {
     setSelected(prev =>
@@ -329,16 +339,17 @@ export default function DiscoverCommunities() {
             <div
               className="grid grid-cols-2 md:grid-cols-3 gap-3 max-h-96 overflow-y-auto"
               onScroll={(e) => {
-          
+
                 const el = e.currentTarget;
-          
+              
                 if (
                   el.scrollTop + el.clientHeight >=
-                  el.scrollHeight - 100
+                    el.scrollHeight - 100 &&
+                  !tribe.loading
                 ) {
                   loadMoreCommunities(tribe.id);
                 }
-          
+              
               }}
             >
           
