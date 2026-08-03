@@ -45,7 +45,7 @@ const CLIENT_URL = (
 
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || CLIENT_URLS.includes(origin)) {
+    if (!origin || CLIENT_URL.includes(origin)) {
       return callback(null, true);
     }
 
@@ -65,7 +65,7 @@ const server =
 const io = new Server(server, {
   cors: {
     origin(origin, callback) {
-      if (!origin || CLIENT_URLS.includes(origin)) {
+      if (!origin || CLIENT_URL.includes(origin)) {
         return callback(null, true);
       }
 
