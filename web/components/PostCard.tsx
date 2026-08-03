@@ -882,7 +882,6 @@ const MediaItem = ({
           e.stopPropagation();
           onOpen(index);
         }}
-        loading={index < 2 ? "eager" : "auto"}
         fetchPriority={index < 2 ? "high" : "auto"}
         className="rounded-xl w-full aspect-square max-h-96 object-cover"
       />
@@ -901,7 +900,6 @@ const MediaItem = ({
         >
           <img
             src={media.thumbnail_url || media.file_url}
-            loading="lazy"
             className="rounded-xl w-full aspect-video max-h-96 object-cover"
           />
 
