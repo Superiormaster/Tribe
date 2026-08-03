@@ -6,6 +6,7 @@ import { apiRequest } from "@/utils/api";
 import { UserContext } from "@/components/UserContext";
 import { connectNotificationSocket } from "@/lib/notifications-socket";
 import { getMessaging, getToken, isSupported } from "firebase/messaging";
+import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import { app } from "@/lib/firebase";
 
 interface NotificationContextType {
@@ -32,6 +33,7 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
   const [count, setCount] = useState(0);
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const { user } = useContext(UserContext) || {};
+  const { isOnline } = useNetwork();
 
   const normalizeNotifications = (data: any) => {
     if (Array.isArray(data)) return data;
@@ -69,52 +71,99 @@ export const NotificationProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     const setupPush = async () => {
-      if (!user) return;
+      try {
+        if (!user) return;
   
-      const permission = await Notification.requestPermission();
-      console.log("Permission:", permission);
+        if (
+          typeof window === "undefined" ||
+          !("serviceWorker" in navigator) ||
+          !("Notification" in window)
+        ) {
+          return;
+        }
   
-      if (permission !== "granted") return;
+        const supported = await isSupported();
   
-      if (
-        typeof window === "undefined" ||
-        !("serviceWorker" in navigator)
-      ) {
-        return;
+        if (!supported) {
+          console.log("Messaging not supported");
+          return;
+        }
+  
+        const permission = await Notification.requestPermission();
+  
+        console.log("Permission:", permission);
+  
+        if (permission !== "granted") {
+          return;
+        }
+  
+        const messaging = getMessaging(app);
+  
+        const registration = await navigator.serviceWorker.register(
+          "/firebase-messaging-sw.js"
+        );
+  
+        let token = null;
+  
+        try {
+          token = await getToken(messaging, {
+            vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
+            serviceWorkerRegistration: registration,
+          });
+  
+          console.log("FCM TOKEN:", token);
+  
+        } catch (error) {
+          console.warn("FCM token update failed:", error);
+          return;
+        }
+  
+        if (!token) {
+          console.warn("No FCM token received");
+          return;
+        }
+  
+        await apiRequest("api/users/fcm-token/", {
+          method: "POST",
+          data: {
+            token,
+          },
+        });
+  
+      } catch (error) {
+        console.warn("Push notification setup failed:", error);
       }
-
-      const supported = await isSupported();
-
-      if (!supported) {
-        console.log("Messaging not supported");
-        return;
-      }
-  
-      const messaging = getMessaging(app);
-  
-      const registration = await navigator.serviceWorker.register(
-        "/firebase-messaging-sw.js"
-      );
-  
-      const token = await getToken(messaging, {
-        vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
-        serviceWorkerRegistration: registration,
-      });
-  
-      console.log("FCM TOKEN:", token);
-  
-      await apiRequest("api/users/fcm-token/", {
-        method: "POST",
-        data: {
-          token,
-        },
-      });
     };
   
     setupPush();
   
-    // existing notification loading...
   }, [user]);
+  
+  useEffect(() => {
+    if (!isOnline) return;
+  
+    const refreshNotifications = async () => {
+      try {
+        const data = await apiRequest("api/notifications/?page=1");
+  
+        const list = normalizeNotifications(data);
+  
+        setNotifications(list);
+  
+        const unread = list.filter(
+          (n: any) => !n.read
+        ).length;
+  
+        setCount(unread);
+  
+      } catch (err) {
+        console.error("Notification refresh failed", err);
+      }
+    };
+  
+    refreshNotifications();
+  
+  }, [isOnline]);
   
   useEffect(() => {
     // Load first page and count unread

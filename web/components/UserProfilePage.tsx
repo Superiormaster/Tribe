@@ -5,6 +5,7 @@ import { useNavigation } from "@/utils/useNavigation"
 import AppLink from '@/components/AppLink';
 import { UserContext } from '@/components/UserContext';
 import { openChat as openPrivateChat } from "@/lib/inbox/openChat";
+import toast from "react-hot-toast";
 import { 
   Home, Star, Camera, Image, Send, Video,
 } from 'lucide-react';
@@ -101,6 +102,12 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
       : params.username || '';
   const name = decodeURIComponent(username).replace(/\s+/g, "_");
   const [profileUserId, setProfileUserId] = useState<number | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarProgress, setAvatarProgress] = useState(0);
+  const [avatarSuccess, setAvatarSuccess] = useState(false);
+  const [coverUploading, setCoverUploading] = useState(false);
+  const [coverProgress, setCoverProgress] = useState(0);
+  const [coverSuccess, setCoverSuccess] = useState(false);
   const [isPrivate, setIsPrivate] = useState(false);
   const [nextPage, setNextPage] = useState<string | null>(null)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -663,18 +670,29 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
       
       reader.readAsDataURL(file);
   
+      setAvatarUploading(true);
+      setAvatarProgress(0);
+
       // Upload automatically
       try {
         const url = await uploadToCloudinary({
           file,
           folder: 'Tribe/Avatars',
-          onProgress: (percent) => console.log(`Avatar upload: ${percent}%`)
+          onProgress: setAvatarProgress,
         });
         await apiRequest(`api/users/me/`, {
           method: 'PATCH',
           data: { avatar: url },
         });
         console.log('Avatar uploaded:', url);
+        setAvatarProgress(100);
+        setAvatarSuccess(true);
+        setTimeout(() => {
+          setAvatarSuccess(false);
+          setAvatarUploading(false);
+          setAvatarProgress(0);
+        }, 700);
+        toast.success("Profile picture updated");
         setProfile(prev =>
           prev ? { ...prev, avatar: url } : prev
         );
@@ -685,6 +703,10 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
         }));
       } catch (err) {
         console.error('Avatar upload failed', err);
+        setAvatarUploading(false);
+        setAvatarProgress(0);
+        setAvatarSuccess(false);
+        toast.error("Failed to update profile picture");
       }
     };
     input.click();
@@ -746,18 +768,29 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
       
       reader.readAsDataURL(file);
   
+      setCoverUploading(true);
+      setCoverProgress(0);
+
       // Upload automatically
       try {
         const url = await uploadToCloudinary({
           file,
           folder: 'Tribe/Covers',
-          onProgress: (percent) => console.log(`Cover upload: ${percent}%`)
+          onProgress: setCoverProgress,
         });
         await apiRequest(`api/users/me/`, {
           method: 'PATCH',
           data: { cover_photo: url },
         });
         console.log('Cover uploaded:', url);
+        setCoverProgress(100);
+        setCoverSuccess(true);
+        toast.success("Cover photo updated");
+        setTimeout(() => {
+          setCoverSuccess(false);
+          setCoverUploading(false);
+          setCoverProgress(0);
+        }, 700);
         setProfile(prev =>
           prev ? { ...prev, cover_photo: url } : prev
         );
@@ -767,7 +800,11 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
           cover_photo: url,
         }));
       } catch (err) {
+        setCoverUploading(false);
+        setCoverProgress(0);
+        setCoverSuccess(false);
         console.error('Cover upload failed', err);
+        toast.error("Failed to update cover photo");
       }
     };
     input.click();
@@ -869,9 +906,35 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
           : <span className="text-gray-400 dark:text-gray-500 text-sm">Tribe Cover Photo</span>
         }
         {isMyProfile && (
-          <button onClick={handleChangeCover} className="absolute bottom-0 right-0 w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center hover:bg-indigo-700 transition">
+          <button disabled={coverUploading} onClick={handleChangeCover} 
+            className={`
+              absolute bottom-0 right-0
+              w-8 h-8
+              bg-indigo-600
+              rounded-full
+              flex items-center justify-center
+              transition
+              hover:bg-indigo-700
+              disabled:opacity-50
+              disabled:cursor-not-allowed
+            `}>
             <Camera className="w-4 h-4 text-white" />
           </button>
+        )}
+  
+        {coverUploading && (
+          <div
+            className="absolute bottom-0 left-0 h-1.5 bg-indigo-600 rounded-r-full transition-all duration-150"
+            style={{ width: `${coverProgress}%` }}
+          />
+        )}
+
+        {coverSuccess && (
+          <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-full bg-green-500 flex items-center justify-center text-white text-2xl font-bold shadow-lg">
+              ✓
+            </div>
+          </div>
         )}
       </div>
 
@@ -879,17 +942,72 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
       <div className="flex flex-col gap-3 p-4 bg-white dark:bg-gray-900 rounded-2xl shadow-sm">
         <div className="flex flex-row gap-4 items-center">
           <div className="relative w-24 h-24">
+            {(avatarUploading || avatarSuccess) && (
+              <svg
+                className="absolute inset-0 w-24 h-24 -rotate-90"
+                viewBox="0 0 100 100"
+              >
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="46"
+                  stroke="#E5E7EB"
+                  strokeWidth="4"
+                  fill="none"
+                />
+          
+                <circle
+                  cx="50"
+                  cy="50"
+                  r="46"
+                  stroke={avatarSuccess ? "#22C55E" : "#4F46E5"}
+                  strokeWidth="4"
+                  fill="none"
+                  strokeLinecap="round"
+                  strokeDasharray={289}
+                  strokeDashoffset={
+                    avatarSuccess
+                      ? 0
+                      : 289 - (289 * avatarProgress) / 100
+                  }
+                  className="transition-all duration-150"
+                />
+              </svg>
+            )}
+          
             {profile?.avatar ? (
-              <img src={profile?.avatar} alt={name} className="w-24 h-24 rounded-full object-cover" />
+              <img
+                src={profile.avatar}
+                alt={name}
+                className="w-24 h-24 rounded-full object-cover"
+              />
             ) : (
               <div className="w-24 h-24 rounded-full bg-gray-400 text-white flex items-center justify-center text-xl font-bold">
-                {username.slice(0,2).toUpperCase()}
+                {username.slice(0, 2).toUpperCase()}
               </div>
             )}
+          
+            {avatarUploading && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-xs font-bold text-white bg-black/60 px-2 py-1 rounded-full">
+                  {avatarProgress}%
+                </span>
+              </div>
+            )}
+          
+            {avatarSuccess && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center text-white text-xl font-bold">
+                  ✓
+                </div>
+              </div>
+            )}
+          
             {isMyProfile && (
               <button
+                disabled={avatarUploading}
                 onClick={handleChangeAvatar}
-                className="absolute bottom-0 right-0 w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center hover:bg-indigo-700 transition"
+                className="absolute bottom-0 right-0 w-8 h-8 bg-indigo-600 rounded-full flex items-center justify-center hover:bg-indigo-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Camera className="w-4 h-4 text-white" />
               </button>

@@ -58,9 +58,11 @@
     "react-hot-toast": "^2.6.0",
     "react-icons": "^5.7.0",
     "react-quill": "^2.0.0",
+    "react-zoom-pan-pinch": "^4.0.3",
     "sharp": "^0.34.5",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
+    "swiper": "^14.0.7",
     "zustand": "^5.0.12"
   },
   "description": "This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).",

@@ -1,6 +1,7 @@
 import CommentInput from './CommentInput'
 import CommentList from './CommentList'
 import { useState } from "react";
+import { createPortal } from "react-dom";
 
 type User = {
   id: number;
@@ -39,8 +40,8 @@ export default function CommentsModal({
     );
   };
   
-  return (
-    <div className="fixed inset-0 z-50 bg-black/70 flex flex-col justify-end">
+  return createPortal(
+    <div className="fixed inset-0 z-[1001] bg-black/70 flex flex-col justify-end">
 
       {/* backdrop */}
       <div className="flex-1" onClick={onClose} />
@@ -80,6 +81,7 @@ export default function CommentsModal({
         </div>
 
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

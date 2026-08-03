@@ -3,6 +3,7 @@ from feedback.models import (
     Feedback,
     Report,
     ProblemReport,
+    SupportRequest,
 )
 from communities.models import Tribe, TribeRequest
 from django.contrib.auth import get_user_model
@@ -309,3 +310,18 @@ class CreateAdminSerializer(serializers.ModelSerializer):
         user.save()
         
         return user
+
+class SupportRequestSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(
+        source="user.username",
+        read_only=True,
+    )
+
+    email = serializers.EmailField(
+        source="user.email",
+        read_only=True,
+    )
+
+    class Meta:
+        model = SupportRequest
+        fields = "__all__"

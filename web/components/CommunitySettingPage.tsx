@@ -5,6 +5,8 @@ import { apiRequest } from "@/utils/api";
 import Skeleton from "@/components/Skeleton";
 import { useNavigation } from "@/utils/useNavigation";
 import { Pause, Play, Repeat, VolumeX, Volume2 } from 'lucide-react'
+import PermanentMediaTypeModal from "@/components/community/PermanentMediaTypeModal";
+import { uploadToCloudinary } from "@/utils/cloudinary";
 
 export default function CommunitySettingsPage({
   communityId,
@@ -19,8 +21,22 @@ export default function CommunitySettingsPage({
   const { replace } = useNavigation();
 
   const [loading, setLoading] = useState(true);
+  const [showMediaWarning, setShowMediaWarning] = useState(false);
+  const [pendingValue, setPendingValue] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
   const [isMuted, setIsMuted] = useState(true);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  
+  const [coverUrl, setCoverUrl] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
+  
+  const [coverUploading, setCoverUploading] = useState(false);
+  const [videoUploading, setVideoUploading] = useState(false);
+  
+  const [coverProgress, setCoverProgress] = useState(0);
+  const [videoProgress, setVideoProgress] = useState(0);
   const [permissions, setPermissions] = useState({
     allow_reels: false,
     allow_videos: true,
@@ -38,6 +54,8 @@ export default function CommunitySettingsPage({
 
     setCommunity(data);
     setPermissions(data.permissions);
+    setCoverUrl(data.cover_image || "");
+    setVideoUrl(data.intro_video || "");
     setLoading(false);
   };
   
@@ -63,26 +81,33 @@ export default function CommunitySettingsPage({
   }
 
   const updateSettings = async () => {
-    await apiRequest(
-      `api/communities/${communityId}/settings/`,
-      {
-        method: "PATCH",
-        data: {
-          name: community.name,
-          description: community.description,
-          cover_image: community.cover_image,
-          intro_video: community.intro_video,
-          website: community.website,
-
-          require_post_approval: community.require_post_approval,
-          join_approval_required: community.join_approval_required,
-          allow_videos: permissions.allow_videos,
-        },
-      }
-    );
-
-    alert("Updated successfully");
-    replace(`/main/community/${communityId}`)
+    try {
+      setSaving(true);
+    
+      await apiRequest(
+        `api/communities/${communityId}/settings/`,
+        {
+          method: "PATCH",
+          data: {
+            name: community.name,
+            description: community.description,
+            cover_image: coverUrl,
+            intro_video: videoUrl,
+            website: community.website,
+  
+            require_post_approval: community.require_post_approval,
+            join_approval_required: community.join_approval_required,
+            allow_videos: permissions.allow_videos,
+          },
+        }
+      );
+  
+      replace(`/main/community/${communityId}`)
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (loading) return <Skeleton />;
@@ -150,27 +175,91 @@ return (
         type="file"  
         hidden  
         accept="video/*"  
-        onChange={(e) => {  
-          const file = e.target.files?.[0];  
-          if (!file) return;  
-    
-          const url = URL.createObjectURL(file);  
-    
-          setCommunity({  
-            ...community,  
-            intro_video: url,  
-          });  
-        }}  
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+        
+          setVideoFile(file);
+        
+          setCommunity({
+            ...community,
+            intro_video: URL.createObjectURL(file),
+          });
+        
+          try {
+            setVideoUploading(true);
+        
+            const uploaded = await uploadToCloudinary({
+              file,
+              folder: "Tribe/Communities/Videos",
+              onProgress: setVideoProgress,
+            });
+        
+            setVideoUrl(uploaded);
+        
+            setCommunity((prev: any) => ({
+              ...prev,
+              intro_video: uploaded,
+            }));
+          } finally {
+            setVideoUploading(false);
+            setVideoProgress(100);
+          }
+        }}
       />  
     </label>  
+  
+    {videoProgress > 0 && videoProgress < 100 && (
+      <div className="mt-2">
+        <div className="h-2 w-full rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+          <div
+            className="h-full bg-indigo-600 transition-all"
+            style={{
+              width: `${videoProgress}%`,
+            }}
+          />
+        </div>
+    
+        <p className="text-xs mt-1 text-center">
+          Uploading video... {videoProgress}%
+        </p>
+      </div>
+    )}
   </div>  
 
-  <div className="flex items-center gap-3">  
-    <div className="relative w-16 h-16 rounded-full overflow-hidden border">  
+  <div className="flex items-center gap-3">
+    <div className="relative w-16 h-16">
+      {coverProgress > 0 && coverProgress < 100 && (
+        <svg className="absolute inset-0 -rotate-90" width="64" height="64">
+          <circle
+            cx="32"
+            cy="32"
+            r="30"
+            stroke="#d1d5db"
+            strokeWidth="4"
+            fill="none"
+          />
+    
+          <circle
+            cx="32"
+            cy="32"
+            r="30"
+            stroke="#4f46e5"
+            strokeWidth="4"
+            fill="none"
+            strokeLinecap="round"
+            strokeDasharray={188.5}
+            strokeDashoffset={
+              188.5 - (188.5 * coverProgress) / 100
+            }
+          />
+        </svg>
+      )}
+
       {community.cover_image ? (  
         <img  
           src={community.cover_image}  
-          className="w-full h-full object-cover"  
+          className="w-16 h-16 rounded-full object-cover border"  
         />  
       ) : (  
         <div className="w-full h-full bg-gray-200" />  
@@ -182,19 +271,39 @@ return (
       <input  
         type="file"  
         hidden  
-        onChange={(e) => {  
-          const file = e.target.files?.[0];  
-          if (!file) return;  
-    
-          const url = URL.createObjectURL(file);  
-    
-          setCommunity({  
-            ...community,  
-            cover_image: url,  
-          });  
-        }}  
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          if (!file) return;
+        
+          setCoverFile(file);
+        
+          setCommunity({
+            ...community,
+            cover_image: URL.createObjectURL(file),
+          });
+        
+          try {
+            setCoverUploading(true);
+        
+            const uploaded = await uploadToCloudinary({
+              file,
+              folder: "Tribe/Communities/Covers",
+              onProgress: setCoverProgress,
+            });
+        
+            setCoverUrl(uploaded);
+        
+            setCommunity((prev: any) => ({
+              ...prev,
+              cover_image: uploaded,
+            }));
+          } finally {
+            setCoverUploading(false);
+            setCoverProgress(100);
+          }
+        }}
       />  
-    </label>  
+    </label>
   </div>  
 
   <div>  
@@ -266,12 +375,17 @@ return (
       <input
         type="checkbox"
         checked={permissions.allow_videos}
-        onChange={(e) =>
-          setPermissions({
-            ...permissions,
-            allow_videos: e.target.checked,
-          })
-        }
+        onChange={(e) => {
+          if (e.target.checked) {
+            setPendingValue(true);
+            setShowMediaWarning(true);
+          } else {
+            setPermissions({
+              ...permissions,
+              allow_videos: false,
+            });
+          }
+        }}
       />
       Allow Videos Instead of Reels
     </label>
@@ -293,16 +407,46 @@ return (
     ))}  
   </div>  
 
-  <button  
-    onClick={updateSettings}  
-    className="bg-blue-500 text-white w-full p-2 rounded"  
-  >  
-    Save Changes  
-  </button>  
+  <button
+    onClick={updateSettings}
+    disabled={
+      saving ||
+      coverUploading ||
+      videoUploading
+    }
+    className={`w-full p-2 rounded text-white transition ${
+      saving
+        ? "bg-blue-400 cursor-not-allowed"
+        : "bg-blue-500"
+    }`}
+  >
+    {
+     saving
+       ? "Saving..."
+       : coverUploading || videoUploading
+       ? "Uploading media..."
+       : "Save Changes"
+    }
+  </button>
 
   <button onClick={() => deleteCommunity(community.id)} className="bg-red-500 text-white w-full p-2 rounded">  
     Delete Community  
-  </button>  
+  </button>
+  <PermanentMediaTypeModal
+    open={showMediaWarning}
+    onCancel={() => {
+      setShowMediaWarning(false);
+      setPendingValue(false);
+    }}
+    onConfirm={() => {
+      setPermissions({
+        ...permissions,
+        allow_videos: pendingValue,
+      });
+  
+      setShowMediaWarning(false);
+    }}
+  />
 </div>
 
 );

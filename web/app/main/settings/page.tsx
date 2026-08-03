@@ -8,6 +8,7 @@ import {
   Download,
   FileText,
   Flag,
+  LifeBuoy,
   MessageSquareWarning,
 } from "lucide-react";
 
@@ -136,6 +137,12 @@ export default function SettingsPage() {
               icon={<Flag />}
               title="Report"
               href="/main/settings/report/"
+            />
+            
+            <SettingsItem
+              icon={<LifeBuoy />}
+              title="Support"
+              href="/main/settings/support/"
             />
             
             <SettingsItem

@@ -191,3 +191,68 @@ class ProblemReport(models.Model):
     created_at = models.DateTimeField(
         auto_now_add=True
     )
+
+class SupportRequest(models.Model):
+    CATEGORY_CHOICES = [
+        ("community", "Community"),
+        ("account", "Account"),
+        ("verification", "Verification"),
+        ("ownership_transfer", "Ownership Transfer"),
+        ("media_change", "Media Type Change"),
+        ("billing", "Billing"),
+        ("other", "Other"),
+    ]
+
+    STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("in_review", "In Review"),
+        ("resolved", "Resolved"),
+        ("rejected", "Rejected"),
+        ("closed", "Closed"),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="support_requests",
+    )
+
+    category = models.CharField(
+        max_length=30,
+        choices=CATEGORY_CHOICES,
+    )
+
+    subject = models.CharField(
+        max_length=200,
+    )
+
+    message = models.TextField()
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="pending",
+    )
+
+    admin_note = models.TextField(
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    resolved_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user.username} - {self.subject}"

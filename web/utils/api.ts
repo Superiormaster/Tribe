@@ -8,6 +8,7 @@ import { getFingerprint } from "@/lib/fingerprint";
 
 export const API_URL =
   process.env.NEXT_PUBLIC_API_URL;
+console.log(process.env.NEXT_PUBLIC_API_URL)
 
 let accessToken: string | null = null;
 

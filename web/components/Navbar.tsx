@@ -150,7 +150,7 @@ export default function Navbar() {
               >
                 <Icon className={active
                       ? "text-indigo-600"
-                      : "hover:bg-gray-200"
+                      : ""
                   } size={22} />
                 {name === "Notifications" && count > 0 && (
                   <span className="absolute -top-1 right-4 bg-red-500 text-white text-[10px] px-1 rounded-full">

@@ -8,6 +8,8 @@ import { apiRequest } from '@/utils/api';
 import { starCreator } from '@/lib/api'
 import { Share2, ThumbsUp, AlarmClock, MessageCircle, ChartNoAxesColumn, Edit, Trash2, Repeat, MoreHorizontal } from 'lucide-react';  
 import { timeAgo } from '@/utils/timeAgo'  
+import CommentsModal from "@/components/CommentsModal";
+import MediaViewer from "@/components/media/MediaViewer";
 import toast from "react-hot-toast";
 import ShareButton from '@/components/share/ShareButton'
 import { useShareSheet } from '@/components/share/ShareContext'
@@ -117,6 +119,8 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
   const { push } = useNavigation()
   const menuRef = useRef<HTMLDivElement>(null);
   const [reportOpen, setReportOpen] = useState(false)
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [startIndex, setStartIndex] = useState(0);
   const [reportReason, setReportReason] = useState("");
   const [reportDetails, setReportDetails] = useState("");
   const [joinStatus, setJoinStatus] = useState<
@@ -129,6 +133,8 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
   const postRef = useRef<HTMLDivElement | null>(null);
   const isPostOwner =
     Number(currentUser?.id) === Number(post?.user?.id);
+  const [openCommentsPostId, setOpenCommentsPostId] =
+    useState<number | null>(null);
   
   const canManagePost =
     canDelete ||
@@ -324,6 +330,10 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
     }
   };
   
+  const openComments = () => {
+    setOpenCommentsPostId(post.id);
+  };
+  
   const shouldHideStar =
     hideStarButton ||
     isMyProfile ||
@@ -336,6 +346,17 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
       return;
     }
     push(`/main/home/${post.id}`);
+  };
+  
+  const openViewer = (index: number) => {
+    setStartIndex(index);
+    setViewerOpen(true);
+  
+    window.dispatchEvent(
+      new CustomEvent("media-viewer-change", {
+        detail: { open: true },
+      })
+    );
   };
   
   return (  
@@ -674,7 +695,7 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
                 media={media}
                 index={index}
                 videoRefs={videoRefs}
-                onOpen={handleMediaClick}
+                onOpen={openViewer}
               />
             ))}
           </div>
@@ -769,6 +790,41 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
           </div>
         </div>
       )}
+  
+      <MediaViewer
+        open={viewerOpen}
+        post={post}
+        startIndex={startIndex}
+        liked={liked}
+        likes={likes}
+        onClose={() => {
+          setViewerOpen(false);
+      
+          window.dispatchEvent(
+            new CustomEvent("media-viewer-change", {
+              detail: { open: false },
+            })
+          );
+        }}
+        onLike={handleLike}
+        more={handleMediaClick}
+        onComment={() => {
+          setOpenCommentsPostId(post.id);
+        }}
+        onShare={() => showShare(post)}
+        onRepost={() =>
+          handlePostAction?.("repost_normal", post.id)
+        }
+        onMore={() => setMenuOpen(true)}
+      />
+
+      {openCommentsPostId && (
+        <CommentsModal
+          postId={openCommentsPostId}
+          user={currentUser}
+          onClose={() => setOpenCommentsPostId(null)}
+        />
+      )}
     </div>  
   )  
 }  
@@ -781,7 +837,7 @@ interface MediaItemProps {
   };
   index: number;
   videoRefs: React.MutableRefObject<(HTMLVideoElement | null)[]>;
-  onOpen: () => void;
+  onOpen: (index: number) => void;
 }
 
 const MediaItem = ({
@@ -795,8 +851,11 @@ const MediaItem = ({
   if (media.media_type === "image") {
     return (
       <img
-        key={index}
         src={media.file_url}
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpen(index);
+        }}
         loading={index < 6 ? "eager" : "lazy"}
         fetchPriority={index < 6 ? "high" : "auto"}
         className="rounded-xl w-full aspect-square max-h-96 object-cover"
@@ -805,10 +864,13 @@ const MediaItem = ({
   }
 
   return (
-    <div key={index} ref={ref}>
+    <div ref={ref}>
       {isVisible ? (
         <div
-          onClick={onOpen}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen(index);
+          }}
           className="relative cursor-pointer"
         >
           <img
@@ -816,8 +878,7 @@ const MediaItem = ({
             loading="lazy"
             className="rounded-xl w-full aspect-video max-h-96 object-cover"
           />
-        
-          {/* Play icon only */}
+
           <div className="absolute inset-0 flex items-center justify-center text-white text-4xl">
             ▶
           </div>

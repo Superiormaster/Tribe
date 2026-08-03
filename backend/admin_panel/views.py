@@ -864,3 +864,178 @@ def create_community(request):
         },
         status=201,
     )
+
+@api_view(["GET"])
+@permission_classes([IsAdmin])
+def support_requests(request):
+
+    search = request.GET.get("search", "").strip()
+    status = request.GET.get("status")
+    category = request.GET.get("category")
+
+    queryset = SupportRequest.objects.select_related(
+        "user"
+    ).order_by("-created_at")
+
+    if search:
+        queryset = queryset.filter(
+            Q(subject__icontains=search) |
+            Q(message__icontains=search) |
+            Q(user__username__icontains=search) |
+            Q(user__email__icontains=search)
+        )
+
+    if status:
+        queryset = queryset.filter(status=status)
+
+    if category:
+        queryset = queryset.filter(category=category)
+
+    paginator = AdminReportPagination()
+
+    page = paginator.paginate_queryset(
+        queryset,
+        request,
+    )
+
+    serializer = SupportRequestSerializer(
+        page,
+        many=True,
+    )
+
+    return paginator.get_paginated_response(
+        serializer.data
+    )
+
+@api_view(["GET"])
+@permission_classes([IsAdmin])
+def support_request_detail(request, support_id):
+
+    support = get_object_or_404(
+        SupportRequest.objects.select_related("user"),
+        id=support_id,
+    )
+
+    serializer = SupportRequestSerializer(support)
+
+    return Response(serializer.data)
+
+@api_view(["POST"])
+@permission_classes([IsAdmin])
+def resolve_support_request(request):
+
+    support_id = request.data.get("support_id")
+    note = request.data.get("note", "")
+
+    support = get_object_or_404(
+        SupportRequest,
+        id=support_id,
+    )
+
+    support.status = "resolved"
+    support.admin_note = note
+    support.resolved_at = timezone.now()
+    support.save()
+
+    return Response({
+        "detail": "Support request resolved."
+    })
+
+@api_view(["POST"])
+@permission_classes([IsAdmin])
+def reject_support_request(request):
+
+    support_id = request.data.get("support_id")
+    note = request.data.get("note", "")
+
+    support = get_object_or_404(
+        SupportRequest,
+        id=support_id,
+    )
+
+    support.status = "rejected"
+    support.admin_note = note
+    support.save()
+
+    return Response({
+        "detail": "Support request rejected."
+    })
+
+@api_view(["POST"])
+@permission_classes([IsAdmin])
+def review_support_request(request):
+
+    support = get_object_or_404(
+        SupportRequest,
+        id=request.data.get("support_id"),
+    )
+
+    support.status = "in_review"
+    support.save()
+
+    return Response({
+        "detail": "Marked as in review."
+    })
+
+@api_view(["POST"])
+@permission_classes([IsAdmin])
+def close_support_request(request):
+
+    support = get_object_or_404(
+        SupportRequest,
+        id=request.data.get("support_id"),
+    )
+
+    support.status = "closed"
+    support.save()
+
+    return Response({
+        "detail": "Request closed."
+    })
+
+@api_view(["DELETE"])
+@permission_classes([IsAdmin])
+def delete_support_request(request, support_id):
+
+    support = get_object_or_404(
+        SupportRequest,
+        id=support_id,
+    )
+
+    support.delete()
+
+    return Response({
+        "detail": "Deleted successfully."
+    })
+
+@api_view(["PATCH"])
+@permission_classes([IsAdmin])
+def update_support_request(request, support_id):
+
+    support = get_object_or_404(
+        SupportRequest,
+        id=support_id,
+    )
+
+    status = request.data.get("status")
+
+    if status in dict(
+        SupportRequest.STATUS_CHOICES
+    ):
+        support.status = status
+
+        if status == "resolved":
+            support.resolved_at = timezone.now()
+
+    if "admin_note" in request.data:
+        support.admin_note = request.data.get(
+            "admin_note",
+            "",
+        )
+
+    support.save()
+
+    return Response({
+        "detail":
+        "Support request updated successfully."
+    })

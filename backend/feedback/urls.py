@@ -5,6 +5,9 @@ from .views import (
     ReportViewSet,
     ProblemReportViewSet,
     FeedbackViewSet,
+    SupportRequestCreateView,
+    MySupportRequestsView,
+    delete_support_request,
 )
 
 router = DefaultRouter()
@@ -27,5 +30,22 @@ router.register(
 )
 
 urlpatterns = [
+    path(
+        "support/",
+        SupportRequestCreateView.as_view(),
+        name="create-support-request",
+    ),
+    path(
+        "support/my/",
+        MySupportRequestsView.as_view(),
+        name="my-support-requests",
+    ),
+
+    path(
+        "support/<int:pk>/delete/",
+        delete_support_request,
+        name="delete_support_request",
+    ),
+
     path("", include(router.urls)),
 ]

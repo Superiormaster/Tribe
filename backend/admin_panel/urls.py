@@ -11,6 +11,14 @@ from .views import (
     get_users,
     get_user_detail,
     ban_user,
+    support_requests,
+    support_request_detail,
+    resolve_support_request,
+    reject_support_request,
+    review_support_request,
+    close_support_request,
+    delete_support_request,
+    update_support_request,
     unban_user,
     dashboard_stats,
     create_admin,
@@ -104,5 +112,44 @@ urlpatterns = [
     path(
         "tribes/<int:tribe_id>/delete/",
         delete_tribe,
+    ),
+    path(
+        "support/",
+        support_requests,
+    ),
+    
+    path(
+        "support/<int:support_id>/",
+        support_request_detail,
+    ),
+    
+    path(
+        "support/resolve/",
+        resolve_support_request,
+    ),
+    
+    path(
+        "support/reject/",
+        reject_support_request,
+    ),
+    
+    path(
+        "support/review/",
+        review_support_request,
+    ),
+    
+    path(
+        "support/close/",
+        close_support_request,
+    ),
+    
+    path(
+        "support/<int:support_id>/delete/",
+        delete_support_request,
+    ),
+
+    path(
+        "support/<int:support_id>/update/",
+        update_support_request,
     ),
 ]

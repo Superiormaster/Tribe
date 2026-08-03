@@ -1,6 +1,23 @@
 from rest_framework import serializers
-from .models import Report, Feedback, ProblemReport
+from .models import Report, Feedback, ProblemReport, SupportRequest
 
+class SupportRequestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SupportRequest
+        fields = [
+            "id",
+            "category",
+            "subject",
+            "message",
+            "status",
+            "created_at",
+        ]
+        read_only_fields = [
+            "id",
+            "status",
+            "created_at",
+        ]
+  
 class ReportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Report
