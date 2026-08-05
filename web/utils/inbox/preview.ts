@@ -1,32 +1,31 @@
-import { getStatusIcon } from "./status";
+import { getStatus } from "./status";
 
 export function getOfflinePreview(msg?: any) {
   if (!msg) return "";
 
   const prefix = "You: ";
-  const statusIcon = getStatusIcon(msg.status);
 
   switch (msg.media_type) {
     case "image":
-      return `${statusIcon} ${prefix}📸 Photo`;
+      return `${prefix}📸 Photo`;
 
     case "video":
-      return `${statusIcon} ${prefix}🎥 Video`;
+      return `${prefix}🎥 Video`;
 
     case "gallery":
-      return `${statusIcon} ${prefix}📁 Media`;
+      return `${prefix}📁 Media`;
 
     case "audio":
-      return `${statusIcon} ${prefix}🎤 Voice message`;
+      return `${prefix}🎤 Voice message`;
 
     case "gif":
-      return `${statusIcon} ${prefix}📎 GIF`;
+      return `${prefix}📎 GIF`;
 
     case "sticker":
-      return `${statusIcon} ${prefix}😀 Sticker`;
+      return `${prefix}😀 Sticker`;
 
     default:
-      return `${statusIcon} ${prefix}${msg.text || msg.encrypted_text || msg.caption || ""}`;
+      return `${prefix}${msg.text || msg.encrypted_text || msg.caption || ""}`;
   }
 }
 
@@ -70,7 +69,7 @@ export function getPreviewData(chat: any, currentUserId: number) {
   }
 
   return {
-    icon: isMine ? getStatusIcon(chat.status) : "",
+    status: isMine ? getStatus(chat.status) : undefined,
     isSeen: chat.status === "seen",
     isMine,
     sender: isMine ? "You" : chat.username,

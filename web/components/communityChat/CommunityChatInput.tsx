@@ -440,12 +440,11 @@ export default function CommunityChatInput({
         setShowCamera={setShowCamera}
       />
 
-      <div className="w-full z-50 flex flex-col">
-        {/* INPUT BAR */}
-        <div className="w-full flex gap-2 items-end px-3 py-2 order-1 transition-all duration-300">
+      <div className="bg-gray-300 dark:bg-[#111b21] border-t z-50 order-1 border-gray-200 duration-300 transition-all order-1 dark:border-gray-800">
+        <div className="flex items-end gap-2 px-3 py-2">
     
           <button
-            className="py-4 px-2 text-gray-700 rounded-full dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-[#202c33]"
+            className="px-2 py-4 text-gray-700 rounded-full dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-[#202c33]"
             onClick={() => {
               if (showDrawer) {
                 closeDrawer();

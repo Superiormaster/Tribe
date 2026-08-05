@@ -485,7 +485,7 @@ export default function MessageBubbles({
           clearSelection();
         }
       }}
-      className="flex flex-col h-full overflow-x-hidden overflow-y-auto py-3 px-2"
+      className="flex flex-col h-full overflow-x-hidden overflow-y-auto py-5 px-2"
     >
 
       {Object.entries(grouped).map(

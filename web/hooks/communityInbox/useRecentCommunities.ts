@@ -37,6 +37,7 @@ export function useCommunityRecentChats() {
 
   const [loadingRecent, setLoadingRecent] =
     useState(false);
+  const [initialFetchDone, setInitialFetchDone] = useState(false);
 
   const [recentLoaded, setRecentLoaded] =
     useState(false);
@@ -88,6 +89,7 @@ export function useCommunityRecentChats() {
       } finally {
         setRecentLoaded(true);
         setLoadingRecent(false);
+        setInitialFetchDone(true);
       }
     },
     [loadingRecent]
@@ -134,6 +136,7 @@ export function useCommunityRecentChats() {
     fetchRecent,
 
     loadingRecent,
+    initialFetchDone,
     recentLoaded,
 
     nextPage,

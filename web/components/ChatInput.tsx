@@ -8,6 +8,7 @@ import {
   Keyboard,
   Reply,
   Lock,
+  Camera,
 } from 'lucide-react';
 import { isNative } from "@/utils/usePlatform";
 import ChatDrawer from "@/components/chat/ChatDrawer";
@@ -636,6 +637,7 @@ export default function ChatInput({
                 w-full
                 px-4
                 py-3
+                pr-12
                 bg-transparent
                 text-gray-700
                 dark:text-white
@@ -645,6 +647,20 @@ export default function ChatInput({
                 overflow-y-auto
               "
             />
+  
+            {!value.trim() && (
+              <button
+                onClick={() => setShowCamera(true)}
+                className="
+                  absolute
+                  right-24
+                  bottom-6
+                  text-gray-400
+                "
+              >
+                <Camera size={20} />
+              </button>
+            )}
   
           </div>
           {canSend ? (

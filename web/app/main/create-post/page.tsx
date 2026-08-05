@@ -316,10 +316,10 @@ export default function CreatePostPage() {
 
       toast.success("Post created!");
 
-      if (isReel) {
+      if (newPost.content_type === "short_video") {
         sessionStorage.setItem(
-          "clicked_reel_id",
-          String(newPost.id)
+            "clicked_reel_id",
+            String(newPost.id)
         );
     
         push(`/main/reels/${newPost.id}`);

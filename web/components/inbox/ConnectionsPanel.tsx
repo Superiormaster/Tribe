@@ -66,7 +66,7 @@ export default function ConnectionsPanel({
               stiffness: 320,
               damping: 30,
             }}
-            className="w-80 h-full bg-white p-4 dark:bg-gray-900 flex flex-col"
+            className="w-80 h-full bg-white p-4 text-gray-700 dark:text-gray-200 dark:bg-gray-900 flex flex-col"
           >
             {/* Header */}
             <div className="flex items-center border-b justify-between mb-4">

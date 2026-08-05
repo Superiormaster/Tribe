@@ -53,7 +53,7 @@ export default function SettingsPage() {
   }, []);
   
   return (
-    <div className="mx-auto max-w-xl dark:bg-gray-900 mt-20 bg-white min-h-screen">
+    <div className="mx-auto max-w-xl dark:bg-gray-900 my-20 bg-white min-h-screen">
       {/* Header */}
 
       <div className="sticky top-0 dark:bg-gray-900 bg-white z-20 border-b">

@@ -302,8 +302,12 @@ export default function DiscoverCommunities() {
         Discover Communities
       </h1>
 
-      <p className="text-gray-500 mb-8">
+      <p className="text-gray-500">
         Pick communities that match your interests.
+      </p>
+      
+      <p className="mt-2 mb-8 text-sm font-medium text-indigo-600">
+        Select at least one community to continue.
       </p>
 
       {tribes.map(tribe => (
@@ -393,7 +397,12 @@ export default function DiscoverCommunities() {
 
       <button
         onClick={save}
-        className="w-full mt-8 bg-indigo-600 text-white py-3 rounded-xl"
+        disabled={selected.length === 0}
+        className={`w-full mt-8 py-3 rounded-xl transition ${
+          selected.length === 0
+            ? "bg-gray-300 text-gray-500 cursor-not-allowed"
+            : "bg-indigo-600 text-white hover:bg-indigo-700"
+        }`}
       >
         Continue
       </button>

@@ -109,23 +109,6 @@ export default function MessagesClient() {
     setChatMeta,
     reloadPendingData: loadCommunityPendingData,
   } = useCommunityPendingMessages(currentUser?.id);
-  
-  useEffect(() => {
-    if (
-      !currentUser?.id ||
-      !privateLoaded ||
-      !communityLoaded
-    ) {
-      return;
-    }
-  
-    fetchPrivateRecent(1);
-    fetchCommunityRecent(1);
-  }, [
-    currentUser?.id,
-    privateLoaded,
-    communityLoaded,
-  ]);
 
   const {
     recentChats: privateRecentChats,
@@ -137,6 +120,7 @@ export default function MessagesClient() {
     pinnedCount: privatePinnedCount,
     setPinnedCount: setPrivatePinnedCount,
     backendChatIds: privateBackendChatIds,
+    initialFetchDone: privateInitialFetchDone,
   } = useRecentChats({
     pendingMap,
   });
@@ -151,7 +135,30 @@ export default function MessagesClient() {
     pinnedCount: communityPinnedCount,
     setPinnedCount: setCommunityPinnedCount,
     backendChatIds: communityBackendChatIds,
+    initialFetchDone:communityInitialFetchDone,
   } = useCommunityRecentChats();
+  
+  useEffect(() => {
+    if (
+      !currentUser?.id ||
+      !privateLoaded ||
+      !communityLoaded
+    ) return;
+  
+    if (!privateInitialFetchDone) {
+      fetchPrivateRecent(1);
+    }
+  
+    if (!communityInitialFetchDone) {
+      fetchCommunityRecent(1);
+    }
+  }, [
+    currentUser?.id,
+    privateLoaded,
+    communityLoaded,
+    privateInitialFetchDone,
+    communityInitialFetchDone,
+  ]);
   
   const openDiscoverPanel = async () => {
     setConnectedUsers([]);
@@ -527,20 +534,41 @@ export default function MessagesClient() {
     );
   }, [selectedChat.size]);
   
-  const isInboxEmpty =
-    !privateRecentChats.length &&
-    !localChats.length &&
-    !communityRecentChats.length &&
-    !localCommunityChats.length;
+  const dbReady =
+    privateLoaded &&
+    communityLoaded;
   
-  const inboxLoading =
-    !privateLoaded ||
-    !communityLoaded ||
-    loadingPrivateRecent ||
-    loadingCommunityRecent;
+  const firstLoadFinished =
+    privateInitialFetchDone &&
+    communityInitialFetchDone;
   
-  if (inboxLoading) {
-    return <MessagesSkeleton />;
+  const hasLocalContent =
+    localChats.length > 0 ||
+    localCommunityChats.length > 0;
+  
+  const hasRemoteContent =
+    privateRecentChats.length > 0 ||
+    communityRecentChats.length > 0;
+  
+  const hasChats =
+    hasLocalContent || hasRemoteContent;
+  
+  const showSkeleton =
+    dbReady &&
+    !firstLoadFinished &&
+    !hasLocalContent;
+  
+  const showEmpty =
+    dbReady &&
+    firstLoadFinished &&
+    !hasChats;
+
+  if (!privateLoaded || !communityLoaded) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-600" />
+      </div>
+    );
   }
   
   return (
@@ -587,17 +615,17 @@ export default function MessagesClient() {
         )}
 
       {/* HEADER */}
-      {!isInboxEmpty && (
+      {hasChats && (
         <h2 className="text-xl text-gray-700 dark:text-white font-bold mb-4">
           Messages
         </h2>
       )}
 
-      {isInboxEmpty ? (
-        <EmptyInbox
-          openConnectionsPanel={openDiscoverPanel}
-        />
-      ) : (
+      {showSkeleton && (
+        <MessagesSkeleton />
+      )}
+
+      {!showSkeleton && hasChats && (
         <>
           {localChats.map(chatId => (
             <LocalInboxItem
@@ -650,6 +678,12 @@ export default function MessagesClient() {
             />
           ))}
         </>
+      )}
+
+      {showEmpty && (
+        <EmptyInbox
+          openConnectionsPanel={openDiscoverPanel}
+        />
       )}
 
       <button

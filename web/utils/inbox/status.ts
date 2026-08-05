@@ -18,30 +18,10 @@ export function updateStatus(
 
   return STATUS_PRIORITY[newStatus] >
     STATUS_PRIORITY[current]
-      ? newStatus
-      : current;
+    ? newStatus
+    : current;
 }
 
-export function getStatusIcon(status?: MessageStatus) {
-  switch (status) {
-    case "uploading":
-    case "sending":
-    case "pending":
-      return "⏳";
-
-    case "sent":
-      return "✓";
-
-    case "delivered":
-      return "✓✓";
-
-    case "seen":
-      return "✓✓";
-
-    case "failed":
-      return "⚠️";
-
-    default:
-      return "";
-  }
+export function getStatus(status?: MessageStatus): MessageStatus {
+  return status ?? "pending";
 }

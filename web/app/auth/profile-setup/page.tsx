@@ -133,11 +133,6 @@ export default function ProfileSetup() {
       return setError('Username is required')
     }
     
-    if (!bio.trim()) {
-      setLoading(false)
-      return setError('Bio is required')
-    }
-    
     if (!country.trim()) {
       setLoading(false)
       return setError('Country is required')
@@ -172,7 +167,9 @@ export default function ProfileSetup() {
       formData.append('username', username)
       formData.append('email', email)
       formData.append('full_name', fullName)
-      formData.append('bio', bio)
+      if (bio.trim()) {
+        formData.append('bio', bio)
+      }
   
       formData.append('country', country)
       formData.append('city', city)
@@ -447,7 +444,7 @@ export default function ProfileSetup() {
         {/* Bio */}
         <div className="flex flex-col">
           <label className="mb-1 text-sm font-medium text-gray-700 dark:text-gray-300">
-            Bio <span className="text-red-500">*</span>
+            Bio <span className="text-gray-500">(Optional)</span>
           </label>
           <textarea
             placeholder="Tell us something about yourself..."
@@ -455,7 +452,6 @@ export default function ProfileSetup() {
             onChange={(e) => setBio(e.target.value)}
             className="w-full px-4 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-indigo-400 bg-gray-100 dark:bg-gray-800 resize-none"
             rows={4}
-            required
           />
         </div>
         
@@ -536,7 +532,6 @@ export default function ProfileSetup() {
             !fullName.trim() ||
             !email.trim() ||
             !username.trim() ||
-            !bio.trim() ||
             !country.trim() ||
             !gender.trim()
           }
@@ -545,7 +540,6 @@ export default function ProfileSetup() {
             !fullName.trim() ||
             !email.trim() ||
             !username.trim() ||
-            !bio.trim() ||
             !country.trim() ||
             !gender.trim()
               ? 'bg-gray-400 cursor-not-allowed text-white'

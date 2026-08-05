@@ -5,7 +5,7 @@ import MySupportRequests from "@/components/support/MySupportRequests";
 
 export default function SupportPage() {
   return (
-    <div className="max-w-2xl text-gray-700 dark:text-gray-400 my-20 mx-auto p-4 space-y-6">
+    <div className="max-w-2xl text-gray-700 dark:text-gray-400 py-20 px-4 mx-auto space-y-6">
 
       <div>
         <h1 className="text-2xl font-bold dark:text-white">

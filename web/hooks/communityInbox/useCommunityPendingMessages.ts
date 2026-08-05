@@ -101,9 +101,13 @@ export function useCommunityPendingMessages(
           };
       });
 
+      console.log("COMMUNITY PENDING RAW", pendingData);
       pendingData.forEach((m: any) => {
+        console.log("ONE MESSAGE", m);
         const chatId =
-          m.chatId ?? m.communityId;
+          m.communityId ??
+          m.chat ??
+          m.chatId;
 
         const existing = pending[chatId];
 

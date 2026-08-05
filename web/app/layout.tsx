@@ -53,7 +53,7 @@ export const metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="bg-gray-50 dark:bg-gray-950" suppressHydrationWarning>
+    <html lang="en" className="bg-gray-50 dark:bg-gray-950 scroll-smooth" suppressHydrationWarning>
       <body className="antialiased font-sans min-h-screen">
         <Toaster
           position="top-right"
@@ -70,7 +70,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   
         <InstallButton />
 
-        {/*}<script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+        {/*<script src="https://cdn.jsdelivr.net/npm/eruda"></script>
         <script dangerouslySetInnerHTML={{ __html: "eruda.init();" }} />*/}
 
       </body>

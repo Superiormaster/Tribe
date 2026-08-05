@@ -145,8 +145,37 @@ export default function Home() {
         </section>
   
         {/* FOOTER */}
-        <footer className="text-center py-6 text-sm text-gray-500 border-t border-gray-600 dark:border-gray-400">
-          © {new Date().getFullYear()} Tribe. All rights reserved.
+        <footer className="border-t border-gray-600 dark:border-gray-400 py-8">
+          <div className="max-w-6xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4 text-sm text-gray-500">
+        
+            <p className="text-center">
+              © {new Date().getFullYear()} Superior Masters Int'l Ltd. All rights reserved.
+            </p>
+        
+            <div className="flex items-center gap-5">
+              <AppLink
+                href="/privacy-policy"
+                className="hover:text-indigo-600 transition-colors"
+              >
+                Privacy Policy
+              </AppLink>
+        
+              <AppLink
+                href="/terms"
+                className="hover:text-indigo-600 transition-colors"
+              >
+                Terms & Conditions
+              </AppLink>
+        
+              <AppLink
+                href="/contact"
+                className="hover:text-indigo-600 transition-colors"
+              >
+                Contact
+              </AppLink>
+            </div>
+        
+          </div>
         </footer>
       </div>
 

@@ -252,18 +252,39 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
   }, []);
 
   // Toggle like  
-  const handleLike = async () => {  
-    try {  
-      const result = await apiRequest(`api/likes/${post.id}/toggle/`, {  
-        method: "POST"  
-      });  
+  const handleLike = async () => {
+    // Save previous state in case the request fails
+    const previousLiked = liked;
+    const previousLikes = likes;
   
-      setLiked(result.liked)  
-      setLikes(result.likes_count)  
+    // Optimistic update
+    if (liked) {
+      setLiked(false);
+      setLikes((prev) => Math.max(0, prev - 1));
+    } else {
+      setLiked(true);
+      setLikes((prev) => prev + 1);
+    }
   
-    } catch (error) {  
-      console.error("Failed to toggle like:", error);  
-    }  
+    try {
+      const result = await apiRequest(
+        `api/likes/${post.id}/toggle/`,
+        {
+          method: "POST",
+        }
+      );
+  
+      // Sync with backend
+      setLiked(result.liked);
+      setLikes(result.likes_count);
+    } catch (error) {
+      // Roll back if request fails
+      setLiked(previousLiked);
+      setLikes(previousLikes);
+  
+      toast.error("Failed to update like");
+      console.error(error);
+    }
   };
   
   const handleDelete = async () => {

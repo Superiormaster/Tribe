@@ -8,6 +8,7 @@ from .views import (
     SupportRequestCreateView,
     MySupportRequestsView,
     delete_support_request,
+    ContactMessageCreateView,
 )
 
 router = DefaultRouter()
@@ -45,6 +46,12 @@ urlpatterns = [
         "support/<int:pk>/delete/",
         delete_support_request,
         name="delete_support_request",
+    ),
+
+    path(
+        "support/contact/",
+        ContactMessageCreateView.as_view(),
+        name="contact-message",
     ),
 
     path("", include(router.urls)),

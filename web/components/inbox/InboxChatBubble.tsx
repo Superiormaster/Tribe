@@ -2,6 +2,14 @@ import { Pin } from "lucide-react";
 import { formatChatTime } from "@/utils/inbox/formatChatTime";
 import { getOfflinePreview, getPreviewData } from "@/utils/inbox/preview";
 import { getDisplayData } from "@/utils/inbox/display";
+import {
+  Clock3,
+  Check,
+  CheckCheck,
+  AlertCircle,
+} from "lucide-react";
+
+import { getStatus } from "@/utils/inbox/status";
 
 interface Props {
   chat: any;
@@ -59,14 +67,55 @@ export default function InboxChatBubble({
         ) : (
           <p className="text-sm text-gray-500 truncate">
             {preview.isMine && (
-              <span
-                className={
-                  preview.isSeen
-                    ? "text-indigo-600 mr-1"
-                    : "mr-1"
-                }
-              >
-                {preview.icon}
+              <span className="mr-1 inline-flex items-center">
+                {(() => {
+                  switch (preview.status) {
+                    case "pending":
+                    case "sending":
+                    case "uploading":
+                      return (
+                        <Clock3
+                          size={14}
+                          className="text-gray-400"
+                        />
+                      );
+            
+                    case "sent":
+                      return (
+                        <Check
+                          size={14}
+                          className="text-gray-400"
+                        />
+                      );
+            
+                    case "delivered":
+                      return (
+                        <CheckCheck
+                          size={14}
+                          className="text-gray-400"
+                        />
+                      );
+            
+                    case "seen":
+                      return (
+                        <CheckCheck
+                          size={14}
+                          className="text-indigo-500"
+                        />
+                      );
+            
+                    case "failed":
+                      return (
+                        <AlertCircle
+                          size={14}
+                          className="text-red-500"
+                        />
+                      );
+            
+                    default:
+                      return null;
+                  }
+                })()}
               </span>
             )}
           

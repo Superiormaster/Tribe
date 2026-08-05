@@ -3,15 +3,25 @@
 import { useEffect, useState, useRef, useMemo } from "react";
 import MediaGrid from '@/components/chat/MediaGridBubble';
 import { Message } from "@/utils/chat/messageContract";
+import { formatCount } from '@/utils/formatCount';
+import { createPortal } from "react-dom";
 import { getMessageKey } from "@/utils/chat/messageMerger";
+import useMediaPreview from "@/utils/chat/useMediaPreview";
+import useBubbleGestures from "@/utils/chat/useBubbleGestures";
+import ReplyPreview from "@/components/Com-Pri-Chat/ReplyPreview";
+import MessageFooter from "@/components/Com-Pri-Chat/MessageFooter";
+import ReactionPicker from "@/components/Com-Pri-Chat/ReactionPicker";
+import ReplyIcon from "@/components/Com-Pri-Chat/ReplyIcon";
+import ForwardButton from "@/components/Com-Pri-Chat/ForwardButton";
+import MediaContainer from "@/components/Com-Pri-Chat/MediaContainer";
 import ProgressiveImage from '@/components/chat/ProgressiveImage';
 import {
   Reply,
   Download,
-  Play, 
+  Play,
   Video,
   Forward,
-} from 'lucide-react';
+} from "lucide-react";
 import AudioBubble from "@/components/chat/AudioBubble";
 
 type MediaItem = {
@@ -46,42 +56,19 @@ export default function PrivateBubble({
   setActiveReaction,
 }: any) {
 
-  const [dragX, setDragX] =
-    useState(0);
-
-  const [dragging, setDragging] =
-    useState(false);
-  const isDraggingRef = useRef(false);
-  const hasMoved = useRef(false);
-  const didLongPress = useRef(false);
-
-  const startX = useRef(0);
-
   const id = getMessageKey(msg);
   const isSelected = selectedMessages.has(id);
   const inSelectionMode = selectedMessages.size > 1;
-  
-  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
-  const touchStartY = useRef(0);
-  const touchStartX = useRef(0);
-  const movedDuringTouch = useRef(false);
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  const [reactionPosition, setReactionPosition] = useState({
+    top: 0,
+    left: 0,
+  });
+  const [mounted, setMounted] = useState(false);
 
-  const MAX_DRAG = 120;
-
-  const TRIGGER = 60;
-  
-  const emojis = [
-    '👍',
-    '❤️',
-    '😂',
-    '😮',
-    '😢',
-    '🙏',
-    '🔥',
-    '👏',
-    '🎉',
-    '😎',
-  ];
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -90,63 +77,6 @@ export default function PrivateBubble({
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
   
-  const handleDownload = async (url: string) => {
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "media";
-    a.target = "_blank";
-    a.click();
-  };
-  
-  const mediaItems = useMemo<MediaItem[]>(() => {
-    if (!msg.files?.length) return [];
-  
-    return msg.files.map((item: any): MediaItem => ({
-      url:
-        item.media_url ||
-        item.preview ||
-        (item.blob instanceof Blob
-          ? URL.createObjectURL(item.blob)
-          : null),
-  
-      thumbnail: item.thumbnail,
-      duration: item.duration,
-      blob: item.blob,
-    }));
-  }, [msg.files]);
-  
-  const files = mediaItems.map((item: MediaItem, i: number) => {
-    const file = msg.files?.[i];
-  
-    const blob =
-      file instanceof File
-        ? file
-        : file?.blob;
-  
-    const isVideo = blob?.type?.startsWith("video/");
-  
-    return {
-      media_url: item.url,
-      thumbnail: item.thumbnail,
-      duration: item.duration,
-      media_type: isVideo ? "video" : "image",
-    };
-  });
-  
-  useEffect(() => {
-    return () => {
-      mediaItems.forEach((item) => {
-        if (
-          item.url?.startsWith("blob:")
-        ) {
-          URL.revokeObjectURL(
-            item.url
-          );
-        }
-      });
-    };
-  }, [mediaItems]);
-  
   const isVisualMedia =
     ["image", "video", "gif", "sticker", "gallery"].includes(
       msg.media_type
@@ -154,19 +84,44 @@ export default function PrivateBubble({
 
   const isMediaMessage = !!(msg.media_type || msg.media_url);
   
-  const mediaSrc = useMemo(() => {
-    if (Array.isArray(msg.media_url) && msg.media_url.length) {
-      return msg.media_url[0];
-    }
+  const showReactions = activeReaction === id;
+  const isMine = (reaction: any) => false; 
+  const hasValidReply =
+    msg.reply_to &&
+    (msg.reply_to.encrypted_text?.trim() ||
+     msg.reply_to.media_url ||
+     msg.reply_to.media_type);
   
-    return mediaItems[0]?.url ?? null;
-  }, [msg.media_url, mediaItems]);
-
-  const canPreview = [
-    "sent",
-    "delivered",
-    "seen",
-  ].includes(msg.status);
+  const {
+    mediaItems,
+    mediaSrc,
+    files,
+    canPreview,
+    openPreview,
+  } = useMediaPreview({
+    msg,
+    isCurrentUser,
+    setPreviewState,
+    setReplyingTo,
+  });
+  
+  const {
+    dragX,
+    dragging,
+    bindBubble,
+    TRIGGER,
+    canReply,
+  } = useBubbleGestures({
+    id,
+    msg,
+    isCurrentUser,
+    isMediaMessage,
+    selectedMessages,
+    toggleSelectMessage,
+    setReplyingTo,
+    setActiveReaction,
+    openPreview: () => openPreview(0),
+  })
   
   const media =
     Array.isArray(msg.media_url)
@@ -175,131 +130,26 @@ export default function PrivateBubble({
         ? [mediaSrc]
         : [];
   
-  const openPreview = (index: number) => {
-    if (isDraggingRef.current && dragX > 10) return;
-    if (!canPreview) return;
-  
-    setPreviewState({
-      files,
-      index,
-      msg,
-      isMine: isCurrentUser,
-      onReply: (msg: Message) => {
-        setReplyingTo(msg);
-      }
-    });
-  };
-  
-  const showReactions = activeReaction === id;
-  const isMine = (reaction: any) => false; 
-  const hasValidReply =
-    msg.reply_to &&
-    (msg.reply_to.text?.trim() ||
-     msg.reply_to.media_url ||
-     msg.reply_to.media_type);
-  
   useEffect(() => {
+    if (!showReactions || !bubbleRef.current) return;
+  
+    const rect = bubbleRef.current.getBoundingClientRect();
 
-    const reset = () => {
-      setDragging(false);
-      setDragX(0);
-    };
-
-    window.addEventListener(
-      'pointerup',
-      reset
+    const pickerWidth = 320; // approximate width
+    const padding = 8;
+    
+    let left = rect.left + rect.width / 2;
+    
+    left = Math.max(
+      pickerWidth / 2 + padding,
+      Math.min(window.innerWidth - pickerWidth / 2 - padding, left)
     );
-
-    window.addEventListener(
-      'pointercancel',
-      reset
-    );
-
-    return () => {
-
-      window.removeEventListener(
-        'pointerup',
-        reset
-      );
-
-      window.removeEventListener(
-        'pointercancel',
-        reset
-      );
-    };
-
-  }, []);
-  
-  const MediaContainer = ({
-    children,
-    msg,
-    status,
-    progress,
-    onRetry,
-    fixedAspect = true,
-  }: any) => {
-    return (
-      <div className={`
-        relative w-full ${fixedAspect ? "max-w-[320px] min-w-[220px]" : "max-w-[180px] min-w-[150px]"}
-        rounded-2xl overflow-hidden
-        mb-2 bg-black/10
-        flex flex-col
-        [&>img]:max-h-[280px]
-        [&>video]:max-h-[360px]
-        [&>img]:w-full
-        [&>video]:w-full
-      `}>
-  
-        {/* MEDIA AREA (fixed visual space) */}
-        <div className={`
-          relative w-full ${fixedAspect ? "aspect-[4/5]" : ""}
-          overflow-hidden
-        `}>
-          {children}
-  
-          {/* overlays stay INSIDE media area */}
-          {(status === "uploading" || status === "sending") && (
-            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-              <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin" />
-            </div>
-          )}
-  
-          {status === "download" && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/45">
-              <button onClick={() => handleDownload(msg.media_url)}>
-                <Download />
-              </button>
-            </div>
-          )}
-  
-          {(status === "uploading" || status === "sending") && (
-            <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
-              <div
-                className="h-full bg-green-400"
-                style={{ width: `${progress || 0}%` }}
-              />
-            </div>
-          )}
-  
-          {(status === "failed" || status === "pending") && (
-            <div className="absolute inset-0 bg-black/50 flex items-center justify-center"
-              onPointerDown={(e) => e.stopPropagation()}
-              onPointerUp={(e) => e.stopPropagation()}
-            >
-              <button
-                onPointerDown={(e) => e.stopPropagation()}
-                onPointerUp={(e) => e.stopPropagation()}
-                onClick={onRetry}
-                className="px-3 py-1 bg-black/60 text-white rounded-full"
-              >
-                Retry
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  };
+    
+    setReactionPosition({
+      top: rect.bottom + 8,
+      left,
+    });
+  }, [showReactions]);
   
   const stickerSize =
     msg.reply_to
@@ -513,84 +363,7 @@ export default function PrivateBubble({
         return null;
     }
   };
-  
-  const getReplyPreview = (reply: any) => {
-    if (!reply) return null;
-  
-    // normalize media safely
-    const media = Array.isArray(reply.media_url)
-      ? reply.media_url
-      : typeof reply.media_url === "string"
-        ? [reply.media_url]
-        : [];
-  
-    // 1. TEXT FIRST
-    if (reply.encrypted_text?.trim()) {
-      return {
-        type: "text",
-        text: reply.encrypted_text,
-      };
-    }
-  
-    const first = media[0];
-  
-    if (!first) {
-      return {
-        type: "file",
-        text: "Attachment",
-      };
-    }
-  
-    const type = reply.media_type;
-  
-    switch (type) {
-      case "image":
-        return {
-          type: "image",
-          thumb: first,
-          text: reply.caption || "Photo",
-        };
-  
-      case "video":
-        return {
-          type: "video",
-          thumb: reply.thumbnail || first,
-          text: reply.caption || "Video",
-        };
-  
-      case "gif":
-        return {
-          type: "gif",
-          thumb: first,
-          text: "GIF",
-        };
-  
-      case "sticker":
-        return {
-          type: "sticker",
-          thumb: first,
-          text: "Sticker",
-        };
-  
-      case "gallery":
-        return {
-          type: "gallery",
-          thumb: first,
-          text: `${media.length} media`,
-        };
-  
-      default:
-        return {
-          type: "file",
-          thumb: first,
-          text: "Attachment",
-        };
-    }
-  };
-
-  const replyPreview = msg.reply_to
-    ? getReplyPreview(msg.reply_to)
-    : null;
+  console.log("reply_to", msg.reply_to);
 
   return (
     <div
@@ -608,198 +381,36 @@ export default function PrivateBubble({
             : ''
         }
       `}
-
+      {...bindBubble}
       data-message-id={msg.id}
       data-client-id={msg.client_id}
-
-      onClick={(e) => {
-        e.stopPropagation();
-      
-        if (selectedMessages.size > 0) {
-          return toggleSelectMessage(id);
-        }
-      }}
-
-      onPointerDown={(e) => {
-        setDragging(true);
-        startX.current = e.clientX;
-        hasMoved.current = false;
-      }}
-
-      onPointerMove={(e) => {
-        if (!dragging) return;
-      
-        const delta = e.clientX - startX.current;
-      
-        if (Math.abs(delta) > 8) {
-          hasMoved.current = true;
-        }
-      
-        if (!hasMoved.current) return;
-        isDraggingRef.current = true;
-      
-        let raw = 0;
-      
-        if (isCurrentUser) {
-          // My bubble -> swipe left
-          if (delta < 0) {
-            raw = Math.abs(delta);
-          }
-        } else {
-          // Other user's bubble -> swipe right
-          if (delta > 0) {
-            raw = delta;
-          }
-        }
-      
-        if (raw > 0) {
-          const resisted = Math.min(
-            MAX_DRAG,
-            raw * 0.6 + Math.pow(raw, 0.7)
-          );
-      
-          setDragX(resisted);
-        }
-      }}
-
-      onPointerUp={() => {
-        const wasSwipe = hasMoved.current;
-
-        setDragging(false);
-      
-        const wasDrag = dragX > 10; // small threshold
-      
-        if (!wasSwipe && !didLongPress.current && isMediaMessage) {
-          openPreview(0);
-        }
-      
-        setTimeout(() => {
-          isDraggingRef.current = false;
-        }, 0);
-      
-        if (!wasDrag && dragX === 0) {
-          // allow click to pass
-        }
-      
-        if (dragX > TRIGGER) {
-          setReplyingTo(msg);
-        }
-      
-        requestAnimationFrame(() => {
-          setDragX(0);
-        });
-      }}
-
-      onPointerCancel={() => {
-        setDragging(false);
-        setDragX(0);
-      }}
-
-      onTouchStart={(e) => {
-        didLongPress.current = false;
-      
-        const touch = e.touches[0];
-      
-        touchStartX.current = touch.clientX;
-        touchStartY.current = touch.clientY;
-        movedDuringTouch.current = false;
-      
-        longPressTimer.current = setTimeout(() => {
-          if (!movedDuringTouch.current) {
-            didLongPress.current = true;
-      
-            setActiveReaction(id);
-            toggleSelectMessage(id);
-          }
-        }, 500);
-      }}
-  
-      onTouchMove={(e) => {
-        const touch = e.touches[0];
-      
-        const dx = Math.abs(
-          touch.clientX - touchStartX.current
-        );
-      
-        const dy = Math.abs(
-          touch.clientY - touchStartY.current
-        );
-      
-        if (dx > 5 || dy > 5) {
-          movedDuringTouch.current = true;
-      
-          if (longPressTimer.current) {
-            clearTimeout(longPressTimer.current);
-            longPressTimer.current = null;
-          }
-        }
-      }}
-
-      onTouchEnd={() => {
-        if (longPressTimer.current) {
-          clearTimeout(longPressTimer.current);
-          longPressTimer.current = null;
-        }
-      
-        setTimeout(() => {
-          didLongPress.current = false;
-        }, 100);
-      }}
-
-      onTouchCancel={() => {
-        if (longPressTimer.current) {
-          clearTimeout(longPressTimer.current);
-          longPressTimer.current = null;
-        }
-      }}
     >
 
       {/* REACTIONS */}
-      {showReactions && (
-        <div className="absolute top-[60px] left-1/2 -translate-x-1/2 z-[998]">
-  
-          <div className="bg-gray-200 dark:bg-[#202c33] rounded-full px-2 py-1 flex items-center gap-4 shadow-2xl border border-indigo-400 dark:border-gray-700 overflow-x-auto max-w-[95vw]">
-  
-            {emojis.map(
-              (emoji) => (
-                <button
-                  key={emoji}
-                  onClick={() => {
-  
-                    onReaction?.(
-                      id,
-                      emoji
-                    );
-
-                    setActiveReaction(null);
-    
-                    clearSelection();
-                  }}
-                  className="text-[15px] active:scale-125 transition-transform"
-                >
-                  {emoji}
-                </button>
-              )
-            )}
-  
-            <button className="w-10 h-10 flex items-center justify-center text-gray-700 dark:text-white text-2xl"
-              onClick={() => {
-
-                clearSelection();
-  
-                setTimeout(() => {
-                  onOpenDrawer?.("emoji");
-                }, 0);
-              }}
-            >
-              +
-            </button>
-  
-          </div>
-        </div>
+      {mounted &&
+      showReactions &&
+      createPortal(
+        <ReactionPicker
+          visible={showReactions}
+          top={reactionPosition.top}
+          left={reactionPosition.left}
+          messageId={id}
+          onReact={onReaction}
+          onClose={() => {
+            setActiveReaction(null);
+            clearSelection();
+          }}
+          isCurrentUser={isCurrentUser}
+          onOpenEmojiDrawer={() => {
+            clearSelection();
+            onOpenDrawer?.("emoji");
+          }}
+        />,
+        document.body
       )}
 
       <div
+        ref={bubbleRef}
         style={{
           transform: isCurrentUser
             ? `translateX(-${dragX}px)`
@@ -826,89 +437,28 @@ export default function PrivateBubble({
         `}
       >
         {isVisualMedia && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              console.log("FORWARD", msg);
-              onForward([msg]);
-            }}
-            className={`
-              absolute top-1/2 -translate-y-1/2
-              ${
-                isCurrentUser
-                  ? '-left-10'
-                  : '-right-10'
-              }
-              z-20
-              p-2
-              rounded-full
-              bg-black/40
-              text-white
-            `}
-          >
-            <Forward size={18} />
-          </button>
+          <ForwardButton
+            isCurrentUser={isCurrentUser}
+            onClick={onForward}
+          />
         )}
 
         {/* REPLY ICON */}
-        {dragging && dragX > 8 && (
-          <div
-            className={`
-              absolute top-1/2 -translate-y-1/2
-              ${
-                isCurrentUser
-                  ? '-left-8'
-                  : '-right-8'
-              }
-
-              pointer-events-none
-              dark:text-white text-gray-700 text-xs
-            `}
-            style={{
-              opacity: Math.min(
-                1,
-                dragX / TRIGGER
-              ),
-
-              transform: `
-                translateY(-50%)
-                scale(${Math.min(
-                  1,
-                  0.7 + dragX / 300
-                )})
-              `,
-            }}
-          >
-            <Reply />
-          </div>
+        {dragging && dragX > 8 && canReply && (
+          <ReplyIcon
+              dragging={dragging}
+              dragX={dragX}
+              trigger={TRIGGER}
+              isCurrentUser={isCurrentUser}
+          />
         )}
 
         {/* REPLY PREVIEW */}
         {hasValidReply && (
-          <div
-            className={`
-              mb-2 px-3 py-2 rounded-lg border-l-4
-
-              ${
-                isCurrentUser
-                  ? 'bg-gray-300 dark:bg-[#037561] border-green-300'
-                  : 'bg-[#182229] border-green-500'
-              }
-            `}
-          >
-  
-            {replyPreview?.thumb && (
-              <img
-                src={replyPreview.thumb}
-                className="w-10 h-10 rounded object-cover mt-1"
-              />
-            )}
-
-            <p className="text-xs text-gray-700 dark:text-gray-300 line-clamp-2 break-words">
-              {replyPreview?.text}
-            </p>
-
-          </div>
+          <ReplyPreview
+            reply={msg.reply_to}
+            isCurrentUser={isCurrentUser}
+          />
         )}
 
         {/* MEDIA RENDER */}
@@ -968,79 +518,13 @@ export default function PrivateBubble({
         )}
 
         {/* FOOTER */}
-        <div className="flex justify-end items-center gap-1 mt-1">
-
-          <span
-            className={`text-[10px] ${
-              isCurrentUser
-                ? 'text-gray-700 dark:text-green-100'
-                : 'text-gray-700 dark:text-gray-400'
-            }`}
-          >
-            {msg.created_at &&
-              new Date(
-                msg.created_at
-              ).toLocaleTimeString(
-                [],
-                {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                }
-              )}
-          </span>
-
-          {isCurrentUser && (
-            <span className="text-[10px] opacity-80 text-gray-700 dark:text-white">
-
-              {msg.status ===
-                'sending' && '⏳'}
-
-              {msg.status ===
-                'pending' && '⏳'}
-
-              {msg.status ===
-                'sent' && '✓'}
-
-                {msg.status ===
-                  'delivered' && '✓✓'}
-
-              <span className="text-indigo-600 dark:text-indigo-300">
-                {msg.status ===
-                  'seen' && '✓✓'}
-              </span>
-              {msg.status === "uploading" && "⏳"}
-              {msg.status === "failed" && isMediaMessage && ("⏳")}
-
-              {!isMediaMessage && (
-                <>
-                  {msg.status === "failed" && (
-                    <button
-                      onClick={() =>
-                        retryFailedMessage?.(msg)
-                      }
-                      className="text-red-500 dark:text-red-300"
-                    >
-                      Retry
-                    </button>
-                  )}
-              
-                  {msg.status === "pending" && (
-                    <button
-                      onClick={() =>
-                        resendPendingMessage?.(msg)
-                      }
-                      className="text-red-300"
-                    >
-                      Resend
-                    </button>
-                  )}
-                </>
-              )}
-
-            </span>
-          )}
-
-        </div>
+        <MessageFooter
+          msg={msg}
+          isCurrentUser={isCurrentUser}
+          isMediaMessage={isMediaMessage}
+          retryFailedMessage={retryFailedMessage}
+          resendPendingMessage={resendPendingMessage}
+        />
 
         {/* REACTION SUMMARY */}
         {msg.reactions?.length > 0 && (

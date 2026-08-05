@@ -34,6 +34,7 @@ export async function sendCommunityMessage({
     ...message,
     client_id,
     chat: message.chat,
+    communityId: message.communityId,
 
     sender: currentUser.id,
 

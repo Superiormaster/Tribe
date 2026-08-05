@@ -2,8 +2,8 @@ from rest_framework import mixins, viewsets, generics, permissions, status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from .models import Report, ProblemReport, Feedback, SupportRequest
-from .serializers import ReportSerializer, ProblemReportSerializer, FeedbackSerializer, SupportRequestSerializer
+from .models import Report, ProblemReport, Feedback, SupportRequest, ContactMessage
+from .serializers import ReportSerializer, ProblemReportSerializer, FeedbackSerializer, SupportRequestSerializer, ContactMessageSerializer
 
 class ReportViewSet(viewsets.ModelViewSet):
     serializer_class = ReportSerializer
@@ -39,6 +39,24 @@ class ProblemReportViewSet(
     ):
         serializer.save(
             user=self.request.user
+        )
+
+class ContactMessageCreateView(generics.CreateAPIView):
+    queryset = ContactMessage.objects.all()
+    serializer_class = ContactMessageSerializer
+    permission_classes = [permissions.AllowAny]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(
+            {
+                "success": True,
+                "message": "Your message has been received. We'll get back to you soon.",
+            },
+            status=status.HTTP_201_CREATED,
         )
 
 class SupportRequestCreateView(generics.CreateAPIView):

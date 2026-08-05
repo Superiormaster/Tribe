@@ -68,6 +68,7 @@ export function useRecentChats({
   const [recentLoaded, setRecentLoaded] = useState(false);
   const [nextPage, setNextPage] =
     useState<number | null>(1);
+  const [initialFetchDone, setInitialFetchDone] = useState(false);
 
   const [pinnedCount, setPinnedCount] =
     useState(0);
@@ -138,6 +139,7 @@ export function useRecentChats({
       } finally {
         setRecentLoaded(true);
         setLoadingRecent(false);
+        setInitialFetchDone(true);
       }
     },
     [
@@ -186,6 +188,7 @@ export function useRecentChats({
 
     loadingRecent,
     recentLoaded,
+    initialFetchDone,
 
     nextPage,
 
