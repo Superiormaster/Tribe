@@ -59,7 +59,10 @@ export default function CreatePostPage() {
   });
   
   const allowReel = permissions.allow_reels;
-  const allowVideo = isGlobal || permissions.allow_videos;
+  const allowVideo =
+    isGlobal ||
+    isReel ||
+    permissions.allow_videos;
   const allowImages = true;
   
   const {

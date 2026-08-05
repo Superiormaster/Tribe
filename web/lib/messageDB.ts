@@ -654,24 +654,48 @@ export async function getAllPostDrafts() {
     );
 }
 
-export async function saveAutoPostDraft(data: any){
-
+export async function saveAutoPostDraft(data: any) {
     const db = await getDB();
+    if (!db) return;
 
-    if(!db) return;
-
-    await db.put(POST_DRAFT_STORE,{
-
-        ...data,
-
-        draftId:data.draftId,
-
-        type:"auto",
-
-        updated_at:Date.now()
-
+    console.log("Saving draft:", {
+        draftId: data.draftId,
+        content: data.content,
+        imageFiles: data.imageFiles,
+        imageUrls: data.imageUrls,
+        video: data.video,
+        selectedCommunity: data.selectedCommunity,
     });
+    
+    console.log(data.imageFiles);
 
+    if (data.imageFiles.length > 0) {
+        console.log(data.imageFiles[0]);
+        console.log(data.imageFiles[0] instanceof File);
+        console.log(Object.getPrototypeOf(data.imageFiles[0]));
+    }
+
+    try {
+        const record = {
+            draftId: data.draftId,
+            type: "auto",
+            updated_at: Date.now(),
+        
+            content: data.content,
+            imageUrls: data.imageUrls,
+            selectedCommunity: data.selectedCommunity,
+        
+            imageFiles: data.imageFiles,
+            video: data.video,
+        };
+        
+        console.log(record);
+        
+        await db.put(POST_DRAFT_STORE, record);
+    } catch (err) {
+        console.error("Draft save failed", err);
+        console.log("Data causing error:", data);
+    }
 }
 
 export async function deletePostDraft(draftId: string) {
