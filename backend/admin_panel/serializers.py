@@ -1,9 +1,11 @@
 from rest_framework import serializers
+from .models import ContactReply
 from feedback.models import (
     Feedback,
     Report,
     ProblemReport,
     SupportRequest,
+    ContactMessage,
 )
 from communities.models import Tribe, TribeRequest
 from django.contrib.auth import get_user_model
@@ -325,3 +327,45 @@ class SupportRequestSerializer(serializers.ModelSerializer):
     class Meta:
         model = SupportRequest
         fields = "__all__"
+
+
+class ContactReplySerializer(serializers.ModelSerializer):
+
+    sent_by_name = serializers.CharField(
+        source="sent_by.username",
+        read_only=True
+    )
+
+
+    class Meta:
+
+        model = ContactReply
+
+        fields = [
+            "id",
+            "message",
+            "sent_by_name",
+            "created_at",
+        ]
+  
+class ContactMessageSerializer(serializers.ModelSerializer):
+
+    replies = ContactReplySerializer(
+        many=True,
+        read_only=True
+    )
+  
+    class Meta:
+        model = ContactMessage
+        fields = [
+            "id",
+            "name",
+            "email",
+            "subject",
+            "message",
+            "replies",
+            "status",
+            "admin_note",
+            "created_at",
+            "updated_at",
+        ]

@@ -888,6 +888,14 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
         break;
     }
   };
+  
+  const websiteUrl = profile?.website
+    ? websiteToUrl(profile.website)
+    : null;
+  
+  const websiteHost = websiteUrl
+    ? new URL(websiteUrl).hostname
+    : "";
 
   if (loading && !mounted)
     return (
@@ -1063,9 +1071,9 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
           </div>
         </div>
 
-        {profile?.website && (
-          <a href={websiteToUrl(profile?.website)} target="_blank" rel="noopener noreferrer" className="text-indigo-600">
-            {websiteDisplay(new URL(profile?.website).hostname)}
+        {websiteUrl && (
+          <a href={websiteUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600">
+            {websiteHost}
           </a>
         )}
 

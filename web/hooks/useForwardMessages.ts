@@ -179,7 +179,8 @@ export function useForwardMessages({
 
   const createForwardPayload = (
     msg: any,
-    chatId: number,
+    chatId: number | undefined,
+    communityId: number | undefined,
     forwardCaption: string,
     currentUser: any
   ) => {
@@ -196,32 +197,30 @@ export function useForwardMessages({
     const newCaption =
       forwardCaption?.trim();
   
-    return {
+    const payload = {
       client_id: crypto.randomUUID(),
     
       sender: currentUser?.id,
     
-      chat: chatId,
+      ...(chatId !== undefined && {
+        chat: chatId,
+      }),
     
-      caption:
-        canUseCaption
-          ? (
-              newCaption ||
-              originalCaption
-            )
-          : originalCaption,
+      ...(communityId !== undefined && {
+        community: communityId,
+      }),
     
-      encrypted_text:
-        canUseCaption
-          ? (
-              newCaption ||
-              originalCaption
-            )
-          : (
-              msg.encrypted_text ??
-              msg.text ??
-              ""
-            ),
+      caption: canUseCaption
+        ? (newCaption || originalCaption)
+        : originalCaption,
+    
+      encrypted_text: canUseCaption
+        ? (newCaption || originalCaption)
+        : (
+            msg.encrypted_text ??
+            msg.text ??
+            ""
+          ),
     
       media_url: msg.media_url ?? [],
       media_type: msg.media_type ?? "text",
@@ -233,6 +232,8 @@ export function useForwardMessages({
     
       files: [],
     };
+    
+    return payload;
   };
 
   const sendForward = async () => {
@@ -253,14 +254,19 @@ export function useForwardMessages({
         for (const msg of forwardMessages) {
     
             const payload =
-                createForwardPayload(
-                    msg,
-                    destination.type === "private"
-                        ? destination.chatId!
-                        : destination.communityId!,
-                    caption,
-                    currentUser
-                );
+              createForwardPayload(
+                  msg,
+                  destination.type === "private"
+                      ? destination.chatId
+                      : undefined,
+          
+                  destination.type === "community"
+                      ? destination.communityId
+                      : undefined,
+          
+                  caption,
+                  currentUser
+              );
     
             if (destination.type === "private") {
     

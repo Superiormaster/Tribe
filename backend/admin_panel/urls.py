@@ -11,6 +11,7 @@ from .views import (
     get_users,
     get_user_detail,
     ban_user,
+    reply_contact_message,
     support_requests,
     support_request_detail,
     resolve_support_request,
@@ -33,6 +34,9 @@ from .views import (
     update_tribe,
     delete_tribe,
     create_community,
+    update_contact_message,
+    contact_message_detail,
+    contact_messages,
 )
 
 urlpatterns = [
@@ -96,6 +100,10 @@ urlpatterns = [
         "tribes/<int:tribe_id>/",
         admin_tribe_detail,
     ),
+    path(
+        "contacts/<int:message_id>/reply/",
+        reply_contact_message,
+    ),
     
     path(
         "communities/create/",
@@ -151,5 +159,19 @@ urlpatterns = [
     path(
         "support/<int:support_id>/update/",
         update_support_request,
+    ),
+    path(
+        "contacts/",
+        contact_messages
+    ),
+    
+    path(
+        "contacts/<int:message_id>/",
+        contact_message_detail
+    ),
+    
+    path(
+        "contacts/<int:message_id>/update/",
+        update_contact_message
     ),
 ]

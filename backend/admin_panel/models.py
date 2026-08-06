@@ -13,3 +13,34 @@ class AdminActionLog(models.Model):
     target_type = models.CharField(max_length=100)  # user, post, tribe
     reason = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+class ContactReply(models.Model):
+
+    contact = models.ForeignKey(
+        "feedback.ContactMessage",
+        related_name="replies",
+        on_delete=models.CASCADE,
+    )
+
+    message = models.TextField()
+
+    sent_by = models.ForeignKey(
+        User,
+        related_name="contact_replies",
+        on_delete=models.SET_NULL,
+        null=True,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+
+
+    class Meta:
+        ordering = [
+            "-created_at"
+        ]
+
+
+    def __str__(self):
+        return f"Reply to {self.contact.email}"

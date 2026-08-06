@@ -387,7 +387,7 @@ export default function PrivateBubble({
     >
 
       {/* REACTIONS */}
-      {mounted &&
+      {mounted && canReply &&
       showReactions &&
       createPortal(
         <ReactionPicker
@@ -400,6 +400,7 @@ export default function PrivateBubble({
             setActiveReaction(null);
             clearSelection();
           }}
+          onClearSelection={clearSelection}
           isCurrentUser={isCurrentUser}
           onOpenEmojiDrawer={() => {
             clearSelection();
@@ -439,7 +440,10 @@ export default function PrivateBubble({
         {isVisualMedia && (
           <ForwardButton
             isCurrentUser={isCurrentUser}
-            onClick={onForward}
+            onClick={() => {
+                setActiveReaction(null);
+                onForward();
+            }}
           />
         )}
 

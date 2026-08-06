@@ -1082,9 +1082,11 @@ class NearbyPagination(PageNumberPagination):
 @permission_classes([IsAuthenticated])
 def discover_connect(request):
     user = request.user
-
-    if not user.latitude or not user.longitude:
-        return Response([])
+  
+    has_location = (
+        user.latitude is not None and
+        user.longitude is not None
+    )
 
     # =========================
     # EXCLUSIONS
@@ -1112,7 +1114,7 @@ def discover_connect(request):
         list(pending_ids) +
         [user.id]
     )
-
+  
     # =========================
     # FILTER USERS ON DB LEVEL
     # =========================
@@ -1124,10 +1126,8 @@ def discover_connect(request):
         id__in=blocked_ids
     ).exclude(
         id__in=blocked_me_ids
-    ).exclude(
-        latitude=None
     )
-
+  
     # Convert once → avoid queryset surprises
     users = list(users)
 
@@ -1144,30 +1144,32 @@ def discover_connect(request):
     # =========================
     nearby = []
 
-    for u in users:
-        if not u.latitude or not u.longitude:
-            continue
-
-        dist = distance(
-            user.latitude,
-            user.longitude,
-            u.latitude,
-            u.longitude
-        )
-
-        if dist < 5:
-            rel = get_relationship(user, u)
-
-            nearby.append({
-                "id": u.id,
-                "username": u.username,
-                "avatar": get_avatar(u),
-                "bio": u.bio,
-                "distance": round(dist, 2),
-                "connected": rel["is_connected"],
-                "requestPending": rel["request_sent"],
-                "requestReceived": rel["request_received"],
-            })
+    if has_location:
+      for u in users:
+          if not u.latitude or not u.longitude:
+              print("Skipped because no coordinates")
+              continue
+  
+          dist = distance(
+              user.latitude,
+              user.longitude,
+              u.latitude,
+              u.longitude
+          )
+  
+          if dist < 5:
+              rel = get_relationship(user, u)
+  
+              nearby.append({
+                  "id": u.id,
+                  "username": u.username,
+                  "avatar": get_avatar(u),
+                  "bio": u.bio,
+                  "distance": round(dist, 2),
+                  "connected": rel["is_connected"],
+                  "requestPending": rel["request_sent"],
+                  "requestReceived": rel["request_received"],
+              })
 
     # =========================
     # FALLBACK (FIXED)
@@ -1221,6 +1223,7 @@ def sent_requests(request):
             status="pending"
         )
         .select_related("to_user")
+        .order_by("-created_at")
     )
 
     muted_ids, blocked_ids, blocked_me_ids = get_block_filters(user)
@@ -1266,6 +1269,7 @@ def pending_requests(request):
             status="pending"
         )
         .select_related("from_user")
+        .order_by("-created_at")
     )
 
     muted_ids, blocked_ids, blocked_me_ids = get_block_filters(user)

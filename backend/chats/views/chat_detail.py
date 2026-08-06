@@ -157,6 +157,7 @@ def chat_detail(request, chat_id):
                 if other_user and other_user.avatar
                 else None
             ),
+            "fcm_token": other_user.fcm_token,
         } if other_user else None,
         "is_message_blocked":
             is_message_blocked,

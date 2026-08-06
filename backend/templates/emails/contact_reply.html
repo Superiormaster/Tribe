@@ -1,0 +1,28 @@
+{% extends "emails/base.html" %}
+
+{% block title %}
+Hello, {{ name }}
+{% endblock %}
+
+{% block content %}
+
+<h2>
+Welcome to Tribe 🎉
+</h2>
+
+<p>
+Thank you for contacting Tribe.
+</p>
+
+
+<p>
+{{ relply_message }}
+</p>
+
+<hr>
+
+<p>
+  Your Original Subject:account<strong>{{ subject }}</strong>
+</p>
+
+{% endblock %}

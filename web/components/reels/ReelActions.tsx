@@ -5,6 +5,7 @@ import {
     MessageCircle,
     Eye,
     Volume2,
+    MoreVertical,
     VolumeX,
 } from "lucide-react";
 
@@ -22,6 +23,7 @@ interface ReelActionsProps {
     setOpenCommentsPostId: (
         id: number
     ) => void;
+    onMenuClick: () => void;
 }
 
 export default function ReelActions({
@@ -30,6 +32,7 @@ export default function ReelActions({
     videoRefs,
     handleLike,
     setOpenCommentsPostId,
+    onMenuClick,
 }: ReelActionsProps) {
 
     const { showShare } = useShareSheet();
@@ -56,7 +59,12 @@ export default function ReelActions({
     };
 
     return (
-        <div className="absolute right-3 bottom-24 flex flex-col items-center gap-4 text-white z-20">
+        <>
+          {/* Right-side gradient */}
+          <div className="absolute inset-y-0 right-0 w-24 bg-gradient-to-l from-black/40 via-black/10 to-transparent pointer-events-none z-40" />
+        
+          {/* Action buttons */}
+          <div className="absolute right-3 bottom-6 z-50 flex flex-col items-center gap-4 text-white">
 
             {/* Like */}
             <button
@@ -72,6 +80,10 @@ export default function ReelActions({
                 }`}
             >
 
+              <div className="rounded-full bg-black/25 backdrop-blur-sm p-2"
+              style={{
+                filter: "drop-shadow(0 2px 6px rgba(0,0,0,.8))",
+              }}>
                 <Heart
                     className={`w-7 h-7 ${
                         reel.is_liked
@@ -79,12 +91,13 @@ export default function ReelActions({
                             : ""
                     }`}
                 />
+              </div>
 
-                {reel.likes_count > 0 && (
-                    <span className="text-xs">
-                        {formatCount(reel.likes_count)}
-                    </span>
-                )}
+              {reel.likes_count > 0 && (
+                <span className="text-xs">
+                  {formatCount(reel.likes_count)}
+                </span>
+              )}
             </button>
 
             {/* Comments */}
@@ -97,22 +110,32 @@ export default function ReelActions({
                 }}
                 className="flex flex-col items-center"
             >
+              <div className="rounded-full bg-black/25 backdrop-blur-sm p-2"
+              style={{
+                filter: "drop-shadow(0 2px 6px rgba(0,0,0,.8))",
+              }}>
                 <MessageCircle className="w-7 h-7"/>
-                {reel.comments_count > 0 && (
-                    <span className="text-xs">
-                        {formatCount(reel.comments_count)}
-                    </span>
-                )}
+              </div>
+              {reel.comments_count > 0 && (
+                <span className="text-xs">
+                  {formatCount(reel.comments_count)}
+                </span>
+              )}
             </button>
 
             {/* Views */}
             <div className="flex flex-col items-center">
+              <div className="rounded-full bg-black/25 backdrop-blur-sm p-2"
+              style={{
+                filter: "drop-shadow(0 2px 6px rgba(0,0,0,.8))",
+              }}>
                 <Eye className="w-7 h-7"/>
-                {reel.views_count > 0 && (
-                    <span className="text-xs">
-                        {formatCount(reel.views_count)}
-                    </span>
-                )}
+              </div>
+              {reel.views_count > 0 && (
+                <span className="text-xs">
+                  {formatCount(reel.views_count)}
+                </span>
+              )}
             </div>
 
             {/* Share */}
@@ -127,11 +150,30 @@ export default function ReelActions({
             <button
                 onClick={toggleMute}
             >
+              <div className="rounded-full bg-black/25 backdrop-blur-sm p-2"
+              style={{
+                filter: "drop-shadow(0 2px 6px rgba(0,0,0,.8))",
+              }}>
                 {muted
                     ? <VolumeX/>
                     : <Volume2/>
                 }
+              </div>
             </button>
-        </div>
+            
+             <button
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onMenuClick();
+                }}
+                className="rounded-full bg-black/25 backdrop-blur-sm p-2"
+                style={{
+                filter: "drop-shadow(0 2px 6px rgba(0,0,0,.8))",
+              }}
+            >
+                <MoreVertical className="w-5 h-5" />
+            </button>
+          </div>
+        </>
     );
 }

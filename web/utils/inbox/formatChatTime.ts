@@ -6,21 +6,30 @@ export function formatChatTime(dateString?: string) {
 
   const now = new Date();
 
-  const diffMs = now.getTime() - date.getTime();
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-  if (diffDays < 1) {
+  // Today
+  if (date.toDateString() === now.toDateString()) {
     return date.toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",
+      hour12: true,
     });
   }
 
-  if (diffDays === 1) return "Yesterday";
+  // Yesterday
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
 
+  if (date.toDateString() === yesterday.toDateString()) {
+    return "Yesterday";
+  }
+
+  // Older
   return date.toLocaleDateString([], {
     day: "2-digit",
     month: "short",
-    year: "numeric",
+    year:
+      date.getFullYear() !== now.getFullYear()
+        ? "numeric"
+        : undefined,
   });
 }

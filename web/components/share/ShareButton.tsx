@@ -28,7 +28,12 @@ export default function ShareButton({
         dark ? "text-white" : "text-gray-500"
       }`}
     >
-      <Share2 className={vertical ? "w-7 h-7" : "mr-2"} />
+      <div className="rounded-full bg-black/25 backdrop-blur-sm p-2" 
+      style={{
+        filter: "drop-shadow(0 2px 6px rgba(0,0,0,.8))",
+      }}>
+        <Share2 className={vertical ? "w-7 h-7" : "mr-2"} />
+      </div>
 
       {post.shares_count > 0 && (
         <span className={vertical ? "text-xs" : ""}>

@@ -2,6 +2,7 @@
 
 import { Video, MoreVertical } from 'lucide-react';
 import type { ChatUser } from "@/components/chat/chat";
+import AppLink from '@/components/AppLink';
 
 type Props = {
   chatUser: ChatUser | null;
@@ -43,22 +44,33 @@ export default function ChatHeader({
         </button>
 
         <div className="w-9 h-9 rounded-full relative overflow-hidden bg-gray-300 flex items-center justify-center">
-          {chatUser?.avatar ? (
-            <img
-              src={chatUser.avatar}
-              className="w-9 h-9 rounded-full object-cover"
-            />
-          ) : (
-            <div className="w-9 h-9 rounded-full bg-gray-400 flex items-center justify-center text-white text-xs">
-              {chatUser?.username?.slice(0, 2).toUpperCase()}
+          <AppLink
+            href={`/main/profile/${chatUser?.username}`}
+            prefetch={false}
+          >
+            <div className="w-9 h-9 rounded-full relative overflow-hidden bg-gray-300 flex items-center justify-center">
+              {chatUser?.avatar ? (
+                <img
+                  src={chatUser.avatar}
+                  className="w-9 h-9 rounded-full object-cover"
+                />
+              ) : (
+                <div className="w-9 h-9 rounded-full bg-gray-400 flex items-center justify-center text-white text-xs">
+                  {chatUser?.username?.slice(0, 2).toUpperCase()}
+                </div>
+              )}
             </div>
-          )}
+          </AppLink>
         </div>
 
         <div className="flex flex-col">
-          <span className="font-semibold">
+          <AppLink
+            href={`/main/profile/${chatUser?.username}`}
+            prefetch={false}
+            className="font-semibold hover:underline"
+          >
             {chatUser?.username}
-          </span>
+          </AppLink>
 
           <div className="text-xs text-gray-500">
             {isTyping ? (

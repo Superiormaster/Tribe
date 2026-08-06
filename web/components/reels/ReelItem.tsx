@@ -138,7 +138,7 @@ export default function ReelItem({
       }}
     >
       <video
-        className="absolute inset-0 w-full h-full object-cover"
+        className="absolute inset-0 w-full h-full pointer-events-none object-cover"
         ref={(el)=>{
             if(!el) return;
       
@@ -201,6 +201,9 @@ export default function ReelItem({
         videoRefs={player.videoRefs}
         handleLike={reelsState.handleLike}
         setOpenCommentsPostId={reelsState.setOpenCommentsPostId}
+        onMenuClick={()=>
+            setMenuOpen(true)
+        }
       />
       <ReelControls
         show={showControls}
@@ -236,9 +239,6 @@ export default function ReelItem({
         }
         toggleStar={
             reelsState.toggleStar
-        }
-        onMenuClick={()=>
-            setMenuOpen(true)
         }
       />
       <ReelMenu

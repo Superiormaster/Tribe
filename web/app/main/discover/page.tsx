@@ -28,9 +28,9 @@ export default function DiscoverPage() {
     try {
       setLoading(true);
   
-      const data = await apiRequest('api/users/discover-connect/');
-      setUsers(data);
-  
+      const data = await apiRequest("api/users/discover-connect/");
+
+      setUsers(data.results ?? data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -127,7 +127,7 @@ export default function DiscoverPage() {
           >
 
             {/* LEFT */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-1 min-w-0">
 
               {user.avatar ? (
                 <img
@@ -140,16 +140,19 @@ export default function DiscoverPage() {
                 </div>
               )}
 
-              <div>
-                <p className="font-semibold">{user.username}</p>
-                <p className="text-xs text-gray-500">
-                  {user.bio || 'No bio available'}
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold truncate">
+                  {user.username}
+                </p>
+              
+                <p className="text-xs text-gray-500 ">
+                  {user.bio || "No bio available"}
                 </p>
               </div>
             </div>
 
             {/* RIGHT ACTIONS */}
-            <div className="flex items-end flex-col gap-2">
+            <div className="flex flex-col items-end gap-2 flex-shrink-0">
 
               {/* CONNECT */}
               {!user.connected && !user.requestPending && (

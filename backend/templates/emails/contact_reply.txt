@@ -1,0 +1,13 @@
+Hello {{ name }},
+
+Thank you for contacting Tribe.
+
+{{ reply_message }}
+
+
+Your original subject:
+{{ subject }}
+
+
+Regards,
+Tribe Team

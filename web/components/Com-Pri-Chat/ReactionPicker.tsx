@@ -13,6 +13,7 @@ type Props = {
   onReact: (messageId: string, emoji: string) => void;
   onClose: () => void;
   onOpenEmojiDrawer?: () => void;
+  onClearSelection?: () => void;
 };
 
 export default function ReactionPicker({
@@ -24,6 +25,7 @@ export default function ReactionPicker({
   onReact,
   onClose,
   onOpenEmojiDrawer,
+  onClearSelection,
 }: Props) {
   if (!visible) return null;
 
@@ -62,6 +64,7 @@ export default function ReactionPicker({
             key={emoji}
             onClick={() => {
               onReact(messageId, emoji);
+              onClearSelection?.();
               onClose();
             }}
             className="
@@ -77,6 +80,7 @@ export default function ReactionPicker({
 
         <button
           onClick={() => {
+            onClearSelection?.();
             onClose();
             onOpenEmojiDrawer?.();
           }}

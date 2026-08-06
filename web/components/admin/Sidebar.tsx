@@ -47,6 +47,16 @@ export default function Sidebar({
       icon: Flag,
     },
     {
+      name: 'Contact',
+      path: '/admin/contact',
+      icon: Flag,
+    },
+    {
+      name: 'Support',
+      path: '/admin/support',
+      icon: Flag,
+    },
+    {
       name: 'Tribes',
       path: '/admin/tribes',
       icon: Users,

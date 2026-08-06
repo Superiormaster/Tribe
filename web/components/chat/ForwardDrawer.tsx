@@ -87,10 +87,10 @@ export default function ForwardDrawer({
   
     const first = media[0];
   
-    if (msg.text?.trim()) {
+    if (msg.text?.trim() || msg.encrypted_text?.trim()) {
       return {
         type: "text",
-        text: msg.text.slice(0, 30),
+        text: (msg.text || msg.encrypted_text).slice(0, 30),
       };
     }
   

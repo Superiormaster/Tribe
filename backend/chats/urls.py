@@ -29,6 +29,7 @@ from .views import (
     pin_community_message,
     unpin_community_message,
     end_call,
+    mark_community_delivered,
     VoiceRoomViewSet,
     CommunityEventViewSet,
     AnnouncementChannelViewSet,
@@ -160,7 +161,7 @@ urlpatterns = [
         "<int:community_id>/community-messages/window/",
         community_message_window,
     ),
-    path("<int:community_id>/community-detail/", community_detail),
+    path("communities/<int:community_id>/community-detail/", community_detail),
     path(
         "<int:community_id>/community-hide-all/",
         hide_all_community_messages
@@ -204,9 +205,13 @@ urlpatterns = [
   
     # BASE ROUTES
     path("mark-seen/", mark_seen),
-    path("mark-community-seen/", mark_community_seen),
+    path("communities/mark-community-seen/", mark_community_seen),
     path("mark-delivered/", mark_delivered),
     path("mark-all-delivered/", mark_all_delivered),
+    path(
+      "communities/mark-community-delivered/",
+      mark_community_delivered,
+    ),
     path("messages/<int:message_id>/react/", react_message),
     path("get-or-create/", get_or_create_chat),
     path("<int:chat_id>/retrieve-community-chat/", retrieve_community_chat),

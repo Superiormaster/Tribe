@@ -60,7 +60,7 @@ export default function ContactHero() {
           </a>
 
           <AppLink
-            href="/register"
+            href="/auth/register"
             className="rounded-full border border-white/30 bg-white/10 px-8 py-3 font-semibold backdrop-blur transition hover:bg-white/20"
           >
             Join Tribe

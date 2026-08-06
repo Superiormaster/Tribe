@@ -22,6 +22,7 @@ import { useDeleteCommunityMessages } from '@/utils/communityChatPage/useDeleteC
 import { useSendCommunityMessage } from '@/utils/communityChatPage/useSendCommunityMessage';
 import { useVoiceGestures } from '@/utils/chatPage/useVoiceGestures';
 import { getMessageKey } from '@/utils/chat/messageMerger';
+import ChatSelectionBar from '@/components/chat/ChatSelectionBar';
 import type { MessageStatus } from "@/utils/chat/messageContract";
 import { useNetwork } from '@/components/networkConnection/NetworkContext';
 import { useCallManager } from '@/lib/useCallManager';
@@ -48,6 +49,7 @@ export default function CommunityChat({ communityId }: Props) {
   const { replace } = useNavigation();
   
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [activeReaction, setActiveReaction] = useState<string | null>(null);
   
   const [showDrawer, setShowDrawer] = useState(false);
   const [drawerMode, setDrawerMode] = useState<
@@ -346,6 +348,11 @@ export default function CommunityChat({ communityId }: Props) {
     }
   };
   
+  const closeReactionPicker = () => {
+    setActiveReaction(null);
+    clearSelection();
+  };
+  
   const voice = useVoiceGestures({
     startRecording,
     stopRecording,
@@ -541,6 +548,27 @@ export default function CommunityChat({ communityId }: Props) {
     
         onClose={closeForward}
         onSend={sendForward}
+      />
+  
+      <ChatSelectionBar
+        selectedCount={selectedMessages.size}
+        hasMultiple={selectedMessages.size > 1}
+        onClose={() => {
+          closeReactionPicker();
+          clearSelection();
+        }}
+        onReply={() => {
+          closeReactionPicker();
+          setReplyingTo(getSelectedMessages()[0]);
+        }}
+        onForward={() => {
+          closeReactionPicker();
+          openForward(getSelectedMessages());
+        }}
+        onDelete={() => {
+          closeReactionPicker();
+          setShowDeleteModal(true);
+        }}
       />
     </div>
   );

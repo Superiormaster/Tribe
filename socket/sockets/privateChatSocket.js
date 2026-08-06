@@ -148,18 +148,16 @@ module.exports = function privateChatSocket(
           reply_to,
         } = data;
         
-        const chatRes =
+        const detail =
           await socket.api.get(
-            `chats/${chatId}/`
+            `chats/chats/${chatId}/detail/`
           );
         
         const recipient =
-          chatRes.data.members.find(
-            m => m.id !== socket.user.id
-          );
+          detail.data.other_user;
         
         const recipientId =
-          recipient.id;
+          recipient?.id;
 
         const payload = {
           chat: chatId,

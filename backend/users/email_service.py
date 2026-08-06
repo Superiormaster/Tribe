@@ -52,6 +52,41 @@ def send_welcome_email(email):
         text_content=text,
     )
 
+def send_contact_reply_email(
+    email,
+    name,
+    subject,
+    reply_message,
+):
+
+    context = {
+        "name": name,
+        "subject": subject,
+        "reply_message": reply_message,
+        "logo_url": settings.LOGO_URL,
+        "unsubscribe_url": settings.UNSUBSCRIBE_URL,
+    }
+
+
+    html = render_to_string(
+        "emails/contact_reply.html",
+        context
+    )
+
+
+    text = render_to_string(
+        "emails/contact_reply.txt",
+        context
+    )
+
+
+    send_brevo_email(
+        to_email=email,
+        subject=f"Re: {subject}",
+        html_content=html,
+        text_content=text,
+    )
+
 def send_login_alert_email(
     email,
     device,

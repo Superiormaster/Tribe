@@ -60,7 +60,7 @@ export default function SupportList() {
   return (
     <div className="space-y-5">
 
-      <h1 className="text-2xl font-bold">
+      <h1 className="text-2xl dark:text-white text-gray-700 font-bold">
         Support Requests
       </h1>
 
@@ -98,7 +98,7 @@ export default function SupportList() {
 
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex text-gray-500 gap-3">
 
         <select
           value={status}
@@ -194,7 +194,7 @@ export default function SupportList() {
 
               <div>
 
-                <p className="font-semibold">
+                <p className="font-semibold text-gray-700 dark:text-gray-200">
                   {item.subject}
                 </p>
 
@@ -205,7 +205,7 @@ export default function SupportList() {
               </div>
 
               <span
-                className={`px-2 py-1 rounded-full text-xs text-white ${
+                className={`px-2 py-4 rounded-full text-xs text-white ${
                   item.status==="resolved"
                   ? "bg-green-600"
 

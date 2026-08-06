@@ -2,13 +2,11 @@
 
 import { Video, Pin, Phone, MoreVertical } from 'lucide-react';
 import { formatCount } from '@/utils/formatCount';
+import AppLink from "@/components/AppLink";
+import { Community } from "@/utils/communityChatPage/community";
 
 type Props = {
-  communityData: {
-    name: string;
-    cover_image?: string;
-    members_count?: number;
-  } | null;
+  communityData: Community | null;
 
   onlineCount: number;
   chatLocked: boolean;
@@ -44,23 +42,32 @@ export default function CommunityChatHeader({
           ←
         </button>
 
-        <div className="w-9 h-9 rounded-full overflow-hidden bg-gray-300 flex items-center justify-center">
-          {communityData?.cover_image ? (
-            <img
-              src={communityData.cover_image}
-              className="w-9 h-9 object-cover"
-            />
-          ) : (
-            <div className="text-xs font-bold text-white">
-              {communityData?.name?.slice(0, 2)?.toUpperCase() || "CM"}
-            </div>
-          )}
-        </div>
+        <AppLink
+          href={`/main/community/${communityData?.id}`}
+          prefetch={false}
+        >
+          <div className="w-9 h-9 rounded-full overflow-hidden bg-gray-300 flex items-center justify-center">
+            {communityData?.cover_image ? (
+              <img
+                src={communityData.cover_image}
+                className="w-9 h-9 object-cover"
+              />
+            ) : (
+              <div className="text-xs font-bold text-white">
+                {communityData?.name?.slice(0, 2)?.toUpperCase() || "CM"}
+              </div>
+            )}
+          </div>
+        </AppLink>
 
         <div className="flex flex-col leading-tight">
-          <span className="font-semibold">
+          <AppLink
+            href={`/main/community/${communityData?.id}`}
+            prefetch={false}
+            className="font-semibold hover:underline"
+          >
             {communityData?.name || "Community"}
-          </span>
+          </AppLink>
       
           <div className="text-xs text-gray-500">
             {isTyping ? (

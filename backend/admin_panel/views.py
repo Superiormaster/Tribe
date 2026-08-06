@@ -25,8 +25,14 @@ from .serializers import (
     UserSerializer,
     ProblemReportSerializer,
     FeedbackSerializer,
+    ContactMessageSerializer,
+    SupportRequestSerializer,
 )
-from feedback.models import Feedback, Report, ProblemReport
+from .models import ContactReply
+from feedback.models import Feedback, SupportRequest, Report, ProblemReport, ContactMessage
+from users.email_service import (
+    send_contact_reply_email
+)
 
 class AdminReportPagination(PageNumberPagination):
     page_size = 20
@@ -1039,3 +1045,192 @@ def update_support_request(request, support_id):
         "detail":
         "Support request updated successfully."
     })
+
+@api_view(["GET"])
+@permission_classes([IsAdmin])
+def contact_messages(request):
+
+    search = request.GET.get(
+        "search",
+        ""
+    ).strip()
+
+    status = request.GET.get(
+        "status",
+        ""
+    )
+
+
+    queryset = ContactMessage.objects.all()
+
+
+    if search:
+        queryset = queryset.filter(
+            Q(name__icontains=search)
+            | Q(email__icontains=search)
+            | Q(subject__icontains=search)
+            | Q(message__icontains=search)
+        )
+
+
+    if status:
+        queryset = queryset.filter(
+            status=status
+        )
+
+
+    paginator = AdminReportPagination()
+
+    page = paginator.paginate_queryset(
+        queryset,
+        request
+    )
+
+
+    serializer = ContactMessageSerializer(
+        page,
+        many=True
+    )
+
+
+    return paginator.get_paginated_response(
+        serializer.data
+    )
+
+@api_view(["GET"])
+@permission_classes([IsAdmin])
+def contact_message_detail(request, message_id):
+
+    message = ContactMessage.objects.filter(
+        id=message_id
+    ).first()
+
+
+    if not message:
+        return Response(
+            {
+                "detail":"Not found."
+            },
+            status=404
+        )
+
+
+    serializer = ContactMessageSerializer(
+        message
+    )
+
+
+    return Response(
+        serializer.data
+    )
+
+@api_view(["PATCH"])
+@permission_classes([IsAdmin])
+def update_contact_message(request, message_id):
+
+    message = ContactMessage.objects.filter(
+        id=message_id
+    ).first()
+
+
+    if not message:
+        return Response(
+            {
+                "detail": "Contact message not found."
+            },
+            status=404
+        )
+
+
+    if "status" in request.data:
+
+        valid_status = [
+            "new",
+            "read",
+            "replied",
+            "closed",
+        ]
+
+
+        if request.data["status"] not in valid_status:
+            return Response(
+                {
+                    "detail":
+                    "Invalid status."
+                },
+                status=400
+            )
+
+
+        message.status = request.data["status"]
+
+
+    if "admin_note" in request.data:
+
+        message.admin_note = request.data["admin_note"]
+
+
+    message.save()
+
+
+    serializer = ContactMessageSerializer(
+        message
+    )
+
+
+    return Response(
+        serializer.data
+    )
+
+@api_view(["POST"])
+@permission_classes([IsAdmin])
+def reply_contact_message(request, message_id):
+
+    contact = get_object_or_404(
+        ContactMessage,
+        id=message_id,
+    )
+
+    reply_text = request.data.get("message")
+
+    if not reply_text:
+        return Response(
+            {
+                "detail": "Reply message is required."
+            },
+            status=400,
+        )
+
+    try:
+
+        send_contact_reply_email(
+            email=contact.email,
+            name=contact.name,
+            subject=contact.subject,
+            reply_message=reply_text,
+        )
+
+    except Exception:
+
+        return Response(
+            {
+                "detail": "Failed to send email. Please try again."
+            },
+            status=500,
+        )
+
+    reply = ContactReply.objects.create(
+        contact=contact,
+        message=reply_text,
+        sent_by=request.user,
+    )
+
+    contact.status = "replied"
+    contact.save()
+
+    return Response(
+        {
+            "message": "Reply sent successfully.",
+            "reply": ContactReplySerializer(reply).data,
+        }
+    )

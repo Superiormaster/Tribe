@@ -55,6 +55,7 @@ export default function ChatPage() {
   const { user } = useContext(UserContext)!;
   const { canCommunicate } = useNetwork();
   const { replace } = useNavigation();
+  const [activeReaction, setActiveReaction] = useState<string | null>(null);
 
   useEffect(() => {
     console.log("Chat page mounted");
@@ -292,6 +293,11 @@ export default function ChatPage() {
     setMessages,
     clearSelection,
   });
+  
+  const closeReactionPicker = () => {
+    setActiveReaction(null);
+    clearSelection();
+  };
 
   const {
     files,
@@ -578,14 +584,22 @@ export default function ChatPage() {
       <ChatSelectionBar
         selectedCount={selectedMessages.size}
         hasMultiple={selectedMessages.size > 1}
-        onClose={clearSelection}
-        onReply={() =>
-          setReplyingTo(getSelectedMessages()[0])
-        }
-        onForward={() =>
-          openForward(getSelectedMessages())
-        }
-        onDelete={() => setShowDeleteModal(true)}
+        onClose={() => {
+          closeReactionPicker();
+          clearSelection();
+        }}
+        onReply={() => {
+          closeReactionPicker();
+          setReplyingTo(getSelectedMessages()[0]);
+        }}
+        onForward={() => {
+          closeReactionPicker();
+          openForward(getSelectedMessages());
+        }}
+        onDelete={() => {
+          closeReactionPicker();
+          setShowDeleteModal(true);
+        }}
       />
   
       <ForwardDrawer

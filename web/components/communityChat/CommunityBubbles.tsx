@@ -403,7 +403,7 @@ export default function CommunityBubbles({
     >
 
       {/* REACTIONS */}
-      {mounted &&
+      {mounted && canReply &&
       showReactions &&
       createPortal(
         <ReactionPicker
@@ -417,6 +417,7 @@ export default function CommunityBubbles({
             setActiveReaction(null);
             clearSelection();
           }}
+          onClearSelection={clearSelection}
           onOpenEmojiDrawer={() => {
             clearSelection();
             onOpenDrawer?.("emoji");
@@ -455,7 +456,10 @@ export default function CommunityBubbles({
         {isVisualMedia && (
           <ForwardButton
             isCurrentUser={isCurrentUser}
-            onClick={onForward}
+            onClick={() => {
+                setActiveReaction(null);
+                onForward();
+            }}
           />
         )}
 

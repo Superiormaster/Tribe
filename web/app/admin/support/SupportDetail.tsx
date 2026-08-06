@@ -103,7 +103,7 @@ export default function SupportDetail({
         ← Back
       </button>
 
-      <div className="border rounded-xl p-5 space-y-4">
+      <div className="border text-gray-700 dark:text-gray-300 rounded-xl p-5 space-y-4">
 
         <div>
 

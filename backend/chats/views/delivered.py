@@ -218,6 +218,78 @@ def mark_all_delivered(request):
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
+def mark_community_delivered(request):
+    community_id = request.data.get("communityId")
+    user = request.user
+
+    try:
+        chat = Chat.objects.get(
+            community_id=community_id,
+            chat_type="community",
+        )
+    except Chat.DoesNotExist:
+        return Response(
+            {"detail": "Community chat not found"},
+            status=404,
+        )
+
+    latest = (
+        chat.messages
+        .exclude(sender=user)
+        .filter(
+            is_deleted=False,
+            deleted_by_admin=False,
+        )
+        .order_by("-id")
+        .first()
+    )
+
+    if not latest:
+        return Response({
+            "messageIds": [],
+            "lastDeliveredMessageId": None,
+        })
+
+    participant, _ = ChatParticipant.objects.get_or_create(
+        chat=chat,
+        user=user,
+    )
+
+    previous_id = (
+        participant.last_delivered_message_id
+        or 0
+    )
+
+    if latest.id > previous_id:
+        participant.last_delivered_message = latest
+        participant.save(
+            update_fields=[
+                "last_delivered_message",
+            ]
+        )
+
+    message_ids = list(
+        chat.messages
+        .exclude(sender=user)
+        .filter(
+            is_deleted=False,
+            deleted_by_admin=False,
+            id__gt=previous_id,
+            id__lte=latest.id,
+        )
+        .values_list(
+            "id",
+            flat=True,
+        )
+    )
+
+    return Response({
+        "messageIds": message_ids,
+        "lastDeliveredMessageId": latest.id,
+    })
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def mark_community_seen(request):
     community_id = request.data.get("communityId")
     user = request.user

@@ -3,6 +3,7 @@
 import { useState, useContext, useEffect, useRef, useMemo } from 'react';
 import { useNavigation } from "@/utils/useNavigation"
 import { apiRequest } from '@/utils/api';
+import { getDisplayData } from "@/utils/inbox/display";
 import { createPortal } from "react-dom";
 import { useIsInstalled } from "@/hooks/useIsInstalled";
 import { useChatSocket } from '@/lib/useChatSocket';
@@ -26,7 +27,7 @@ import LocalInboxItem from "@/components/inbox/LocalInboxItem";
 import RecentInboxItem from "@/components/inbox/RecentInboxItem";
 import LocalCommunityItem from "@/components/inbox/LocalCommunityItem";
 import CommunityInboxItem from "@/components/inbox/CommunityInboxItem";
-import { getLocalChatIds } from "@/utils/inbox/localChats";
+import { getLocalChatIds, type InboxItem } from "@/utils/inbox/localChats";
 import { useLongPressSelection } from "@/hooks/inbox/useLongPressSelection";
 import { useConnectedUsers, type ConnectedUser } from "@/hooks/inbox/useConnectedUsers";
 import { useRecentChats, type Chat } from "@/hooks/inbox/useRecentChats";
@@ -534,6 +535,53 @@ export default function MessagesClient() {
     );
   }, [selectedChat.size]);
   
+  const inboxItems: InboxItem[] = [
+    ...localChats.map(chatId => ({
+      type: "local-private" as const,
+      chatId,
+      time: getDisplayData(
+        undefined,
+        drafts[chatId],
+        pendingMap[chatId]
+      ).displayTime,
+    })),
+  
+    ...privateRecentChats.map(chat => ({
+      type: "private" as const,
+      chat,
+      time: getDisplayData(
+        chat,
+        drafts[chat.chat_id],
+        pendingMap[chat.chat_id]
+      ).displayTime,
+    })),
+  
+    ...localCommunityChats.map(chatId => ({
+      type: "local-community" as const,
+      chatId,
+      time: getDisplayData(
+        undefined,
+        communityDrafts[chatId],
+        communityPendingMap[chatId]
+      ).displayTime,
+    })),
+  
+    ...communityRecentChats.map(chat => ({
+      type: "community" as const,
+      chat,
+      time: getDisplayData(
+        chat,
+        communityDrafts[chat.chat_id],
+        communityPendingMap[chat.chat_id]
+      ).displayTime,
+    })),
+  ].sort((a, b) => {
+    return (
+      new Date(b.time ?? 0).getTime() -
+      new Date(a.time ?? 0).getTime()
+    );
+  });
+  
   const dbReady =
     privateLoaded &&
     communityLoaded;
@@ -627,56 +675,68 @@ export default function MessagesClient() {
 
       {!showSkeleton && hasChats && (
         <>
-          {localChats.map(chatId => (
-            <LocalInboxItem
-              key={chatId}
-              chatId={chatId}
-              draft={drafts[chatId]}
-              pending={pendingMap[chatId]}
-              chatMeta={chatMeta[chatId]}
-              selected={selectedChat.has(chatId)}
-              bind={localPress.bind(chatId)}
-              currentUserId={currentUser.id}
-            />
-          ))}
+          {inboxItems.map(item => {
+            switch (item.type) {
           
-          {privateRecentChats.map(chat => (
-            <RecentInboxItem
-              key={chat.chat_id}
-              chat={chat}
-              draft={drafts[chat.chat_id]}
-              pending={pendingMap[chat.chat_id]}
-              selected={selectedChat.has(chat.chat_id)}
-              bind={recentPress.bind(chat)}
-              currentUserId={currentUser.id}
-            />
-          ))}
+              case "local-private":
+                return (
+                  <LocalInboxItem
+                    key={`lp-${item.chatId}`}
+                    chatId={item.chatId}
+                    draft={drafts[item.chatId]}
+                    pending={pendingMap[item.chatId]}
+                    chatMeta={chatMeta[item.chatId]}
+                    selected={selectedChat.has(item.chatId)}
+                    bind={localPress.bind(item.chatId)}
+                    currentUserId={currentUser.id}
+                  />
+                );
           
-          {localCommunityChats.map(chatId => (
-            <LocalCommunityItem
-              key={chatId}
-              chatId={chatId}
-              draft={communityDrafts[chatId]}
-              pending={communityPendingMap[chatId]}
-              chatMeta={communityChatMeta[chatId]}
-              selected={selectedChat.has(chatId)}
-              bind={localCommunityPress.bind(chatId)}
-              currentUserId={currentUser.id}
-            />
-          ))}
+              case "private":
+                return (
+                  <RecentInboxItem
+                    key={item.chat.chat_id}
+                    chat={item.chat}
+                    draft={drafts[item.chat.chat_id]}
+                    pending={pendingMap[item.chat.chat_id]}
+                    selected={selectedChat.has(item.chat.chat_id)}
+                    bind={recentPress.bind(item.chat)}
+                    currentUserId={currentUser.id}
+                  />
+                );
           
-          {communityRecentChats.map(chat => (
-            <CommunityInboxItem
-              key={chat.chat_id}
-              chat={chat}
-              draft={communityDrafts[chat.chat_id]}
-              pending={communityPendingMap[chat.chat_id]}
-              chatMeta={communityChatMeta[chat.chat_id]}
-              selected={selectedChat.has(chat.chat_id)}
-              bind={communityPress.bind(chat)}
-              currentUserId={currentUser.id}
-            />
-          ))}
+              case "local-community":
+                return (
+                  <LocalCommunityItem
+                    key={`lc-${item.chatId}`}
+                    chatId={item.chatId}
+                    draft={communityDrafts[item.chatId]}
+                    pending={communityPendingMap[item.chatId]}
+                    chatMeta={communityChatMeta[item.chatId]}
+                    selected={selectedChat.has(item.chatId)}
+                    bind={localCommunityPress.bind(item.chatId)}
+                    currentUserId={currentUser.id}
+                  />
+                );
+          
+              case "community":
+                return (
+                  <CommunityInboxItem
+                    key={item.chat.chat_id}
+                    chat={item.chat}
+                    draft={communityDrafts[item.chat.chat_id]}
+                    pending={communityPendingMap[item.chat.chat_id]}
+                    chatMeta={communityChatMeta[item.chat.chat_id]}
+                    selected={selectedChat.has(item.chat.chat_id)}
+                    bind={communityPress.bind(item.chat)}
+                    currentUserId={currentUser.id}
+                  />
+                );
+          
+              default:
+                return null;
+            }
+          })}
         </>
       )}
 
