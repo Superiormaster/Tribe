@@ -182,7 +182,18 @@ export default function EditProfile() {
       await apiRequest('api/users/me/', { method: 'PATCH', data: formData })
       push(`/main/profile/${user.username}`)
     } catch (err: any) {
-      setError(err.message || 'Something went wrong')
+      if (!navigator.onLine) {
+        setError("No internet connection.");
+      } else if (err.message === "Failed to fetch") {
+        setError("Network error. Please check your internet connection and try again.");
+      } else {
+        setError(
+          err.response?.data?.detail ||
+          err.response?.data?.message ||
+          err.message ||
+          "Something went wrong"
+        );
+      }
     } finally {
       setSaving(false)
     }
