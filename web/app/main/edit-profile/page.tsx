@@ -19,6 +19,11 @@ export default function EditProfile() {
   const [fullName, setFullName] = useState('')
   const [bio, setBio] = useState('')
   const [country, setCountry] = useState('')
+  const [avatarUploading, setAvatarUploading] = useState(false);
+    const [coverUploading, setCoverUploading] = useState(false);
+    
+    const [avatarUrl, setAvatarUrl] = useState("");
+    const [coverUrl, setCoverUrl] = useState("");
   const [city, setCity] = useState('')
   const [website, setWebsite] = useState('')
   const [whatDoYouDo, setWhatDoYouDo] = useState('')
@@ -71,24 +76,60 @@ export default function EditProfile() {
   }, [push])
 
   // Avatar preview
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      if (preview) URL.revokeObjectURL(preview)
-      setAvatar(file)
-      setPreview(URL.createObjectURL(file))
+  const handleAvatarChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+  
+    if (preview?.startsWith("blob:")) {
+      URL.revokeObjectURL(preview);
     }
-  }
+  
+    setAvatar(file);
+    setPreview(URL.createObjectURL(file));
+  
+    try {
+      setAvatarUploading(true);
+  
+      const uploaded = await uploadToCloudinary({
+        file,
+        folder: "Tribe/Avatars",
+      });
+  
+      setAvatarUrl(uploaded);
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
 
   // Cover preview
-  const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      if (coverPreview) URL.revokeObjectURL(coverPreview)
-      setCover(file)
-      setCoverPreview(URL.createObjectURL(file))
+  const handleCoverChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+  
+    if (coverPreview?.startsWith("blob:")) {
+      URL.revokeObjectURL(coverPreview);
     }
-  }
+  
+    setCover(file);
+    setCoverPreview(URL.createObjectURL(file));
+  
+    try {
+      setCoverUploading(true);
+  
+      const uploaded = await uploadToCloudinary({
+        file,
+        folder: "Tribe/Covers",
+      });
+  
+      setCoverUrl(uploaded);
+    } finally {
+      setCoverUploading(false);
+    }
+  };
 
   // Save profile
   const handleSave = async (e: React.FormEvent) => {
@@ -97,6 +138,11 @@ export default function EditProfile() {
 
     if (!username) return setError('Username is required')
     if (!email) return setError('Email is required')
+    if (avatarUploading || coverUploading) {
+      return setError(
+        "Please wait for image upload to finish."
+      );
+    }
 
     setSaving(true)
     try {
@@ -115,13 +161,22 @@ export default function EditProfile() {
       }
   
       // Upload avatar and cover if changed
-      if (avatar) {
-        const avatarUrl = await uploadToCloudinary({ file: avatar, folder: "Tribe/Avatars" })
-        formData.avatar = avatarUrl
+      const finalAvatar =
+        avatarUrl ||
+        (preview?.startsWith("http") ? preview : "");
+      
+      const finalCover =
+        coverUrl ||
+        (coverPreview?.startsWith("http")
+          ? coverPreview
+          : "");
+      
+      if (finalAvatar) {
+        formData.avatar = finalAvatar;
       }
-      if (cover) {
-        const coverUrl = await uploadToCloudinary({ file: cover, folder: "Tribe/Covers" })
-        formData.cover_photo = coverUrl
+      
+      if (finalCover) {
+        formData.cover_photo = finalCover;
       }
   
       await apiRequest('api/users/me/', { method: 'PATCH', data: formData })
@@ -313,8 +368,18 @@ export default function EditProfile() {
           </div>
         </div>
 
-        <button type="submit" disabled={saving} className="w-full py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition">
-          {saving ? 'Saving...' : 'Save Changes'}
+        <button type="submit" disabled={
+            saving ||
+            avatarUploading ||
+            coverUploading
+          } className="w-full py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 transition">
+          {
+            avatarUploading || coverUploading
+              ? "Uploading..."
+              : saving
+              ? "Saving..."
+              : "Save Changes"
+          }
         </button>
       </form>
     </div>
