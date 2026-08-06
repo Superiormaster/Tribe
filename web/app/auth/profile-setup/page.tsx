@@ -18,6 +18,11 @@ export default function ProfileSetup() {
   const [website, setWebsite] = useState('')
   const [creatorType, setCreatorType] = useState('')
   const [whatDoYouDo, setWhatDoYouDo] = useState('')
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [coverUploading, setCoverUploading] = useState(false);
+  
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [coverUrl, setCoverUrl] = useState("");
 
   const [cover,setCover] = useState<File | null>(null)
   const [coverPreview,setCoverPreview] = useState<string | null>(null)
@@ -93,24 +98,66 @@ export default function ProfileSetup() {
   }))
   
   // Avatar preview handler
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      if (preview) URL.revokeObjectURL(preview)
-      setAvatar(file)
-      setPreview(URL.createObjectURL(file))
+  const handleAvatarChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+  
+    if (preview?.startsWith("blob:")) {
+      URL.revokeObjectURL(preview);
     }
-  }
+  
+    const localPreview = URL.createObjectURL(file);
+  
+    setAvatar(file);
+    setPreview(localPreview);
+  
+    try {
+      setAvatarUploading(true);
+  
+      const uploaded = await uploadToCloudinary({
+        file,
+        folder: "Tribe/Avatars",
+      });
+      console.log(uploaded);
+  
+      setAvatarUrl(uploaded);
+    } finally {
+      setAvatarUploading(false);
+    }
+  };
 
   // Cover preview
-  const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      if (coverPreview) URL.revokeObjectURL(coverPreview)
-      setCover(file)
-      setCoverPreview(URL.createObjectURL(file))
+  const handleCoverChange = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+  
+    if (coverPreview?.startsWith("blob:")) {
+      URL.revokeObjectURL(coverPreview);
     }
-  }
+  
+    const localPreview = URL.createObjectURL(file);
+  
+    setCover(file);
+    setCoverPreview(localPreview);
+  
+    try {
+      setCoverUploading(true);
+  
+      const uploaded = await uploadToCloudinary({
+        file,
+        folder: "Tribe/Covers",
+      });
+      console.log(uploaded);
+  
+      setCoverUrl(uploaded);
+    } finally {
+      setCoverUploading(false);
+    }
+  };
 
   // Submit handler
   const handleSubmit = async (e: React.FormEvent) => {
@@ -143,23 +190,23 @@ export default function ProfileSetup() {
       return setError('Gender is required')
     }
 
-    try {
-      let avatarUrl = preview
-      let coverUrl = coverPreview
+    if (avatarUploading || coverUploading) {
+      setLoading(false);
+      return setError(
+        "Please wait for image upload to finish."
+      );
+    }
 
-      if (avatar) {
-        avatarUrl = await uploadToCloudinary({
-          file: avatar,
-          folder: "Tribe/Avatars",
-        });
-      }
-      
-      if (cover) {
-        coverUrl = await uploadToCloudinary({
-          file: cover,
-          folder: "Tribe/Covers",
-        });
-      }
+    try {
+      const finalAvatar =
+        avatarUrl ||
+        (preview?.startsWith("http") ? preview : "");
+
+      const finalCover =
+        coverUrl ||
+        (coverPreview?.startsWith("http")
+          ? coverPreview
+          : "");
   
       const formData = new FormData()
       const dob = year && month && day ? `${year}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}` : null;
@@ -182,8 +229,10 @@ export default function ProfileSetup() {
       formData.append('gender', gender)
   
       if (dob) formData.append('date_of_birth', dob)
-      if (avatarUrl) formData.append('avatar', avatarUrl)
-      if (coverUrl) formData.append('cover_photo', coverUrl)
+      if (finalAvatar)
+          formData.append("avatar", finalAvatar);
+      if (finalCover)
+          formData.append("cover_photo", finalCover);
   
       for (const [key, value] of formData.entries()) {
         console.log(key, value);
@@ -250,11 +299,13 @@ export default function ProfileSetup() {
         )}
 
         <div>
-          <label className="text-gray-700 dark:text-gray-300 font-medium">Cover Photo</label>
-
+          <label className="text-gray-700 dark:text-gray-300 font-medium">
+            Cover Photo
+          </label>
+        
           <div
-            className="h-40 rounded-lg cursor-pointer border overflow-hidden border-gray-300 dark:border-gray-600 flex items-center justify-center border-2 border-dashed relative hover:border-indigo-500 transition"
-            onClick={()=>document.getElementById('cover')?.click()}
+            className="relative h-40 rounded-lg overflow-hidden border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-indigo-500 cursor-pointer"
+            onClick={() => document.getElementById("cover")?.click()}
           >
             {coverPreview ? (
               <img
@@ -263,24 +314,27 @@ export default function ProfileSetup() {
                 className="w-full h-full object-cover"
               />
             ) : (
-              <span className="text-gray-400 dark:text-gray-500 text-sm text-center px-2">
-                Click to upload
-              </span>
+              <div className="w-full h-full flex items-center justify-center">
+                <span className="text-gray-400">
+                  Click to upload
+                </span>
+              </div>
             )}
           </div>
-
+        
+          {/* Put it HERE */}
+          {coverUploading && (
+            <div className="relative mt-2 h-1 w-full overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+              <div className="absolute inset-y-0 w-1/4 bg-indigo-600 animate-[loading_1.2s_linear_infinite]" />
+            </div>
+          )}
+        
           <input
             id="cover"
-            type="file"
             hidden
+            type="file"
             accept="image/*"
-            onChange={(e)=>{
-              const file = e.target.files?.[0]
-              if(file){
-                setCover(file)
-                setCoverPreview(URL.createObjectURL(file))
-              }
-            }}
+            onChange={handleCoverChange}
           />
         </div>
         
@@ -290,28 +344,34 @@ export default function ProfileSetup() {
             Profile Picture
           </label>
 
-          <div
-            className="w-32 h-32 rounded-full border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center cursor-pointer overflow-hidden relative hover:border-indigo-500 transition"
-            onClick={() => document.getElementById('avatarInput')?.click()}
-          >
-            {preview ? (
-              <img
-                src={preview}
-                alt="Avatar Preview"
-                className="w-full h-full object-cover rounded-full"
-              />
-            ) : (
-              <span className="text-gray-400 dark:text-gray-500 text-sm text-center px-2">
-                Click to upload
-              </span>
-            )}
-            <input
-              type="file"
-              id="avatarInput"
-              accept="image/*"
-              className="hidden"
-              onChange={handleAvatarChange}
+          <div className="relative w-32 h-32">
+            <div
+                className={`absolute inset-0 rounded-full border-4 border-indigo-600 border-t-transparent ${
+                    avatarUploading ? "animate-spin" : "hidden"
+                }`}
             />
+        
+            <div
+                className="w-32 h-32 rounded-full overflow-hidden border-2 border-dashed cursor-pointer"
+                onClick={() => document.getElementById("avatarInput")?.click()}
+            >
+                {preview ? (
+                    <img
+                        src={preview}
+                        className="w-full h-full object-cover rounded-full"
+                    />
+                ) : (
+                    <span>Click to upload</span>
+                )}
+        
+                <input
+                    id="avatarInput"
+                    hidden
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarChange}
+                />
+            </div>
           </div>
         </div>
 
@@ -529,6 +589,8 @@ export default function ProfileSetup() {
           type="submit"
           disabled={
             loading ||
+            avatarUploading ||
+            coverUploading ||
             !fullName.trim() ||
             !email.trim() ||
             !username.trim() ||
@@ -537,6 +599,8 @@ export default function ProfileSetup() {
           }
           className={`w-full py-3 rounded-lg font-semibold transition ${
             loading ||
+            avatarUploading ||
+            coverUploading ||
             !fullName.trim() ||
             !email.trim() ||
             !username.trim() ||
@@ -546,7 +610,13 @@ export default function ProfileSetup() {
               : 'bg-indigo-600 hover:bg-indigo-700 text-white'
           }`}
         >
-          {loading ? 'Saving...' : 'Complete Profile'}
+          {
+            avatarUploading || coverUploading
+              ? "Uploading..."
+              : loading
+              ? "Saving..."
+              : "Complete Profile"
+          }
         </button>
       </form>
     </div>
