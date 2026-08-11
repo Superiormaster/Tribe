@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
-import { MetricCard as MetricCardType } from "./types";
+import { MetricCard as MetricCardType } from "@/hooks/analytics/types";
 
 interface Props {
   metric: MetricCardType;

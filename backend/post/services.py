@@ -51,7 +51,7 @@ def build_base_queryset(user):
         "user",
         "community"
     ).prefetch_related(
-      "media_files"
+      "media_files__asset"
     ).annotate(
         likes_count=Count("likes", distinct=True),
         comments_count=Count("comments", distinct=True),
@@ -129,6 +129,14 @@ def build_global_feed(
                   Repost.objects.filter(
                       id__in=repost_ids,
                       is_deleted=False,
+                      post__is_approved=True,
+                      post__is_deleted=False,
+                  ).exclude(
+                      post__user_id__in=muted_ids
+                  ).exclude(
+                      post__user_id__in=blocked_ids
+                  ).exclude(
+                      post__user_id__in=blocked_me_ids
                   )
                   .select_related(
                       "user",
@@ -231,7 +239,9 @@ def build_global_feed(
     )
 
     reposts = Repost.objects.filter(
-        is_deleted=False
+        is_deleted=False,
+        post__is_deleted=False,
+        post__is_approved=True,
     ).select_related(
         "user",
         "post",
@@ -621,7 +631,7 @@ def build_reels_queryset(user):
             "community",
         )
         .prefetch_related(
-            "media_files",
+            "media_files__asset",
         )
         .annotate(
             likes_count=Count("likes", distinct=True),

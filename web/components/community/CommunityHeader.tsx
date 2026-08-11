@@ -44,9 +44,9 @@ export default function CommunityHeader({
       >
         {muted ? <VolumeX size={14} /> : <Volume2 size={14} />}
       </button>
-      {community.intro_video && (
+      {community.intro_video_url && (
         <video
-          src={community.intro_video}
+          src={community.intro_video_url}
           className="absolute top-0 left-0 w-full h-full object-cover"
           autoPlay
           loop
@@ -58,9 +58,9 @@ export default function CommunityHeader({
       <div className="absolute inset-0 bg-black/30" />
 
       <div className="absolute top-4 left-4 w-24 h-24 rounded-full overflow-hidden border-4 border-white z-20">
-        {community.cover_image ? (
+        {community.cover_image_url ? (
           <img
-            src={community.cover_image}
+            src={community.cover_image_url}
             className="w-full h-full object-cover"
           />
         ) : (

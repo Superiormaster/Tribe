@@ -10,7 +10,19 @@ import {
   useMemo,
   useCallback,
 } from 'react';
-import { apiRequest } from "@/utils/api";
+
+import { apiRequest } from '@/utils/api';
+
+type NetworkStatus =
+  | 'offline'
+  | 'poor'
+  | 'slow'
+  | 'good';
+
+type ConnectionType =
+  | 'wifi'
+  | 'cellular'
+  | 'unknown';
 
 interface NetworkContextType {
   isOnline: boolean;
@@ -21,16 +33,9 @@ interface NetworkContextType {
 
   latency: number | null;
 
-  networkStatus:
-    | "offline"
-    | "poor"
-    | "slow"
-    | "good";
+  networkStatus: NetworkStatus;
 
-  connectionType:
-    | "wifi"
-    | "cellular"
-    | "unknown";
+  connectionType: ConnectionType;
 
   startReconnect: () => void;
   finishReconnect: () => void;
@@ -38,14 +43,18 @@ interface NetworkContextType {
 
 const NetworkContext =
   createContext<NetworkContextType>({
-    isOnline: true,
-    serverReachable: true,
-    canCommunicate: true,
+    isOnline: false,
+    serverReachable: false,
     socketConnected: false,
-    latency: null,
-    networkStatus: "good",
+    canCommunicate: false,
     reconnecting: false,
+
+    latency: null,
+
+    networkStatus: 'offline',
+
     connectionType: 'unknown',
+
     startReconnect: () => {},
     finishReconnect: () => {},
   });
@@ -55,148 +64,361 @@ export function NetworkProvider({
 }: {
   children: ReactNode;
 }) {
-  const [isOnline, setIsOnline] = useState(true);
-  const [mounted, setMounted] = useState(false);
-  const [latency, setLatency] = useState<number | null>(null);
-  const timeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [networkStatus, setNetworkStatus] = useState<
-    "offline" | "poor" | "slow" | "good"
-  >("good");
-  const renders = useRef(0);
-  renders.current++;
-  
-  console.log("NetworkProvider", renders.current);
-  
-  useEffect(() => {
-    setMounted(true);
-    updateConnection();
-  }, []);
-  
-  const [socketConnected, setSocketConnected] = useState(false);
-  const firedReconnect = useRef(false);
-  
-  const [
-    connectionType,
-    setConnectionType,
-  ] = useState<
-    "wifi"
-    | "cellular"
-    | "unknown"
-  >("unknown");
-  
-  const previousReachable =
-    useRef(true);
-
-  const [serverReachable,
-    setServerReachable] =
-    useState(true);
-
-  const [isSlowConnection,
-    setIsSlowConnection] =
+  const [mounted, setMounted] =
     useState(false);
 
-  const [reconnecting,
-    setReconnecting] =
+  const [isOnline, setIsOnline] =
     useState(false);
+
+  const [serverReachable, setServerReachable] =
+    useState(false);
+
+  const [socketConnected, setSocketConnected] =
+    useState(false);
+
+  const [reconnecting, setReconnecting] =
+    useState(false);
+
+  const [latency, setLatency] =
+    useState<number | null>(null);
+
+  const [networkStatus, setNetworkStatus] =
+    useState<NetworkStatus>('offline');
+
+  const [connectionType, setConnectionType] =
+    useState<ConnectionType>('unknown');
+
+  const checkGenerationRef =
+    useRef(0);
+
+  const reconnectingRef =
+    useRef(false);
+
+  const wasReachableRef =
+    useRef(false);
+
+  const reconnectEventFiredRef =
+    useRef(false);
 
   const updateConnection =
-    () => {
-      if (timeout.current) {
-        clearTimeout(timeout.current);
+    useCallback(() => {
+      if (
+        typeof navigator === 'undefined'
+      ) {
+        return;
       }
-  
-      timeout.current = setTimeout(() => {
-        const online =
-          navigator.onLine;
-  
-        setIsOnline(prev => prev === online ? prev : online);
-  
-        const connection =
-          (
-            navigator as any
-          ).connection ||
-          (
-            navigator as any
-          ).mozConnection ||
-          (
-            navigator as any
-          ).webkitConnection;
-  
-        if (!connection) {
-          setIsSlowConnection(false);
-          setConnectionType('unknown');
-          return;
-        }
-  
-        const type =
-          connection.type === "wifi"
-            ? "wifi"
-            : connection.type === "cellular"
-            ? "cellular"
-            : "unknown";
-  
-        setConnectionType(prev =>
-          prev === type ? prev : type
-        );
-  
-        const slow =
-          connection.effectiveType ===
-            'slow-2g' ||
-          connection.effectiveType ===
-            '2g' ||
-          connection.downlink < 1;
-  
-        setIsSlowConnection(prev =>
-          prev === slow ? prev : slow
-        );
-      }, 500);
-    };
 
-  const handleOffline =
-    () => {
-      setIsOnline(prev => prev ? false : prev);
-      setServerReachable(prev => prev ? false : prev);
-      setReconnecting(prev => prev ? false : prev);
-      previousReachable.current =
-        false;
-    };
+      const online =
+        navigator.onLine;
 
-  const handleOnline = async () => {
-    updateConnection();
-  
-    setIsOnline(prev => prev === true ? prev : true);
-  
-    const ok = await checkServer();
-  
-    if (!ok) {
-      return;
-    }
-  
-    startReconnect();
-  
-    window.dispatchEvent(
-      new Event("network-reconnected")
-    );
-  };
-  
+      setIsOnline(online);
+
+      if (!online) {
+        setNetworkStatus('offline');
+        return;
+      }
+
+      const connection =
+        (navigator as any).connection ||
+        (navigator as any).mozConnection ||
+        (navigator as any).webkitConnection;
+
+      if (!connection) {
+        setConnectionType('unknown');
+        return;
+      }
+
+      const type =
+        connection.type === 'wifi'
+          ? 'wifi'
+          : connection.type === 'cellular'
+          ? 'cellular'
+          : 'unknown';
+
+      setConnectionType(type);
+
+      const effectiveType =
+        connection.effectiveType;
+
+      const downlink =
+        Number(connection.downlink);
+
+      const isSlow =
+        effectiveType === 'slow-2g' ||
+        effectiveType === '2g' ||
+        (
+          Number.isFinite(downlink) &&
+          downlink > 0 &&
+          downlink < 1
+        );
+
+      if (isSlow) {
+        setNetworkStatus('slow');
+      }
+    }, []);
+
   const startReconnect =
     useCallback(() => {
+      reconnectingRef.current = true;
       setReconnecting(true);
     }, []);
-  
+
   const finishReconnect =
     useCallback(() => {
+      reconnectingRef.current = false;
       setReconnecting(false);
     }, []);
-  
-  const canCommunicate =
-    mounted &&
-    isOnline &&
-    socketConnected &&
-    serverReachable;
 
+  const checkServer =
+    useCallback(async () => {
+      if (
+        typeof navigator === 'undefined'
+      ) {
+        return false;
+      }
+
+      if (!navigator.onLine) {
+        checkGenerationRef.current++;
+
+        setIsOnline(false);
+        setServerReachable(false);
+        setNetworkStatus('offline');
+
+        wasReachableRef.current = false;
+
+        return false;
+      }
+
+      const generation =
+        ++checkGenerationRef.current;
+
+      const start =
+        performance.now();
+
+      try {
+        const response =
+          await apiRequest(
+            'api/users/ping/'
+          );
+
+        /*
+         * Ignore stale request results.
+         */
+        if (
+          generation !==
+          checkGenerationRef.current
+        ) {
+          return false;
+        }
+
+        /*
+         * Internet may have disappeared
+         * while the request was running.
+         */
+        if (!navigator.onLine) {
+          setIsOnline(false);
+          setServerReachable(false);
+          setNetworkStatus('offline');
+
+          wasReachableRef.current =
+            false;
+
+          return false;
+        }
+
+        const elapsed =
+          performance.now() - start;
+
+        const rounded =
+          Math.round(elapsed / 100) * 100;
+
+        const status: NetworkStatus =
+          elapsed < 300
+            ? 'good'
+            : elapsed < 1000
+            ? 'slow'
+            : 'poor';
+
+        const ok =
+          response?.status === 'ok';
+
+        const wasReachable =
+          wasReachableRef.current;
+
+        setIsOnline(true);
+
+        setLatency(
+          rounded
+        );
+
+        setNetworkStatus(
+          status
+        );
+
+        setServerReachable(
+          ok
+        );
+
+        wasReachableRef.current =
+          ok;
+
+        /*
+         * Backend has just become reachable.
+         */
+        if (
+          ok &&
+          !wasReachable &&
+          !reconnectEventFiredRef.current
+        ) {
+          reconnectEventFiredRef.current =
+            true;
+
+          startReconnect();
+
+          window.dispatchEvent(
+            new Event(
+              'network-reconnected'
+            )
+          );
+        }
+
+        /*
+         * Backend became unreachable again.
+         * Allow another reconnect event later.
+         */
+        if (!ok) {
+          reconnectEventFiredRef.current =
+            false;
+
+          wasReachableRef.current =
+            false;
+        }
+
+        return ok;
+
+      } catch (error) {
+        if (
+          generation !==
+          checkGenerationRef.current
+        ) {
+          return false;
+        }
+
+        wasReachableRef.current =
+          false;
+
+        reconnectEventFiredRef.current =
+          false;
+
+        setServerReachable(
+          false
+        );
+
+        if (
+          !navigator.onLine
+        ) {
+          setIsOnline(false);
+          setNetworkStatus(
+            'offline'
+          );
+        } else {
+          /*
+           * Browser says online,
+           * but backend/API could not
+           * be reached.
+           */
+          setIsOnline(true);
+          setNetworkStatus(
+            'poor'
+          );
+        }
+
+        return false;
+      }
+    }, [
+      startReconnect,
+    ]);
+
+  const handleOffline =
+    useCallback(() => {
+      checkGenerationRef.current++;
+
+      wasReachableRef.current =
+        false;
+
+      reconnectEventFiredRef.current =
+        false;
+
+      reconnectingRef.current =
+        false;
+
+      setIsOnline(false);
+
+      setServerReachable(false);
+
+      setReconnecting(false);
+
+      setNetworkStatus(
+        'offline'
+      );
+
+      window.dispatchEvent(
+        new Event(
+          'network-offline'
+        )
+      );
+    }, []);
+
+  const handleOnline =
+    useCallback(async () => {
+      /*
+       * IMPORTANT:
+       *
+       * Do NOT immediately assume that
+       * the backend is reachable.
+       */
+      updateConnection();
+
+      /*
+       * Browser says internet exists,
+       * but serverReachable remains false
+       * until checkServer confirms it.
+       */
+      setIsOnline(true);
+
+      setServerReachable(false);
+
+      const ok =
+        await checkServer();
+
+      if (!ok) {
+        return;
+      }
+
+      /*
+       * checkServer() already fires
+       * network-reconnected when appropriate.
+       */
+    }, [
+      updateConnection,
+      checkServer,
+    ]);
+
+  /*
+   * Initial browser/network listeners.
+   */
   useEffect(() => {
+    setMounted(true);
+
     updateConnection();
+
+    if (
+      navigator.onLine
+    ) {
+      checkServer();
+    } else {
+      handleOffline();
+    }
 
     window.addEventListener(
       'online',
@@ -209,15 +431,9 @@ export function NetworkProvider({
     );
 
     const connection =
-      (
-        navigator as any
-      ).connection ||
-      (
-        navigator as any
-      ).mozConnection ||
-      (
-        navigator as any
-      ).webkitConnection;
+      (navigator as any).connection ||
+      (navigator as any).mozConnection ||
+      (navigator as any).webkitConnection;
 
     connection?.addEventListener(
       'change',
@@ -240,164 +456,128 @@ export function NetworkProvider({
         updateConnection
       );
     };
+  }, [
+    updateConnection,
+    checkServer,
+    handleOnline,
+    handleOffline,
+  ]);
+
+  /*
+   * Periodically verify backend reachability.
+   */
+  useEffect(() => {
+    if (!mounted) {
+      return;
+    }
+
+    const interval =
+      setInterval(() => {
+        if (
+          navigator.onLine
+        ) {
+          checkServer();
+        }
+      }, 60000);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [
+    mounted,
+    checkServer,
+  ]);
+
+  /*
+   * Socket state.
+   *
+   * IMPORTANT:
+   * Socket connectivity does NOT automatically
+   * mean HTTP/API connectivity.
+   */
+  useEffect(() => {
+    const handleSocketConnected =
+      () => {
+        setSocketConnected(true);
+      };
+
+    const handleSocketDisconnected =
+      () => {
+        setSocketConnected(false);
+      };
+
+    window.addEventListener(
+      'socket-connected',
+      handleSocketConnected
+    );
+
+    window.addEventListener(
+      'socket-disconnected',
+      handleSocketDisconnected
+    );
+
+    return () => {
+      window.removeEventListener(
+        'socket-connected',
+        handleSocketConnected
+      );
+
+      window.removeEventListener(
+        'socket-disconnected',
+        handleSocketDisconnected
+      );
+    };
   }, []);
 
   /*
-    Detect internet but backend dead.
-  */
-  const checkServer =
-    useCallback(async () => {
-      if (!navigator.onLine) {
-        setServerReachable(false);
-        return false;
-      }
-      const start = performance.now();
+   * HTTP/API communication.
+   *
+   * Do NOT require socketConnected here.
+   *
+   * Uploads, posts, drafts, API requests etc.
+   * can work without the socket.
+   */
+  const canCommunicate =
+    mounted &&
+    isOnline &&
+    serverReachable;
 
-      try {
-          const response = await apiRequest("api/users/ping/");
-      
-          const time = performance.now() - start;
-          const rounded = Math.round(time / 100) * 100;
+  const value =
+    useMemo(
+      () => ({
+        isOnline,
 
-          const status =
-              time < 300
-                  ? "good"
-                  : time < 1000
-                  ? "slow"
-                  : "poor";
+        serverReachable,
 
-          setLatency(prev =>
-              prev === rounded ? prev : rounded
-          );
-      
-          setNetworkStatus(prev =>
-            prev === status ? prev : status
-          );
-      
-          const ok = response?.status === "ok";
-          setServerReachable(prev =>
-            prev === ok ? prev : ok
-          );
+        socketConnected,
 
-          if (ok && !previousReachable.current && !firedReconnect.current) {
-              firedReconnect.current = true;
-          
-              startReconnect();
-          
-              window.dispatchEvent(
-                  new Event("network-reconnected")
-              );
-          }
-          
-          if (!ok) {
-              firedReconnect.current = false;
-          }
+        canCommunicate,
 
-          previousReachable.current = ok;
-          return ok;
-      } catch {
-          previousReachable.current = false;
-          setNetworkStatus(prev =>
-            prev === "offline" ? prev : "offline"
-          );
-          setServerReachable(prev =>
-            prev ? false : prev
-          );
-          return false;
-      }
-    }, []);
-  
-  useEffect(() => {
-    if (!mounted) return;
-  
-    checkServer();
-  
-    window.addEventListener(
-      "online",
-      checkServer
+        reconnecting,
+
+        latency,
+
+        networkStatus,
+
+        connectionType,
+
+        startReconnect,
+
+        finishReconnect,
+      }),
+      [
+        isOnline,
+        serverReachable,
+        socketConnected,
+        canCommunicate,
+        reconnecting,
+        latency,
+        networkStatus,
+        connectionType,
+        startReconnect,
+        finishReconnect,
+      ]
     );
-  
-    const interval =
-      setInterval(
-        checkServer,
-        60000 
-      );
-  
-    return () => {
-      clearInterval(interval);
-  
-      window.removeEventListener(
-        "online",
-        checkServer
-      );
-    };
-  }, [checkServer, mounted]);
-  
-  useEffect(() => {
-    const disconnected =
-      () => {
-        setServerReachable(prev =>
-          prev ? false : prev
-        );
-      };
-  
-    const connected =
-      () => {
-        setServerReachable(prev =>
-          prev === true ? prev : true
-        );
-      };
-  
-    window.addEventListener(
-      "socket-disconnected",
-      disconnected
-    );
-  
-    window.addEventListener(
-      "socket-connected",
-      connected
-    );
-  
-    return () => {
-      window.removeEventListener(
-        "socket-disconnected",
-        disconnected
-      );
-  
-      window.removeEventListener(
-        "socket-connected",
-        connected
-      );
-    };
-  }, []);
-  
-  useEffect(() => {
-    return () => clearTimeout(timeout.current!);
-  }, []);
-  
-  const value = useMemo(() => ({
-    isOnline,
-    serverReachable,
-    socketConnected,
-    canCommunicate,
-    latency,
-    networkStatus,
-    reconnecting,
-    connectionType,
-    startReconnect,
-    finishReconnect,
-  }), [
-    isOnline,
-    serverReachable,
-    socketConnected,
-    canCommunicate,
-    latency,
-    networkStatus,
-    reconnecting,
-    connectionType,
-    startReconnect,
-    finishReconnect,
-  ]);
 
   return (
     <NetworkContext.Provider
@@ -409,5 +589,7 @@ export function NetworkProvider({
 }
 
 export function useNetwork() {
-  return useContext(NetworkContext);
+  return useContext(
+    NetworkContext
+  );
 }

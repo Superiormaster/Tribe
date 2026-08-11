@@ -2,59 +2,74 @@
 
 import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
-import { useNavigation } from "@/utils/useNavigation"
+import { useNavigation } from "@/utils/useNavigation";
 import { apiRequest } from '@/utils/api';
 import PostCard from '@/components/PostCard';
 import toast from 'react-hot-toast';
 import Skeleton from '@/components/Skeleton';
+import { insertFeedPost } from "@/lib/feedDb";
 
 export default function RepostPage() {
   const { postId } = useParams();
-  const { push } = useNavigation()
+  const { push } = useNavigation();
 
-  const [post, setPost] = useState(null);
+  const [post, setPost] = useState<any>(null);
   const [text, setText] = useState('');
 
   useEffect(() => {
     const fetchPost = async () => {
-      const res = await apiRequest(`api/post/${postId}/`);
-      setPost(res);
+      try {
+        const res = await apiRequest(`api/post/${postId}/`);
+        setPost(res);
+      } catch (error) {
+        console.error("Failed to fetch post:", error);
+      }
     };
 
     fetchPost();
   }, [postId]);
 
   const handleRepost = async () => {
-    const repost = await apiRequest(`api/post/${postId}/repost/`, {
-      method: 'POST',
-      data: {
-        type: 'quote',
-        quote_text: text
-      }
-    });
-    
-    await insertFeedPost(repost);
-  
-    setPosts(prev => [
-      {
+    try {
+      const repost = await apiRequest(
+        `api/post/${postId}/repost/`,
+        {
+          method: "POST",
+          data: {
+            type: "quote",
+            quote_text: text,
+          },
+        }
+      );
+
+      const repostPost = {
         ...repost,
         reactKey: `repost-${repost.id}`,
         feed_type: "repost",
-      },
-      ...prev,
-    ]);
-    
-    toast.success("Reposted!");
+      };
 
-    push('/main/home');
+      await insertFeedPost(
+        "all",
+        null,
+        repostPost
+      );
+
+      toast.success("Reposted!");
+
+      push("/main/home");
+    } catch (error) {
+      console.error("Failed to repost:", error);
+      toast.error("Failed to repost");
+    }
   };
 
-  if (!post) return <Skeleton />;
+  if (!post) {
+    return <Skeleton />;
+  }
 
   return (
     <div className="pt-4 space-y-4">
 
-      {/* INPUT */}
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -63,8 +78,12 @@ export default function RepostPage() {
         rows={5}
       />
 
-      {/* ORIGINAL POST PREVIEW */}
-      <PostCard post={post} hideStarButton={true} showJoinButton={false} canRepost={false} />
+      <PostCard
+        post={post}
+        hideStarButton={true}
+        showJoinButton={false}
+        canRepost={false}
+      />
 
       <button
         onClick={handleRepost}

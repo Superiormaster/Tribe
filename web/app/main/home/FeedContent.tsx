@@ -8,6 +8,14 @@ import ReelCard from '@/components/ReelCard';
 import RepostCard from '@/components/repost/RepostCard';
 import LoadingScreen from '@/components/LoadingScreen';
 import Skeleton from '@/components/Skeleton';
+import {
+  POST_DELETED_EVENT,
+  REPOST_DELETED_EVENT,
+  emitRepostDeleted,
+} from "@/lib/postEvents";
+import {
+  removePostFromState,
+} from "@/lib/removePostFromState";
 import useImagePreloader from "@/hooks/homePage/useImagePreloader";
 import { useSuggestedCommunities } from "@/hooks/homePage/useSuggestedCommunities";
 import { useTribes } from "@/hooks/homePage/useTribes";
@@ -17,6 +25,7 @@ import { useHomeInitialization } from "@/hooks/homePage/useHomeInitialization";
 import { UserContext } from "@/components/UserContext";
 import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import { apiRequest } from '@/utils/api';
+import { deletePostEverywhere } from '@/utils/deletePost';
 import { useIsInstalled } from "@/hooks/useIsInstalled";
 import toast from 'react-hot-toast';
 import AppLink from '@/components/AppLink';
@@ -30,7 +39,12 @@ interface MediaFile {
 }
 
 export default function HomePage() {
-  const { user, loadingUser } = useContext(UserContext)!;
+  const {
+    user,
+    loadingUser,
+    mutedUserIds,
+    blockedUserIds,
+  } = useContext(UserContext)!;
   const { replace, push } = useNavigation();
   const installed = useIsInstalled();
   const [filter, setFilter] = useState<'all' | 'tribes'>('all');
@@ -84,6 +98,7 @@ export default function HomePage() {
 
     refreshFeed,
     loadMore,
+    removePostEverywhere,
     incrementPostView,
     updateFeedPost,
     insertFeedPost,
@@ -95,9 +110,27 @@ export default function HomePage() {
     selectedTribe,
   });
   
-  const filteredPosts = posts.filter(
-    (post: any) => post.content_type !== "short_video"
-  );
+  const visiblePosts = posts.filter((post: any) => {
+    if (post.content_type === "short_video") {
+      return false;
+    }
+  
+    const userId = Number(
+      post.user?.id ??
+      post.post?.user?.id
+    );
+  
+    // Remove muted and blocked users
+    if (mutedUserIds.has(userId)) {
+      return false;
+    }
+  
+    if (blockedUserIds.has(userId)) {
+      return false;
+    }
+  
+    return true;
+  });
   
   useHomeInitialization({
     filter,
@@ -163,6 +196,89 @@ export default function HomePage() {
   
     fetchReels();
   }, [selectedTribe]);
+  
+  useEffect(() => {
+
+    const handlePostDeleted = (event: Event) => {
+
+      const customEvent =
+        event as CustomEvent<{
+          postId: number;
+        }>;
+  
+      const deletedPostId =
+        Number(customEvent.detail?.postId);
+  
+      if (!deletedPostId) return;
+  
+      setPosts(prev =>
+        removePostFromState(
+          prev,
+          deletedPostId
+        )
+      );
+  
+      // Remove from reels currently displayed
+      setReels(prev =>
+        prev.filter(
+          (reel: any) =>
+            Number(reel?.id) !== deletedPostId
+        )
+      );
+    };
+  
+  
+    const handleRepostDeleted = (
+      event: Event
+    ) => {
+  
+      const customEvent =
+        event as CustomEvent<{
+          repostId: number;
+        }>;
+  
+      const repostId =
+        Number(
+          customEvent.detail?.repostId
+        );
+  
+      if (!repostId) return;
+  
+      setPosts(prev =>
+        prev.filter(
+          (post: any) =>
+            Number(post.id) !== repostId
+        )
+      );
+    };
+  
+  
+    window.addEventListener(
+      POST_DELETED_EVENT,
+      handlePostDeleted
+    );
+  
+    window.addEventListener(
+      REPOST_DELETED_EVENT,
+      handleRepostDeleted
+    );
+  
+  
+    return () => {
+  
+      window.removeEventListener(
+        POST_DELETED_EVENT,
+        handlePostDeleted
+      );
+  
+      window.removeEventListener(
+        REPOST_DELETED_EVENT,
+        handleRepostDeleted
+      );
+  
+    };
+  
+  }, [setPosts, setReels]);
 
   const handlePostAction = async (
     action: string,
@@ -179,8 +295,80 @@ export default function HomePage() {
         break;
   
       // DELETE POST
-      case 'delete':
-        console.log('Delete post', postId);
+      case "delete":
+
+        try {
+      
+          await deletePostEverywhere(
+            postId,
+            "post"
+          );
+    
+          await removePostEverywhere(postId);
+      
+          setPosts(prev =>
+            prev.filter((post: any) => {
+      
+              if (
+                Number(post.id) === Number(postId)
+              ) {
+                return false;
+              }
+      
+              if (
+                post.type === "repost" ||
+                post.feed_type === "repost"
+              ) {
+                const originalId =
+                  Number(
+                    post.post?.id ??
+                    post.data?.post?.id ??
+                    post.post_id
+                  );
+      
+                if (
+                  originalId === Number(postId)
+                ) {
+                  return false;
+                }
+              }
+      
+              return true;
+            })
+          );
+      
+          toast.success("Post deleted");
+      
+        } catch (err) {
+      
+          console.error(err);
+          toast.error("Failed to delete post");
+      
+        }
+      
+        break;
+  
+      case "delete_repost":
+        try {
+          await deletePostEverywhere(
+            postId,
+            "repost"
+          );
+      
+          setPosts(prev =>
+            prev.filter(
+              (post: any) =>
+                Number(post.id) !== Number(postId)
+            )
+          );
+      
+          toast.success("Repost deleted");
+      
+        } catch (err) {
+          console.error(err);
+          toast.error("Failed to delete repost");
+        }
+      
         break;
   
       // NORMAL REPOST
@@ -341,7 +529,7 @@ export default function HomePage() {
         </div>
       ) : (
         <>
-        {filteredPosts.map((post: any, index: number) => {
+        {visiblePosts.map((post: any, index: number) => {
           if (post.content_type === "short_video") return null;
           return (
             <div key={post.reactKey}>

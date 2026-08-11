@@ -34,8 +34,7 @@ export default function RepostDetailPage() {
 
   const [repost, setRepost] = useState<any>(null)
   const { showShare } = useShareSheet();
-  const [comments, setComments] = useState<any[]>([]);
-  const [posts, setPosts] = useState<Post[]>([]);
+    const [comments, setComments] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null)
 
   const [liked, setLiked] = useState(false)
@@ -61,10 +60,10 @@ export default function RepostDetailPage() {
   };
   
   usePostSocket({
-    postId: post.id,
+    postId: repost?.post?.id ?? 0,
   
     onStats: (data) => {
-      setRepost(prev =>
+      setRepost((prev: any) =>
         prev
           ? {
               ...prev,
@@ -81,7 +80,7 @@ export default function RepostDetailPage() {
     },
   
     onNewComment: (data) => {
-      setRepost(prev =>
+      setRepost((prev: any) =>
         prev
           ? {
               ...prev,
@@ -95,7 +94,7 @@ export default function RepostDetailPage() {
     },
   
     onCommentDeleted: (data) => {
-      setRepost(prev =>
+      setRepost((prev: any) =>
         prev
           ? {
               ...prev,
@@ -165,7 +164,7 @@ export default function RepostDetailPage() {
   }
   
   const onCommentsCountChange = (count: number) => {
-    setRepost(prev =>
+    setRepost((prev: any) =>
         prev ? {
             ...prev,
             post: {

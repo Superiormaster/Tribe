@@ -9,6 +9,7 @@ import { apiRequest } from '@/utils/api';
 import { starCreator } from '@/lib/api'
 import { Share2, ThumbsUp, AlarmClock, MessageCircle, ChartNoAxesColumn, Edit, Trash2, Repeat, MoreHorizontal } from 'lucide-react';  
 import { timeAgo } from '@/utils/timeAgo'  
+import { emitPostDeleted } from "@/lib/postEvents";
 import CommentsModal from "@/components/CommentsModal";
 import MediaViewer from "@/components/media/MediaViewer";
 import toast from "react-hot-toast";
@@ -18,6 +19,9 @@ import { useSmartPostView } from '@/lib/useSmartPostView'
 import { useContext } from 'react'  
 import { UserContext } from '@/components/UserContext'
 import { useInView } from '@/components/UseInView'
+import {
+  removePostsByUser, removeReelsByUser
+} from "@/lib/feedDb";
 import { usePostSocket } from '@/hooks/usePostSocket'
 import Linkify from "linkify-react";
 import RepostActions from '@/components/repost/RepostActions';
@@ -55,9 +59,11 @@ type PostCardProps = {
     community_invited?: boolean
     profile_pinned?: boolean
     community_pinned?: boolean
+    has_reposted?: boolean
     is_edited?: boolean
     updated_at?: string
     views_count: number
+    shares_count?: number;
     created_at: string  
     is_starred_by_user: boolean
   }
@@ -112,6 +118,10 @@ type PostCardProps = {
   isPinnedDraggable?: boolean
   onToggleProfilePin?: (postId: number) => void
   onToggleCommunityPin?: (postId: number) => void
+  mutedUserIds?: Set<number>;
+  blockedUserIds?: Set<number>;
+  setMutedUserIds?: React.Dispatch<React.SetStateAction<Set<number>>>;
+  setBlockedUserIds?: React.Dispatch<React.SetStateAction<Set<number>>>;
 
   // NEW
   showManageButtons?: boolean
@@ -123,13 +133,15 @@ type PostCardProps = {
 function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyProfile, canPin, setSelectMode, isPinnedDraggable, onToggleProfilePin, onLongPress, onToggleCommunityPin, canBulkSelect, canEdit, canRepost, canReport, onApprove, onReject, canDelete, onSelect, isSelected, isPending = false, isEmbedded, isRepostContext, repostId, setPosts, updateFeedPost, removeFeedPost, repostOwnerId, starredUserIds, setStarredUsers, context = "feed",
   handlePostAction, hideCommunityName = false, hideStarButton = false, showJoinButton = false, showManageButtons = false, showPinnedLabel=true }: PostCardProps) {
   const [liked, setLiked] = useState(!!post.is_liked || !!post.liked_by_user)
+  const { user: currentUser, addBlockedUser, mutedUserIds, blockedUserIds, removeMutedUser } = useContext(UserContext)!
   const [likes, setLikes] = useState(post.likes_count || 0)
   const isStarred =
     starredUserIds?.has(post.user.id) ||
     post.is_starred_by_user;
+  const isMuted = mutedUserIds?.has(post.user.id) ?? false;
+  const isBlocked = blockedUserIds?.has(post.user.id) ?? false;
   const isSearch = context === "search";
   const [menuOpen, setMenuOpen] = useState(false);
-  const { user: currentUser } = useContext(UserContext)!
   const { push } = useNavigation()
   const menuRef = useRef<HTMLDivElement>(null);
   const [reportOpen, setReportOpen] = useState(false)
@@ -492,25 +504,75 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
       
       await removeFeedPost?.(post.id);
 
-      alert("Post deleted");
+      emitPostDeleted(post.id);
+      toast.success("Post deleted");
       setMenuOpen(false);
     } catch (err) {
       console.error(err);
+      toast.error("Failed to delete post");
     }
   };
   
   const handleMute = async () => {
-    await apiRequest(`api/users/mute/${post.user.id}/`, {
-      method: "POST"
-    });
-    setMenuOpen(false);
+    const userId = post.user.id;
+  
+    try {
+      await apiRequest(
+        `api/users/mute/${userId}/`,
+        { method: "POST" }
+      );
+  
+      // Remove from current React state
+      setPosts?.(prev =>
+        prev.filter(
+          p => Number(p.user?.id) !== Number(userId)
+        )
+      );
+  
+      // Remove from IndexedDB frontend cache
+      await removePostsByUser(userId);
+      await removeReelsByUser(userId);
+      
+      removeMutedUser(userId);
+  
+      setMenuOpen(false);
+  
+      toast.success("User muted");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to mute user");
+    }
   };
   
   const handleBlock = async () => {
-    await apiRequest(`api/users/block/${post.user.id}/`, {
-      method: "POST"
-    });
-    setMenuOpen(false);
+    const userId = post.user.id;
+  
+    try {
+      await apiRequest(
+        `api/users/block/${userId}/`,
+        { method: "POST" }
+      );
+  
+      // Remove from current feed
+      setPosts?.(prev =>
+        prev.filter(
+          p => Number(p.user?.id) !== Number(userId)
+        )
+      );
+  
+      // Remove from all cached feed pages
+      await removePostsByUser(userId);
+      await removeReelsByUser(userId);
+      
+      addBlockedUser(userId);
+  
+      setMenuOpen(false);
+  
+      toast.success("You blocked this user");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to block user");
+    }
   };
   
   const handleReport = async () => {
@@ -531,7 +593,7 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
         }
       );
   
-      alert(res.message);
+      toast.success("Report submitted!");
   
       setReportOpen(false);
       setReportReason("");
@@ -749,22 +811,22 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
               </button>
             )}
   
-            {!isPostOwner && (
-              <>
-                <button
-                  className="text-left px-3 py-2 text-gray-700 dark:text-gray-400 hover:bg-gray-100 hover:rounded-lg dark:hover:bg-gray-700"
-                  onClick={handleMute}
-                >
-                  Mute User
-                </button>
+            {!isPostOwner && !isBlocked && !isMuted && (
+              <button
+                className="text-left px-3 py-2 text-gray-700 dark:text-gray-400 hover:bg-gray-100 hover:rounded-lg dark:hover:bg-gray-700"
+                onClick={handleMute}
+              >
+                Mute User
+              </button>
+            )}
             
-                <button
-                  onClick={handleBlock}
-                  className="text-left px-3 py-2 text-gray-700 dark:text-gray-400 hover:bg-gray-100 hover:rounded-lg dark:hover:bg-gray-700"
-                >
-                  Block User
-                </button>
-              </>
+            {!isPostOwner && !isBlocked && (
+              <button
+                onClick={handleBlock}
+                className="text-left px-3 py-2 text-gray-700 dark:text-gray-400 hover:bg-gray-100 hover:rounded-lg dark:hover:bg-gray-700"
+              >
+                Block User
+              </button>
             )}
 
             {showManageButtons && (canDelete || canEdit || canRepost || canReport) && (
@@ -832,6 +894,7 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
                       } else {
                         handlePostAction?.('delete', post.id);
                       }
+                      setMenuOpen(false);
                     }}
                   >
                     <Trash2 className="w-5 h-5 text-red-500"/> Delete

@@ -1,6 +1,5 @@
 'use client';
 
-import { getLowQuality } from "@/utils/media";
 import { normalizeMedia } from "@/utils/chat/MediaNormalizer";
 import { Reply } from "lucide-react";
 import { useRef, useState, useEffect } from "react";
@@ -129,7 +128,7 @@ export default function PreviewViewer({
 
   const src =
     !isOnline && isVideo
-      ? getLowQuality(originalSrc)
+      ? originalSrc
       : originalSrc;
 
   // ✅ SWIPE LOGIC

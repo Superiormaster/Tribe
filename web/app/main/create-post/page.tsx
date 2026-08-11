@@ -9,11 +9,14 @@ import { useCommunityPermissions } from "@/hooks/createPost/useCommunityPermissi
 import { useEditPost } from "@/hooks/createPost/useEditPost";
 import { usePostMedia } from "@/hooks/createPost/usePostMedia";
 import { usePostDraft } from "@/hooks/createPost/usePostDraft";
-import { useMediaUpload } from "@/hooks/createPost/useMediaUpload";
+import { useMediaUpload, getFileKey } from "@/hooks/createPost/useMediaUpload";
 import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import { deletePostDraft } from "@/lib/messageDB";
 import ButtonLoader from "@/components/ButtonLoader";
 import Skeleton from '@/components/Skeleton';
+import {
+  toPostMediaPayload,
+} from "@/utils/media";
 import { apiRequest } from '@/utils/api';
 import { updateFeedPost } from "@/lib/feedDb";
 
@@ -28,6 +31,7 @@ export default function CreatePostPage() {
   const draftId = searchParams.get("draftId");
   const { isOnline } = useNetwork();
   const [loading, setLoading] = useState(false);
+  const clientPostIdRef = useRef<string | null>(null);
   const { push } = useNavigation()
   const isEdit = searchParams.get('edit') === 'true';
   const postId = searchParams.get('postId');
@@ -59,6 +63,14 @@ export default function CreatePostPage() {
     setMode,
   });
   
+  const getClientPostId = () => {
+    if (!clientPostIdRef.current) {
+      clientPostIdRef.current = crypto.randomUUID();
+    }
+  
+    return clientPostIdRef.current;
+  };
+  
   const allowReel = permissions.allow_reels;
   const allowVideo =
     isGlobal ||
@@ -72,21 +84,16 @@ export default function CreatePostPage() {
     video,
     videoPreview,
     previewImages,
-  
     hasImages,
     hasVideo,
-  
     setImageFiles,
     setImageUrls,
     setVideo,
     setVideoPreview,
-  
     handleImagesChange,
     handleVideoChange,
-  
     removeImage,
     removeVideo,
-  
     clearMedia,
   } = usePostMedia({
     allowImages: true,
@@ -97,10 +104,12 @@ export default function CreatePostPage() {
   const {
     uploadedMedia,
     uploading,
+    uploadError,
     fileProgress,
     uploadPromiseRef,
     setUploadedMedia,
     setFileProgress,
+    uploadStatus,
   } = useMediaUpload({
     content,
     imageFiles,
@@ -108,24 +117,25 @@ export default function CreatePostPage() {
     video,
     selectedCommunity,
     isReel,
+    isOnline,
   });
   
   const {
     draftCount,
     saveDraft,
     saveAutoDraft,
+    prepareForManualDraft,
+    finishManualDraftSave,
   } = usePostDraft({
     isEdit,
     draftId,
-  
     content,
     imageFiles,
     imageUrls,
     video,
-  
     selectedCommunity,
     communityData,
-  
+    isOnline,
     setContent,
     setImageFiles,
     setImageUrls,
@@ -140,18 +150,13 @@ export default function CreatePostPage() {
   useEditPost({
     isEdit,
     postId,
-  
     setContent,
     setSelectedCommunity,
-  
     setMode,
-  
     setVideo,
     setVideoPreview,
-  
     setImageUrls,
     setImageFiles,
-  
     setUploadedMedia,
   });
   
@@ -176,11 +181,50 @@ export default function CreatePostPage() {
     toast.success("Draft saved");
   };
   
+  const handleUploadFailure = async () => {
+    try {
+      prepareForManualDraft();
+  
+      await saveDraft();
+  
+      toast.error("Upload failed. Post saved to Drafts.");
+  
+      return true;
+    } catch (error) {
+      console.error("Failed to save draft:", error);
+      toast.error("Upload failed and draft could not be saved.");
+      return false;
+    } finally {
+      finishManualDraftSave();
+    }
+  };
+  
+  const handleOfflinePost = async () => {
+    try {
+      prepareForManualDraft();
+  
+      await saveDraft();
+  
+      setContent("");
+      clearMedia();
+      setUploadedMedia([]);
+      setFileProgress({});
+  
+      toast.success("You're offline. Post saved to Drafts.");
+  
+      return true;
+    } catch (error) {
+      console.error("Failed to save offline post:", error);
+      toast.error("Could not save post to Drafts.");
+      return false;
+    } finally {
+      finishManualDraftSave();
+    }
+  };
+  
   const handlePost = async () => {
     if (!isOnline) {
-      await saveAutoDraft();
-  
-      toast.error("You're offline. Draft saved.");
+      await handleOfflinePost();
       return;
     }
   
@@ -214,6 +258,73 @@ export default function CreatePostPage() {
     setFileProgress({});
   
     try {
+      if (uploadError) {
+        const saved = await handleUploadFailure();
+      
+        if (saved) {
+          return;
+        }
+      
+        return;
+      }
+    
+      let media = uploadedMedia;
+
+      if (uploading && uploadPromiseRef.current) {
+        const toastId = toast.loading("Finishing upload...");
+      
+        try {
+          media = await uploadPromiseRef.current;
+      
+          uploadPromiseRef.current = null;
+      
+          toast.dismiss(toastId);
+        } catch (uploadError) {
+          console.error("Media upload failed:", uploadError);
+      
+          toast.dismiss(toastId);
+      
+          // Save as MANUAL draft
+          const saved = await handleUploadFailure();
+      
+          if (saved) {
+            return;
+          }
+      
+          return;
+        }
+      
+        // Upload finished but user went offline
+        if (!isOnline) {
+          const saved = await handleOfflinePost();
+      
+          if (saved) {
+            return;
+          }
+      
+          return;
+        }
+      }
+  
+      if (uploadError) {
+        const saved =
+          await handleUploadFailure();
+      
+        if (saved) {
+          return;
+        }
+      
+        return;
+      }
+    
+      const hasText = content.trim().length > 0;
+      const hasMedia = media.length > 0;
+      
+      if (!hasText && !hasMedia) {
+        await handleUploadFailure();
+        return;
+      }
+  
       let contentType = "text";
 
       if (video) {
@@ -230,56 +341,52 @@ export default function CreatePostPage() {
       }
       
       contentType = String(contentType);
-      
-      let media = uploadedMedia;
 
-      if (uploading && uploadPromiseRef.current) {
-        const toastId = toast.loading("Finishing upload...");
-    
-        media = await uploadPromiseRef.current;
-
-        if (!isOnline) {
-          await saveAutoDraft();
-      
-          toast.dismiss(toastId);
-          toast.error("You're offline. Draft saved.");
-          return;
-        }
-    
-        await new Promise(resolve => setTimeout(resolve, 500));
-        uploadPromiseRef.current = null;
-    
-        toast.dismiss(toastId);
-      }
-    
-      const hasText = content.trim().length > 0;
-
-      const hasMedia = media.length > 0;
-      
-      if (!hasText && !hasMedia) {
-          await saveAutoDraft();
-
-          toast.error("Nothing to post. Draft saved.");
-      
-          return;
-      }
-
+      const media_files = media.map(
+        toPostMediaPayload
+      );
+  
       const payload = {
-          caption: content,
-          content_type: contentType,
-          media_files: media,
-          community: selectedCommunity,
+        caption: content,
+        content_type: contentType,
+        media_files,
+        community: selectedCommunity,
+        client_post_id: getClientPostId(),
+      };
+  
+      const editPayload = {
+        caption: content,
+        content_type: contentType,
+        media_files,
+        community: selectedCommunity,
       };
   
       let newPost = null;
 
       if (isEdit) {
+        if (!isOnline) {
+          await handleOfflinePost();
+          return;
+        }
+  
         const updatedPost = await apiRequest(`api/post/${postId}/`, {
             method: "PUT",
-            data: payload,
+            data: editPayload,
         });
   
-        await updateFeedPost(postId, {
+        if (!postId) {
+          console.error("Missing postId");
+          return;
+        }
+  
+        const numericPostId = Number(postId);
+  
+        if (!Number.isFinite(numericPostId)) {
+          console.error("Invalid postId:", postId);
+          return;
+        }
+
+        await updateFeedPost(numericPostId, {
           caption: updatedPost.caption,
           media_files: updatedPost.media_files,
           updated_at: updatedPost.updated_at,
@@ -299,10 +406,17 @@ export default function CreatePostPage() {
           return;
       }
   
+      if (!isOnline) {
+        await handleOfflinePost();
+        return;
+      }
+  
       newPost = await apiRequest(`api/post/`, {
         method: "POST",
         data: payload,
       });
+  
+      clientPostIdRef.current = null;
   
       setContent('');
       setImageUrls([]);
@@ -353,7 +467,15 @@ export default function CreatePostPage() {
     } catch (err:any) {
       console.log("FULL ERROR:", err.data || err);
       console.error(err);
-      toast.error('Failed to create post');
+  
+      if (!isOnline) {
+        await handleOfflinePost();
+        return;
+      }
+  
+      toast.error(
+        "Failed to create post."
+      );
       setFileProgress({});
     } finally {
       setLoading(false);
@@ -362,13 +484,20 @@ export default function CreatePostPage() {
   
   // Render individual progress bar
     const renderProgressBar = (file: File) => {
-      const progress = fileProgress[file.name] || 0;
+      const progress =
+        fileProgress[getFileKey(file)] || 0;
+    
       return (
-        <div key={file.name} className="w-full bg-gray-200 rounded-full h-2 mt-1">
+        <div
+          key={getFileKey(file)}
+          className="w-full bg-gray-200 rounded-full h-2 mt-1"
+        >
           <div
             className="bg-indigo-600 h-2 rounded-full transition-all"
-            style={{ width: `${progress}%` }}
-          ></div>
+            style={{
+              width: `${progress}%`,
+            }}
+          />
         </div>
       );
     };
@@ -444,6 +573,45 @@ export default function CreatePostPage() {
         <AppLink href="/main/draft" className="absolute top-16 right-10 border rounded-xl text-sm p-3 text-gray-700 dark:text-gray-200 font-bold mb-6">
           Drafts • {draftCount}
         </AppLink>
+  
+        {!isOnline && (
+          <div className="relative overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-r mt-3 from-amber-50 to-orange-50 p-4 shadow-sm dark:border-amber-900/50 dark:from-amber-950/40 dark:to-orange-950/30">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-900/50 dark:text-amber-400">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="h-5 w-5"
+                >
+                  <path d="M1 9l2-2c4.4-4.4 11.6-4.4 16 0l2 2" />
+                  <path d="M5 13l2-2c2.8-2.8 7.2-2.8 10 0l2 2" />
+                  <path d="M9 17l1.5-1.5c.8-.8 2.2-.8 3 0L15 17" />
+                  <path d="M12 21h.01" />
+                </svg>
+              </div>
+        
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold text-amber-900 dark:text-amber-200">
+                    You're offline
+                  </h3>
+        
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:bg-amber-900/60 dark:text-amber-300">
+                    Draft mode
+                  </span>
+                </div>
+        
+                <p className="mt-1 text-sm leading-5 text-amber-800/80 dark:text-amber-300/80">
+                  Don't worry — your post is safe. It will be saved to Drafts
+                  until your connection comes back.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Textarea */}
         <textarea

@@ -18,6 +18,15 @@ interface UserContextType {
   authReady: boolean;
   authFailed: boolean;
   setAuthFailed: (v: boolean) => void;
+
+  mutedUserIds: Set<number>;
+  blockedUserIds: Set<number>;
+
+  addMutedUser: (userId: number) => void;
+  removeMutedUser: (userId: number) => void;
+
+  addBlockedUser: (userId: number) => void;
+  removeBlockedUser: (userId: number) => void;
 }
 
 export const UserContext = createContext<UserContextType | null>(null);
@@ -31,6 +40,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const { isOnline } = useNetwork();
   const { replace } = useNavigation();
   const isOnlineRef = useRef(isOnline);
+  const [mutedUserIds, setMutedUserIds] = useState<Set<number>>(
+    new Set()
+  );
+  const [blockedUserIds, setBlockedUserIds] = useState<Set<number>>(
+    new Set()
+  );
   
   useEffect(() => {
     isOnlineRef.current = isOnline;
@@ -46,6 +61,38 @@ export function UserProvider({ children }: { children: ReactNode }) {
       authFailed,
       isInactive,
   });
+  
+  const addMutedUser = useCallback((userId: number) => {
+    setMutedUserIds(prev => {
+      const next = new Set(prev);
+      next.add(Number(userId));
+      return next;
+    });
+  }, []);
+  
+  const removeMutedUser = useCallback((userId: number) => {
+    setMutedUserIds(prev => {
+      const next = new Set(prev);
+      next.delete(Number(userId));
+      return next;
+    });
+  }, []);
+  
+  const addBlockedUser = useCallback((userId: number) => {
+    setBlockedUserIds(prev => {
+      const next = new Set(prev);
+      next.add(Number(userId));
+      return next;
+    });
+  }, []);
+  
+  const removeBlockedUser = useCallback((userId: number) => {
+    setBlockedUserIds(prev => {
+      const next = new Set(prev);
+      next.delete(Number(userId));
+      return next;
+    });
+  }, []);
   
   useEffect(() => {
       console.log({
@@ -129,6 +176,51 @@ export function UserProvider({ children }: { children: ReactNode }) {
         // 4. Fetch user
         const profile = await apiRequest("api/users/me/");
         console.log("profile", profile);
+
+        const [blocks, mutes] = await Promise.all([
+          apiRequest("api/users/blocks/"),
+          apiRequest("api/users/mutes/"),
+        ]);
+        
+        const blockedList =
+          Array.isArray(blocks)
+            ? blocks
+            : blocks?.results || [];
+        
+        const mutedList =
+          Array.isArray(mutes)
+            ? mutes
+            : mutes?.results || [];
+        
+        setBlockedUserIds(
+          new Set(
+            blockedList
+              .map((item: any) =>
+                Number(
+                  item.blocked_user_id ??
+                  item.user_id ??
+                  item.blocked_user?.id ??
+                  item.id
+                )
+              )
+              .filter(Boolean)
+          )
+        );
+        
+        setMutedUserIds(
+          new Set(
+            mutedList
+              .map((item: any) =>
+                Number(
+                  item.muted_user_id ??
+                  item.user_id ??
+                  item.muted_user?.id ??
+                  item.id
+                )
+              )
+              .filter(Boolean)
+          )
+        );
   
         const sameUser =
             cached &&
@@ -381,8 +473,31 @@ export function UserProvider({ children }: { children: ReactNode }) {
       authReady,
       authFailed,
       setAuthFailed,
+  
+      mutedUserIds,
+      blockedUserIds,
+  
+      addMutedUser,
+      removeMutedUser,
+  
+      addBlockedUser,
+      removeBlockedUser,
     }),
-    [user, loadingUser, authReady, authFailed, setAuthFailed]
+    [
+      user,
+      loadingUser,
+      authReady,
+      authFailed,
+  
+      mutedUserIds,
+      blockedUserIds,
+  
+      addMutedUser,
+      removeMutedUser,
+  
+      addBlockedUser,
+      removeBlockedUser,
+    ]
   );
   
   return (

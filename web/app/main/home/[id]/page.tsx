@@ -37,6 +37,7 @@ type Post = {
   updated_at?: string
   is_edited?: boolean
   likes_count: number
+  shares_count?: number;
   comments_count: number
   liked_by_user: boolean
   views_count?: number
@@ -290,6 +291,7 @@ export default function PostPage() {
         </button>
         <ShareButton
           post={post}
+          sharesCount={post.shares_count ?? 0}
           onOpen={(post) => showShare(post)}
         />
     

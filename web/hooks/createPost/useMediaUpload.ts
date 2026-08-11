@@ -1,17 +1,8 @@
-// hooks/post/useMediaUpload.ts
-
 'use client';
 
 import { useEffect, useRef, useState } from "react";
-import toast from "react-hot-toast";
 
-import {
-  saveAutoPostDraft,
-} from "@/lib/messageDB";
-
-import {
-  uploadToCloudinary,
-} from "@/utils/cloudinary";
+import { uploadMediaResumable } from "@/utils/mediaUpload/uploadMediaResumable";
 
 import {
   buildUploadedMedia,
@@ -23,17 +14,25 @@ type ExistingVideo = {
   thumbnail?: string;
 };
 
+export type UploadStatus =
+  | "idle"
+  | "uploading"
+  | "success"
+  | "failed"
+  | "paused";
+
 interface UseMediaUploadProps {
   content: string;
-
   imageFiles: (File | string)[];
   imageUrls: string[];
-
   video: File | ExistingVideo | null;
-
   selectedCommunity: number | null;
-
   isReel: boolean;
+  isOnline: boolean;
+}
+
+export function getFileKey(file: File) {
+  return `${file.name}-${file.size}-${file.lastModified}`;
 }
 
 export function useMediaUpload({
@@ -43,16 +42,26 @@ export function useMediaUpload({
   video,
   selectedCommunity,
   isReel,
+  isOnline,
 }: UseMediaUploadProps) {
 
   const [uploadedMedia, setUploadedMedia] =
     useState<UploadedMedia[]>([]);
 
-  const [uploading, setUploading] =
-    useState(false);
+  const [uploadStatus, setUploadStatus] =
+    useState<UploadStatus>("idle");
+
+  const [uploadError, setUploadError] =
+    useState<Error | null>(null);
 
   const [fileProgress, setFileProgress] =
     useState<Record<string, number>>({});
+
+  const abortControllersRef =
+    useRef<Set<AbortController>>(new Set());
+
+  const uploadGenerationRef =
+    useRef(0);
 
   const uploadPromiseRef =
     useRef<Promise<UploadedMedia[]> | null>(null);
@@ -63,24 +72,36 @@ export function useMediaUpload({
       height: number;
     }>((resolve, reject) => {
 
-      const video =
+      const videoElement =
         document.createElement("video");
 
-      video.preload = "metadata";
+      videoElement.preload = "metadata";
 
-      video.onloadedmetadata = () => {
-        URL.revokeObjectURL(video.src);
+      const objectUrl =
+        URL.createObjectURL(file);
+
+      videoElement.onloadedmetadata = () => {
+
+        URL.revokeObjectURL(objectUrl);
 
         resolve({
-          width: video.videoWidth,
-          height: video.videoHeight,
+          width: videoElement.videoWidth,
+          height: videoElement.videoHeight,
         });
       };
 
-      video.onerror = reject;
+      videoElement.onerror = () => {
 
-      video.src =
-        URL.createObjectURL(file);
+        URL.revokeObjectURL(objectUrl);
+
+        reject(
+          new Error(
+            "Could not read video dimensions."
+          )
+        );
+      };
+
+      videoElement.src = objectUrl;
     });
   }
 
@@ -89,59 +110,184 @@ export function useMediaUpload({
     contentType: string
   ): Promise<UploadedMedia[]> => {
 
-    return Promise.all(
-      files.map(async (file) => {
+    const generation =
+      ++uploadGenerationRef.current;
 
-        let isPortrait = false;
+    if (!files.length) {
+      return [];
+    }
 
-        if (file.type.startsWith("video")) {
-          const { width, height } =
-            await getVideoDimensions(file);
+    setUploadStatus("uploading");
+    setUploadError(null);
 
-          isPortrait = height > width;
-        }
+    try {
 
-        const secureUrl =
-          await uploadToCloudinary({
-            file,
+      const results =
+        await Promise.all(
+          files.map(async (file) => {
 
-            onProgress: (percent) => {
-              setFileProgress(prev => ({
-                ...prev,
-                [file.name]: percent,
-              }));
-            },
-          });
+            let isPortrait = false;
 
-        return buildUploadedMedia(
-          secureUrl,
-          file,
-          contentType,
-          isPortrait
+            if (
+              file.type.startsWith("video/")
+            ) {
+
+              const {
+                width,
+                height,
+              } =
+                await getVideoDimensions(file);
+
+              isPortrait =
+                height > width;
+            }
+
+            const controller =
+              new AbortController();
+
+            abortControllersRef.current.add(
+              controller
+            );
+
+            try {
+
+              const uploaded =
+                await uploadMediaResumable({
+                  file,
+
+                  signal:
+                    controller.signal,
+
+                  onProgress: (percent) => {
+
+                    setFileProgress(
+                      (prev) => ({
+                        ...prev,
+
+                        [getFileKey(file)]:
+                          percent,
+                      })
+                    );
+                  },
+                });
+
+              if (
+                generation !==
+                uploadGenerationRef.current
+              ) {
+
+                throw new DOMException(
+                  "Media upload was cancelled.",
+                  "AbortError"
+                );
+              }
+
+              if (
+                !uploaded?.original_url
+              ) {
+
+                throw new Error(
+                  "Media upload completed but no URL was returned."
+                );
+              }
+
+              return buildUploadedMedia(
+                uploaded.original_url,
+                uploaded.media_id,
+                file,
+                uploaded.thumbnail_url,
+              );
+
+            } finally {
+
+              abortControllersRef.current.delete(
+                controller
+              );
+            }
+          })
         );
-      })
-    );
-  };
 
-  // -----------------------------
-  // Upload Video
-  // -----------------------------
+      if (
+        generation !==
+        uploadGenerationRef.current
+      ) {
+
+        return [];
+      }
+
+      setUploadStatus("success");
+
+      return results;
+
+    } catch (error) {
+
+      if (
+        error instanceof DOMException &&
+        error.name === "AbortError"
+      ) {
+
+        setUploadStatus("paused");
+
+        throw error;
+      }
+
+      const normalizedError =
+        error instanceof Error
+          ? error
+          : new Error(
+              "Media upload failed."
+            );
+
+      setUploadError(
+        normalizedError
+      );
+
+      setUploadStatus("failed");
+
+      throw normalizedError;
+    }
+  };
 
   useEffect(() => {
 
-    if (!(video instanceof File)) return;
+    if (!(video instanceof File)) {
 
-    const videoFile = video;
+      if (
+        !imageFiles.some(
+          (file) => file instanceof File
+        )
+      ) {
+        setUploadStatus("idle");
+      }
 
-    let cancelled = false;
+      return;
+    }
+
+    if (!isOnline) {
+
+      setUploadStatus("paused");
+      setUploadError(null);
+      setUploadedMedia([]);
+
+      return;
+    }
+
+    const videoFile =
+      video;
+
+    let cancelled =
+      false;
 
     async function upload() {
 
-      setUploading(true);
+      setUploadStatus("uploading");
+      setUploadError(null);
+      setUploadedMedia([]);
+      setFileProgress({});
 
       try {
 
-        uploadPromiseRef.current =
+        const promise =
           uploadSelectedMedia(
             [videoFile],
             isReel
@@ -149,37 +295,60 @@ export function useMediaUpload({
               : "long_video"
           );
 
-        const media =
-          await uploadPromiseRef.current;
+        uploadPromiseRef.current =
+          promise;
 
-        if (cancelled) return;
+        const media =
+          await promise;
+
+        if (cancelled) {
+          return;
+        }
 
         setUploadedMedia(media);
 
-      } catch {
+        setUploadStatus("success");
 
-        uploadPromiseRef.current = null;
+      } catch (error) {
+
+        if (cancelled) {
+          return;
+        }
+
+        if (
+          error instanceof DOMException &&
+          error.name === "AbortError"
+        ) {
+
+          setUploadStatus("paused");
+          return;
+        }
+
+        console.error(
+          "Video upload failed:",
+          error
+        );
 
         setUploadedMedia([]);
 
-        await saveAutoPostDraft({
-          content,
-          imageFiles,
-          imageUrls,
-          video: videoFile,
-          selectedCommunity,
-        });
-
-        toast.error(
-          "Upload interrupted. Saved as draft."
+        setUploadError(
+          error instanceof Error
+            ? error
+            : new Error(
+                "Video upload failed."
+              )
         );
+
+        setUploadStatus("failed");
 
       } finally {
 
-        uploadPromiseRef.current = null;
+        if (
+          uploadPromiseRef.current
+        ) {
 
-        if (!cancelled) {
-          setUploading(false);
+          uploadPromiseRef.current =
+            null;
         }
       }
     }
@@ -187,14 +356,25 @@ export function useMediaUpload({
     upload();
 
     return () => {
+
       cancelled = true;
+
+      uploadGenerationRef.current++;
+
+      abortControllersRef.current.forEach(
+        (controller) => {
+          controller.abort();
+        }
+      );
+
+      abortControllersRef.current.clear();
     };
 
-  }, [video, isReel]);
-
-  // -----------------------------
-  // Upload Images
-  // -----------------------------
+  }, [
+    video,
+    isReel,
+    isOnline,
+  ]);
 
   useEffect(() => {
 
@@ -204,53 +384,97 @@ export function useMediaUpload({
           file instanceof File
       );
 
-    if (!files.length) return;
+    if (!files.length) {
 
-    let cancelled = false;
+      if (!(video instanceof File)) {
+        setUploadStatus("idle");
+      }
+
+      return;
+    }
+
+    if (!isOnline) {
+
+      setUploadStatus("paused");
+      setUploadError(null);
+      setUploadedMedia([]);
+
+      return;
+    }
+
+    let cancelled =
+      false;
 
     async function upload() {
 
-      setUploading(true);
+      setUploadStatus("uploading");
+      setUploadError(null);
+      setUploadedMedia([]);
+      setFileProgress({});
 
       try {
 
-        uploadPromiseRef.current =
+        const promise =
           uploadSelectedMedia(
             files,
             "image"
           );
 
-        const media =
-          await uploadPromiseRef.current;
+        uploadPromiseRef.current =
+          promise;
 
-        if (cancelled) return;
+        const media =
+          await promise;
+
+        if (cancelled) {
+          return;
+        }
 
         setUploadedMedia(media);
 
-      } catch {
+        setUploadStatus("success");
 
-        uploadPromiseRef.current = null;
+      } catch (error) {
+
+        if (cancelled) {
+          return;
+        }
+
+        if (
+          error instanceof DOMException &&
+          error.name === "AbortError"
+        ) {
+
+          setUploadStatus("paused");
+
+          return;
+        }
+
+        console.error(
+          "Image upload failed:",
+          error
+        );
 
         setUploadedMedia([]);
 
-        await saveAutoPostDraft({
-          content,
-          imageFiles,
-          imageUrls,
-          video,
-          selectedCommunity,
-        });
-
-        toast.error(
-          "Upload interrupted. Saved as draft."
+        setUploadError(
+          error instanceof Error
+            ? error
+            : new Error(
+                "Image upload failed."
+              )
         );
+
+        setUploadStatus("failed");
 
       } finally {
 
-        uploadPromiseRef.current = null;
+        if (
+          uploadPromiseRef.current
+        ) {
 
-        if (!cancelled) {
-          setUploading(false);
+          uploadPromiseRef.current =
+            null;
         }
       }
     }
@@ -258,62 +482,37 @@ export function useMediaUpload({
     upload();
 
     return () => {
+
       cancelled = true;
-    };
 
-  }, [imageFiles]);
+      uploadGenerationRef.current++;
 
-  // -----------------------------
-  // Offline
-  // -----------------------------
-
-  useEffect(() => {
-
-    const handleOffline = async () => {
-
-      uploadPromiseRef.current = null;
-
-      setUploadedMedia([]);
-
-      await saveAutoPostDraft({
-        content,
-        imageFiles,
-        imageUrls,
-        video,
-        selectedCommunity,
-      });
-
-      toast(
-        "Connection lost. Draft saved."
+      abortControllersRef.current.forEach(
+        (controller) => {
+          controller.abort();
+        }
       );
+
+      abortControllersRef.current.clear();
     };
-
-    window.addEventListener(
-      "offline",
-      handleOffline
-    );
-
-    return () =>
-      window.removeEventListener(
-        "offline",
-        handleOffline
-      );
 
   }, [
-    content,
     imageFiles,
-    imageUrls,
-    video,
-    selectedCommunity,
+    isOnline,
   ]);
 
   return {
     uploadedMedia,
-    uploading,
+    uploadStatus,
+    uploading:
+      uploadStatus === "uploading",
+    uploadError,
     fileProgress,
     uploadPromiseRef,
     uploadSelectedMedia,
     setUploadedMedia,
     setFileProgress,
+    setUploadError,
+    setUploadStatus,
   };
 }

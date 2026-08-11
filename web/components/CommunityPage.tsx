@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useContext } from "react";
+import { UserContext } from "@/components/UserContext";
 import { useNavigation } from "@/utils/useNavigation"
 import AppLink from '@/components/AppLink';
 
@@ -11,8 +12,16 @@ import CommunityPending from "@/components/community/CommunityPending";
 import CommunityMembers from "@/components/community/CommunityMembers";
 import CommunityMenuModal from "@/components/community/CommunityMenuModal";
 import ModerationBar from "@/components/community/ModerationBar";
+import toast from 'react-hot-toast';
 
+import {
+  POST_DELETED_EVENT,
+  REPOST_DELETED_EVENT,
+} from "@/lib/postEvents";import {
+  removePostFromState,
+} from "@/lib/removePostFromState";
 import { apiRequest } from "@/utils/api";
+import { deletePostEverywhere } from '@/utils/deletePost';
 
 type Post = {
   id: number;
@@ -43,6 +52,8 @@ export default function CommunityPage({
 
   const [selectMode, setSelectMode] = useState(false);
   const [selectedPosts, setSelectedPosts] = useState<number[]>([]);
+  const { mutedUserIds, blockedUserIds } =
+    useContext(UserContext)!;
   const [starredUsers, setStarredUsers] =
     useState<Set<number>>(new Set());
 
@@ -87,6 +98,81 @@ export default function CommunityPage({
   }, []);
   
   useEffect(() => {
+
+    const handlePostDeleted = (event: Event) => {
+
+      const customEvent =
+        event as CustomEvent<{
+          postId: number;
+        }>;
+  
+      const deletedPostId =
+        Number(customEvent.detail?.postId);
+  
+      if (!deletedPostId) return;
+  
+      setPosts(prev =>
+        removePostFromState(
+          prev,
+          deletedPostId
+        )
+      );
+  
+      setPendingPosts(prev =>
+        removePostFromState(
+          prev,
+          deletedPostId
+        )
+      );
+    };
+  
+  
+    const handleRepostDeleted = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        repostId: number;
+      }>;
+  
+      const deletedRepostId =
+        Number(customEvent.detail?.repostId);
+  
+      if (!deletedRepostId) return;
+  
+      setPosts(prev =>
+        prev.filter(post =>
+          Number(post.id) !== deletedRepostId
+        )
+      );
+    };
+  
+  
+    window.addEventListener(
+      POST_DELETED_EVENT,
+      handlePostDeleted
+    );
+  
+    window.addEventListener(
+      REPOST_DELETED_EVENT,
+      handleRepostDeleted
+    );
+  
+  
+    return () => {
+  
+      window.removeEventListener(
+        POST_DELETED_EVENT,
+        handlePostDeleted
+      );
+  
+      window.removeEventListener(
+        REPOST_DELETED_EVENT,
+        handleRepostDeleted
+      );
+  
+    };
+  
+  }, []);
+
+  useEffect(() => {
     (async () => {
       try {
         const res = await apiRequest(
@@ -117,6 +203,63 @@ export default function CommunityPage({
   
     setSuggestedCommunities(data || []);
   };
+  
+  const mapCommunityPost = (item: any) => {
+
+    if (item.type === "repost") {
+      return {
+        ...item,
+        type: "repost",
+        created_at: item.created_at,
+        community_pinned:
+          item.community_pinned || false,
+        community_pin_order:
+          item.community_pin_order || 0,
+  
+        post: item.post
+          ? {
+              ...item.post,
+  
+              likes_count:
+                item.post.likes_count || 0,
+  
+              comments_count:
+                item.post.comments_count || 0,
+  
+              shares_count:
+                item.post.shares_count || 0,
+  
+              media_files:
+                item.post.media_files || [],
+            }
+          : null,
+      };
+    }
+  
+    return {
+      ...item,
+  
+      type: "post",
+  
+      community_pinned:
+        item.community_pinned || false,
+  
+      community_pin_order:
+        item.community_pin_order || 0,
+  
+      likes_count:
+        item.likes_count || 0,
+  
+      comments_count:
+        item.comments_count || 0,
+  
+      shares_count:
+        item.shares_count || 0,
+  
+      media_files:
+        item.media_files || [],
+    };
+  };
 
   const fetchPosts = async () => {
     setLoading(true);
@@ -129,55 +272,8 @@ export default function CommunityPage({
   
       const results = data.results || data;
 
-      const mapped = results.map((item: any) => {
-        // -------------------------
-        // REPOST
-        // -------------------------
-        if (item.type === "repost") {
-          return {
-            ...item,
-            type: "repost",
-            created_at: item.created_at,
-            community_pinned:
-              item.community_pinned || false,
-            community_pin_order:
-              item.community_pin_order || 0,
-            post: item.post
-              ? {
-                  ...item.post,
-                  likes_count:
-                    item.post.likes_count || 0,
-                  comments_count:
-                    item.post.comments_count || 0,
-                  shares_count:
-                    item.post.shares_count || 0,
-                  media_files:
-                    item.post.media_files || [],
-                }
-              : null,
-          };
-        }
-  
-        // -------------------------
-        // NORMAL POST
-        // -------------------------
-        return {
-          ...item,
-          type: "post",
-          community_pinned:
-            item.community_pinned || false,
-          community_pin_order:
-            item.community_pin_order || 0,
-          likes_count:
-            item.likes_count || 0,
-          comments_count:
-            item.comments_count || 0,
-          shares_count:
-            item.shares_count || 0,
-          media_files:
-            item.media_files || [],
-        };
-      });
+      const mapped = results.map(mapCommunityPost);
+
       setPosts(mapped);
     } catch (err) {
       console.error(err);
@@ -216,7 +312,8 @@ export default function CommunityPage({
         `api/communities/${communityId}/feed/?page=${nextPage}`
       );
   
-      const newPosts = data.results || [];
+      const newPosts = (data.results || [])
+        .map(mapCommunityPost);
   
       if (newPosts.length === 0) {
         setHasMore(false);
@@ -278,8 +375,39 @@ export default function CommunityPage({
         break;
   
       // DELETE POST
-      case 'delete':
-        console.log('Delete post', postId);
+      case "delete":
+
+        try {
+      
+          await deletePostEverywhere(postId);
+      
+          setPosts(prev =>
+            prev.filter((post: any) => {
+      
+              if (post.id === postId) {
+                return false;
+              }
+      
+              if (
+                post.type === "repost" &&
+                (
+                  post.post?.id === postId ||
+                  post.post_id === postId
+                )
+              ) {
+                return false;
+              }
+      
+              return true;
+            })
+          );
+      
+          toast.success("Post deleted");
+      
+        } catch (err) {
+          console.error(err);
+        }
+      
         break;
   
       // NORMAL REPOST
@@ -297,7 +425,7 @@ export default function CommunityPage({
             }
           );
   
-          alert("Reposted!");
+          toast.success("Reposted!");
   
         } catch (err) {
   
@@ -313,25 +441,49 @@ export default function CommunityPage({
   
         break;
   
-      case 'delete_repost':
+      case "delete_repost":
         try {
-          await apiRequest(
-            `api/post/${postId}/delete_repost/`,
-            {
-              method: 'POST',
-            }
+          await deletePostEverywhere(
+            postId,
+            "repost"
           );
       
-          alert("Repost deleted");
+          setPosts(prev =>
+            prev.filter(
+              (post: any) =>
+                Number(post.id) !== Number(postId)
+            )
+          );
+      
+          toast.success("Repost deleted");
+      
         } catch (err) {
           console.error(err);
+          toast.error("Failed to delete repost");
         }
+      
         break;
 
       default:
         break;
     }
   };
+  
+  const visiblePosts = useMemo(() => {
+    return posts.filter((post: any) => {
+      const postUserId =
+        post.type === "repost"
+          ? post.post?.user?.id
+          : post.user?.id;
+  
+      if (!postUserId) return true;
+  
+      return (
+        !mutedUserIds.has(Number(postUserId)) &&
+        !blockedUserIds.has(Number(postUserId))
+      );
+    });
+  }, [posts, mutedUserIds, blockedUserIds]);
 
   const toggleSelect = (id: number) => {
     setSelectedPosts((prev: any) =>
@@ -561,7 +713,7 @@ export default function CommunityPage({
       {activeTab === "posts" && (
         <>
           <CommunityPosts
-            posts={posts}
+            posts={visiblePosts}
             loading={loading}
             onToggleCommunityPin={handleToggleCommunityPin}
             handleJoinCommunity={(id) => handleJoinCommunity(id)}

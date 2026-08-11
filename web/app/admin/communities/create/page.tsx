@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useNavigation } from '@/utils/useNavigation';
 import { apiRequest } from '@/utils/api';
-import { uploadToCloudinary } from '@/utils/cloudinary';
+import { uploadMediaResumable } from "@/utils/mediaUpload/uploadMediaResumable";
+import { uploadMedia } from "@/utils/mediaUpload/uploadMedia";
 import {normalizeWebsite} from "@/utils/normalizeWebsite";
 
 import {
@@ -40,6 +41,9 @@ export default function CreateCommunityPage() {
 
   const [videoFile, setVideoFile] =
     useState<File | null>(null);
+
+  const [coverUploading, setCoverUploading] = useState(false);
+  const [videoUploading, setVideoUploading] = useState(false);
 
   const [coverPreview, setCoverPreview] =
     useState<string | null>(null);
@@ -87,30 +91,6 @@ export default function CreateCommunityPage() {
     load();
   
   }, [tribeId, push]);
-  
-  useEffect(() => {
-
-    async function load() {
-
-      try {
-
-        const data = await apiRequest(
-          `api/admin/tribes/${tribeId}/`
-        );
-
-        setTribe(data);
-
-      } finally {
-
-        setLoading(false);
-
-      }
-
-    }
-
-    load();
-
-  }, [tribeId]);
 
   const handleCover = (
     e: React.ChangeEvent<HTMLInputElement>
@@ -148,39 +128,53 @@ export default function CreateCommunityPage() {
 
       setSaving(true);
 
-      let coverUrl: string | null = null;
-      let videoUrl: string | null = null;
+      let uploadedCoverAssetId: string | null = null;
+      let uploadedVideoAssetId: string | null = null;
 
       if (coverFile) {
-
-        coverUrl = await uploadToCloudinary({
-
-          file: coverFile,
-
-          folder:
-            'Tribe/Communities/Covers',
-
-          onProgress: setCoverProgress,
-
-        });
-
+        setCoverUploading(true);
+        setCoverProgress(0);
+      
+        const uploaded = await uploadMedia(
+          coverFile,
+          setCoverProgress
+        );
+      
+        if (!uploaded?.original_url) {
+          throw new Error(
+            "Cover image upload failed."
+          );
+        }
+      
+        uploadedCoverAssetId = String(uploaded.media_id);
+      
+        setCoverProgress(100);
       }
 
       if (videoFile) {
-
-        videoUrl = await uploadToCloudinary({
-
-          file: videoFile,
-
-          folder:
-            'Tribe/Communities/Videos',
-
-          onProgress: setVideoProgress,
-
-        });
-
-      }
+        setVideoUploading(true);
+        setVideoProgress(0);
       
+        console.log("VIDEO UPLOAD START");
+
+        const uploaded = await uploadMediaResumable({
+          file: videoFile,
+          onProgress: setVideoProgress,
+        });
+  
+        console.log("VIDEO UPLOAD FINISHED:", uploaded);
+      
+        if (!uploaded?.original_url) {
+          throw new Error(
+            "Intro video upload failed."
+          );
+        }
+      
+        uploadedVideoAssetId = String(uploaded.media_id);
+      
+        setVideoProgress(100);
+      }
+  
       if (!name.trim()) {
         alert("Community name is required.");
         return;
@@ -203,11 +197,15 @@ export default function CreateCommunityPage() {
 
       };
 
-      if (coverUrl)
-        payload.cover_image = coverUrl;
-
-      if (videoUrl)
-        payload.intro_video = videoUrl;
+      if (uploadedCoverAssetId) {
+        payload.cover_image_asset_id =
+          uploadedCoverAssetId;
+      }
+      
+      if (uploadedVideoAssetId) {
+        payload.intro_video_asset_id =
+          uploadedVideoAssetId;
+      }
 
       const res = await apiRequest(
         'api/admin/communities/create/',

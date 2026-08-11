@@ -154,7 +154,7 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
             </button>
           </li>
 
-          {links.map(({ name, path, icon: Icon }) => {
+          {/*{links.map(({ name, path, icon: Icon }) => {
 
             const active = pathname === path;
 
@@ -166,9 +166,9 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
                 </li>
               </AppLink>
             );
-          })}
+          })}*/}
 
-            <AppLink href="/main/settings" prefetch={false} onClick={closeMenu} className={navItem}>
+          <AppLink href="/main/settings" prefetch={false} onClick={closeMenu} className={navItem}>
               <Settings size={20} />
               Settings
           </AppLink>

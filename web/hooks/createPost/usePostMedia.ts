@@ -33,7 +33,6 @@ export function usePostMedia({
     e: React.ChangeEvent<HTMLInputElement>
   ) => {
     if (!allowImages) return;
-
     if (!e.target.files) return;
 
     const files = Array.from(e.target.files);
@@ -60,7 +59,6 @@ export function usePostMedia({
     if (!e.target.files?.[0]) return;
 
     const file = e.target.files[0];
-
     const preview = URL.createObjectURL(file);
 
     setVideo(file);
@@ -104,23 +102,17 @@ export function usePostMedia({
     imageUrls,
     video,
     videoPreview,
-
     previewImages,
-
     hasImages,
     hasVideo,
-
     setImageFiles,
     setImageUrls,
     setVideo,
     setVideoPreview,
-
     handleImagesChange,
     handleVideoChange,
-
     removeImage,
     removeVideo,
-
     clearMedia,
   };
 }

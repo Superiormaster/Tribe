@@ -6,8 +6,10 @@ import {
     useState,
 } from "react";
 import { apiRequest } from '@/utils/api';
+import { deletePostEverywhere } from "@/utils/deletePost";
 import { useReelBuffer } from '@/reelsHook/useReelBuffer';
 import { useNavigation } from "@/utils/useNavigation";
+import toast from 'react-hot-toast';
 
 type Reel = {
   id: number;
@@ -288,7 +290,7 @@ export function useReels(reelId?: number) {
         }
     );
   
-    alert("User muted");
+    toast.success("User muted");
   };
   
   const handleBlock = async (
@@ -304,7 +306,7 @@ export function useReels(reelId?: number) {
         }
     );
   
-    alert("User blocked");
+    toast.success("User blocked");
 
     setReels(prev=>
         prev.filter(
@@ -333,22 +335,19 @@ export function useReels(reelId?: number) {
       return res;
   };
   
-  const handleDelete = async (
-    postId:number
-  )=>{
-
-    await apiRequest(
-        `api/post/${postId}/`,
-        {
-            method:"DELETE",
-        }
-    );
-
-    setReels(prev=>
-        prev.filter(
-            r=>r.id!==postId
-        )
-    );
+  const handleDelete = async (postId: number) => {
+    try {
+      await deletePostEverywhere(postId, "post");
+  
+      setReels(prev =>
+        prev.filter(r => Number(r.id) !== Number(postId))
+      );
+  
+      toast.success("Reel deleted");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to delete reel");
+    }
   };
   
   const handleEdit = (postId: number) => {

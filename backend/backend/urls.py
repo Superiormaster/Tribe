@@ -32,6 +32,7 @@ urlpatterns = [
     path('api/comments/', include('post.urls')),
     path('api/search/', include('search.urls')),
     path('api/feedback/', include('feedback.urls')),
+    path('api/media/', include('media.urls')),
 ]
 
 # Serve media files in development

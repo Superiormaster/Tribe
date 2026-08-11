@@ -143,9 +143,7 @@ export function useHomeInitialization({
           }
       
           window.dispatchEvent(
-              new CustomEvent("network-error", {
-                  detail: "Couldn't load latest posts. Showing cached feed."
-              })
+              new CustomEvent("network-error")
           );
       }
     };

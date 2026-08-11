@@ -16,6 +16,15 @@ import {
   removeFeedPost,
   updateReel,
 } from "@/lib/feedDb";
+import {
+  removePostFromAllFeedCaches,
+} from "@/lib/feedDb";
+import {
+  emitPostDeleted,
+} from "@/lib/postEvents";
+import {
+  removePostFromState,
+} from "@/lib/removePostFromState";
 
 interface UseHomeFeedProps {
   filter: "all" | "tribes";
@@ -129,11 +138,24 @@ export function useHomeFeed({
     };
   }, []);
 
-{/*  const starredUserIds = useMemo(() => {
-    return new Set<number>(
-      (feedResponse?.starred_user_ids ?? []) as number[]
-    );
-  }, [feedResponse]);*/}
+  const removePostEverywhere = useCallback(
+    async (postId: number) => {
+      const id = Number(postId);
+  
+      if (!id) return;
+  
+      postsRequestIdRef.current++;
+  
+      setPosts(prev =>
+        removePostFromState(prev, id)
+      );
+  
+      await removePostFromAllFeedCaches(id);
+  
+      emitPostDeleted(id);
+    },
+    []
+  );
   
   useEffect(() => {
     if (!starredUsers.size) return;
@@ -350,11 +372,7 @@ export function useHomeFeed({
   
       window.dispatchEvent(
           new CustomEvent(
-              "network-error",
-              {
-                  detail:
-                      "Couldn't load latest posts. Showing cached feed."
-              }
+              "network-error"
           )
       );
     } finally {
@@ -371,7 +389,11 @@ export function useHomeFeed({
   }, [filter, selectedTribe, starredUsers,]);
   
   const addFeedPost = async (post: any) => {
-    await insertFeedPost(post);
+    await insertFeedPost(
+      filter,
+      selectedTribe,
+      post
+    );
 
     setPosts(prev => [
         {
@@ -685,6 +707,7 @@ export function useHomeFeed({
     updateFeedPost,
     insertFeedPost,
     addFeedPost,
+    removePostEverywhere,
     removeFeedPost,
     updateReel,
   };

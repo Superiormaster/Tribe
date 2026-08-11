@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   saveAutoPostDraft,
   saveManualPostDraft,
@@ -24,6 +24,7 @@ interface UsePostDraftProps {
 
   selectedCommunity: number | null;
   communityData: any;
+  isOnline: boolean;
 
   setContent: (value: string) => void;
   setImageFiles: (value: (File | string)[]) => void;
@@ -45,6 +46,7 @@ export function usePostDraft({
   imageFiles,
   imageUrls,
   video,
+  isOnline,
 
   selectedCommunity,
   communityData,
@@ -58,6 +60,11 @@ export function usePostDraft({
 }: UsePostDraftProps) {
   const [draftCount, setDraftCount] =
     useState(0);
+  const skipNextAutoSave = useRef(false);
+  const previousOnlineRef = useRef(isOnline);
+  const manualDraftSaving = useRef(false);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveVersionRef = useRef(0);
 
   useEffect(() => {
     const loadCount = async () => {
@@ -70,44 +77,91 @@ export function usePostDraft({
     loadCount();
   }, []);
 
-  // Auto save
   useEffect(() => {
-    if (isEdit || draftId) return;
-
-    const timer = setTimeout(async () => {
-      await saveAutoPostDraft({
-        draftId: selectedCommunity
-          ? `auto-community-${selectedCommunity}`
-          : "auto-global",
-
-        title: selectedCommunity
-          ? `${communityData?.tribe?.name} • ${communityData?.name}`
-          : "Global Post",
-
-        content,
-        imageFiles,
-        imageUrls,
-
-        video: video
-          ? video instanceof File
-            ? video
-            : {
-                url: video.url,
-                thumbnail:
-                  video.thumbnail,
-              }
-          : null,
-
-        selectedCommunity,
-
-        communityName:
-          communityData?.name || "",
-      });
-    }, 1000);
-
-    return () =>
-      clearTimeout(timer);
+    const wasOnline = previousOnlineRef.current;
+  
+    previousOnlineRef.current = isOnline;
+  
+    if (!wasOnline || isOnline) {
+      return;
+    }
+  
+    if (isEdit || draftId) {
+      return;
+    }
+  
+    if (
+      skipNextAutoSave.current ||
+      manualDraftSaving.current
+    ) {
+      return;
+    }
+  
+    if (
+      !content.trim() &&
+      imageFiles.length === 0 &&
+      imageUrls.length === 0 &&
+      !video
+    ) {
+      return;
+    }
+  
+    const saveOfflineDraft = async () => {
+      try {
+        const version =
+          ++saveVersionRef.current;
+  
+        await saveAutoPostDraft({
+          draftId: selectedCommunity
+            ? `auto-community-${selectedCommunity}`
+            : "auto-global",
+  
+          title: selectedCommunity
+            ? `${communityData?.tribe?.name} • ${communityData?.name}`
+            : "Global Post",
+  
+          content,
+          imageFiles,
+          imageUrls,
+  
+          video: video
+            ? video instanceof File
+              ? video
+              : {
+                  url: video.url,
+                  thumbnail: video.thumbnail,
+                }
+            : null,
+  
+          selectedCommunity,
+  
+          communityName:
+            communityData?.name || "",
+        });
+  
+        if (
+          version !==
+          saveVersionRef.current
+        ) {
+          return;
+        }
+  
+        console.log(
+          "Post automatically saved because connection was lost."
+        );
+  
+      } catch (error) {
+        console.error(
+          "Failed to auto-save offline post:",
+          error
+        );
+      }
+    };
+  
+    saveOfflineDraft();
+  
   }, [
+    isOnline,
     isEdit,
     draftId,
     content,
@@ -117,6 +171,138 @@ export function usePostDraft({
     selectedCommunity,
     communityData,
   ]);
+  
+  useEffect(() => {
+    if (isEdit || draftId) {
+      return;
+    }
+  
+    if (isOnline) {
+      return;
+    }
+  
+    if (
+      skipNextAutoSave.current ||
+      manualDraftSaving.current
+    ) {
+      return;
+    }
+  
+    if (
+      !content.trim() &&
+      imageFiles.length === 0 &&
+      imageUrls.length === 0 &&
+      !video
+    ) {
+      return;
+    }
+  
+    if (autoSaveTimerRef.current) {
+      clearTimeout(
+        autoSaveTimerRef.current
+      );
+    }
+  
+    autoSaveTimerRef.current =
+      setTimeout(async () => {
+  
+        if (isOnline) {
+          return;
+        }
+  
+        if (
+          skipNextAutoSave.current ||
+          manualDraftSaving.current
+        ) {
+          return;
+        }
+  
+        try {
+          const version =
+            ++saveVersionRef.current;
+  
+          await saveAutoPostDraft({
+            draftId: selectedCommunity
+              ? `auto-community-${selectedCommunity}`
+              : "auto-global",
+  
+            title: selectedCommunity
+              ? `${communityData?.tribe?.name} • ${communityData?.name}`
+              : "Global Post",
+  
+            content,
+            imageFiles,
+            imageUrls,
+  
+            video: video
+              ? video instanceof File
+                ? video
+                : {
+                    url: video.url,
+                    thumbnail: video.thumbnail,
+                  }
+              : null,
+  
+            selectedCommunity,
+  
+            communityName:
+              communityData?.name || "",
+          });
+  
+          if (
+            version !==
+            saveVersionRef.current
+          ) {
+            return;
+          }
+  
+        } catch (error) {
+          console.error(
+            "Auto-save failed:",
+            error
+          );
+        }
+  
+      }, 1000);
+  
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(
+          autoSaveTimerRef.current
+        );
+  
+        autoSaveTimerRef.current =
+          null;
+      }
+    };
+  
+  }, [
+    isOnline,
+    isEdit,
+    draftId,
+    content,
+    imageFiles,
+    imageUrls,
+    video,
+    selectedCommunity,
+    communityData,
+  ]);
+  
+  const prepareForManualDraft = () => {
+    saveVersionRef.current++;
+  
+    skipNextAutoSave.current = true;
+  
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+  };
+  
+  const finishManualDraftSave = () => {
+    manualDraftSaving.current = false;
+    skipNextAutoSave.current = false;
+  };
 
   // Restore draft
   useEffect(() => {
@@ -176,42 +362,63 @@ export function usePostDraft({
     isEdit,
   ]);
 
-  const saveDraft =
-    async () => {
-      await saveManualPostDraft({
-        title: selectedCommunity
-          ? `${communityData?.tribe?.name} • ${communityData?.name}`
-          : "Global Post",
+  const saveDraft = 
+    async (): Promise<boolean> => {
+  
+      if (manualDraftSaving.current) {
+        return;
+      }
 
-        communityName:
-          communityData?.name || "",
+      manualDraftSaving.current = true;
+      skipNextAutoSave.current = true;
+  
+      try {
+        await saveManualPostDraft({
+          title: selectedCommunity
+            ? `${communityData?.tribe?.name} • ${communityData?.name}`
+            : "Global Post",
+  
+          communityName:
+            communityData?.name || "",
+  
+          content,
+          imageFiles,
+          imageUrls,
+  
+          video: video
+            ? video instanceof File
+              ? video
+              : {
+                  url: video.url,
+                  thumbnail:
+                    video.thumbnail,
+                }
+            : null,
+  
+          selectedCommunity,
+        });
+  
+        const drafts =
+          await getAllPostDrafts();
+  
+        setDraftCount(
+          drafts.length
+        );
 
-        content,
-        imageFiles,
-        imageUrls,
-
-        video: video
-          ? video instanceof File
-            ? video
-            : {
-                url: video.url,
-                thumbnail:
-                  video.thumbnail,
-              }
-          : null,
-
-        selectedCommunity,
-      });
-
-      const drafts =
-        await getAllPostDrafts();
-
-      setDraftCount(
-        drafts.length
-      );
+        return true;
+      } catch (error) {
+        console.error("saveDraft failed:", error);
+        throw error;
+        console.error("saveDraft failed:", error);
+        throw error;
+      } finally {
+        finishManualDraftSave();
+      }
     };
 
   const saveAutoDraft = async () => {
+    const version = ++saveVersionRef.current;
+
     await saveAutoPostDraft({
       draftId: selectedCommunity
         ? `auto-community-${selectedCommunity}`
@@ -238,6 +445,10 @@ export function usePostDraft({
   
       communityName: communityData?.name || "",
     });
+  
+    if (version !== saveVersionRef.current) {
+      return;
+    }
   };
 
   return {
@@ -245,5 +456,7 @@ export function usePostDraft({
     saveDraft,
     setDraftCount,
     saveAutoDraft,
+    prepareForManualDraft,
+    finishManualDraftSave,
   };
 }

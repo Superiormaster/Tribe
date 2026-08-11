@@ -6,7 +6,6 @@ import { NotificationProvider } from "@/components/NotificationContext"
 import NotificationToast from "@/components/NotificationToast";
 import GlobalSocketProvider from "@/components/GlobalSocketProvider";
 import { AccountSwitcherProvider } from "@/components/AccountSwitcherContext";
-import { PostSocketProvider } from "@/components/PostSocketContext";
 import { ShareProvider } from "@/components/share/ShareContext";
 import Providers from "@/components/providers";
 import { InviteProvider } from "@/components/invite/InviteContext";
@@ -18,7 +17,6 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       <NotificationProvider>
         <GlobalSocketProvider />
 
-        <PostSocketProvider>
           <ShareProvider>
             <InviteProvider>
               <AccountSwitcherProvider>
@@ -49,7 +47,6 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
               </AccountSwitcherProvider>
             </InviteProvider>
           </ShareProvider>
-        </PostSocketProvider>
 
       </NotificationProvider>
     </ProtectedRoute>

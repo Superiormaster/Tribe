@@ -22,11 +22,13 @@ class Message(models.Model):
     )
     caption = models.TextField(blank=True, null=True)
 
-    # MEDIA (Cloudinary URL)
-    media_url = models.JSONField(
-        default=list,
+    # MEDIA (r2 URL)
+    media_assets = models.ManyToManyField(
+        "media.MediaAsset",
         blank=True,
+        related_name="messages",
     )
+    
     media_type = models.CharField(
         max_length=10,
         choices=[
@@ -63,17 +65,7 @@ class Message(models.Model):
       blank=True,
       db_index=True,
     )
-
-    # OPTIONAL (for videos)
-    thumbnail = models.JSONField(
-        default=list,
-        blank=True,
-    )
   
-    duration = models.JSONField(
-        default=list,
-        blank=True,
-    )
     waveform = models.JSONField(default=list, blank=True)
 
     # FEATURES

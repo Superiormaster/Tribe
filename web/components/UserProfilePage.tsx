@@ -3,6 +3,8 @@ import { useState, useEffect, useMemo, useContext } from 'react';
 import { useParams } from 'next/navigation';
 import { useNavigation } from "@/utils/useNavigation"
 import AppLink from '@/components/AppLink';
+import { uploadProfileMedia } from "@/utils/r2";
+import { deletePostEverywhere } from '@/utils/deletePost';
 import { UserContext } from '@/components/UserContext';
 import { openChat as openPrivateChat } from "@/lib/inbox/openChat";
 import toast from "react-hot-toast";
@@ -20,10 +22,16 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
 import Skeleton from '@/components/Skeleton';
-import { uploadToCloudinary } from '@/utils/cloudinary';
 import PostCard from '@/components/PostCard';
 import ReelCard from '@/components/ReelCard';
 import RepostCard from '@/components/repost/RepostCard';
+import {
+  POST_DELETED_EVENT,
+  REPOST_DELETED_EVENT,
+} from "@/lib/postEvents";
+import {
+  removePostFromState,
+} from "@/lib/removePostFromState";
 import SortablePinnedPost from '@/components/SortablePinnedPost';
 import ShareButton from '@/components/share/ShareButton'
 import {
@@ -103,6 +111,10 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
   const name = decodeURIComponent(username).replace(/\s+/g, "_");
   const [profileUserId, setProfileUserId] = useState<number | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarAssetId, setAvatarAssetId] =
+    useState<string | null>(null);
+  const [coverAssetId, setCoverAssetId] =
+    useState<string | null>(null);
   const [avatarProgress, setAvatarProgress] = useState(0);
   const [avatarSuccess, setAvatarSuccess] = useState(false);
   const [coverUploading, setCoverUploading] = useState(false);
@@ -125,17 +137,9 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
   })
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'images' | 'videos'>('all');
-  const [mounted, setMounted] =
-    useState(false);
-  
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const orderedPosts = useMemo(() => {
-
     return [...posts].sort((a, b) => {
-  
       // pinned first
       if (
         a.profile_pinned &&
@@ -171,6 +175,68 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
     })
   
   }, [posts])
+  
+  useEffect(() => {
+    const handlePostDeleted = (event: Event) => {
+
+      const customEvent =
+        event as CustomEvent<{
+          postId: number;
+        }>;
+  
+      const deletedPostId =
+        Number(customEvent.detail?.postId);
+  
+      if (!deletedPostId) return;
+  
+      setPosts(prev =>
+        removePostFromState(
+          prev,
+          deletedPostId
+        )
+      );
+  
+    };
+  
+    const handleRepostDeleted = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        repostId: number;
+      }>;
+  
+      const deletedRepostId =
+        Number(customEvent.detail?.repostId);
+  
+      if (!deletedRepostId) return;
+  
+      setPosts(prev =>
+        prev.filter(post =>
+          Number(post.id) !== deletedRepostId
+        )
+      );
+    };
+  
+    window.addEventListener(
+      POST_DELETED_EVENT,
+      handlePostDeleted
+    );
+  
+    window.addEventListener(
+      REPOST_DELETED_EVENT,
+      handleRepostDeleted
+    );
+  
+    return () => {
+      window.removeEventListener(
+        POST_DELETED_EVENT,
+        handlePostDeleted
+      );
+  
+      window.removeEventListener(
+        REPOST_DELETED_EVENT,
+        handleRepostDeleted
+      );
+    };
+  }, []);
   
   const filteredPosts = useMemo(() => {
     return orderedPosts.filter(post => {
@@ -274,10 +340,6 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
     }
   
     setPosts(updatedPosts)
-  
-    // -------------------------
-    // API CALL
-    // -------------------------
   
     try {
   
@@ -550,11 +612,14 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
         request_sent: data.relationship?.request_sent || false,
         request_received: data.relationship?.request_received || false,
       });
-      setIsMyProfile(data.relationship.is_me)
+  
+      const isMe = data?.relationship?.is_me || false;
+      setIsMyProfile(isMe);
   
       return {
-        is_private: false,
+        is_private: data?.is_private || false,
         profile: profileData,
+        is_me: isMe,
       };
   
     } catch (err) {
@@ -563,11 +628,12 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
       return {
         is_private: false,
         profile: null,
+        is_me: false,
       };
     }
   };
 
-  const fetchPosts = async (page?: number | string) => {
+  const fetchPosts = async (page?: number | string, isMe?: boolean) => {
     if (loadingMore) return;
   
     try {
@@ -582,7 +648,7 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
       // 🔒 HANDLE PRIVATE PROFILE
       if (
         data?.code === "private_profile" &&
-        !isMyProfile
+        !(isMe ?? isMyProfile)
       ) {
         setIsPrivate(true);
         setPosts([]);
@@ -622,93 +688,290 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
   };
   
   useEffect(() => {
-
-    if (!username) return
-  
-    const load = async () => {
-  
-      try {
-  
-        setLoading(true)
-  
-        await fetchProfile();
-        await fetchPosts();
-  
-      } finally {
-  
-        setLoading(false)
-      }
+    if (!username) {
+      return;
     }
   
-    load()
+    let cancelled = false;
   
-  }, [username])
+    const load = async () => {
+      setLoading(true);
+  
+      try {
+        const profileResult = await fetchProfile();
 
-  // handle avatar change with preview + automatic upload
+        if (cancelled) {
+          return;
+        }
+        
+        await fetchPosts(
+          undefined,
+          profileResult.is_me
+        );
+  
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+  
+    load();
+  
+    return () => {
+      cancelled = true;
+    };
+  
+  }, [username]);
+
   const handleChangeAvatar = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = async (e: any) => {
-      const file = e.target.files?.[0];
+    const input = document.createElement("input");
+  
+    input.type = "file";
+    input.accept = "image/*";
+  
+    input.onchange = async (event: Event) => {
+      const target = event.target as HTMLInputElement;
+      const file = target.files?.[0];
+  
       if (!file) return;
   
-      // Show preview immediately
-      const reader = new FileReader();
-      reader.onload = () => {
-        const preview = reader.result as string;
-      
-        setProfile(prev =>
-          prev ? { ...prev, avatar: preview } : prev
-        );
-      
-        setUser((prev: any) => ({
-          ...prev,
-          avatar: preview,
-        }));
-      };
-      
-      reader.readAsDataURL(file);
+      if (avatarUploading) {
+        toast.error("Please wait for the current upload to finish.");
+        return;
+      }
+  
+      const previewUrl = URL.createObjectURL(file);
+      const previousAvatar = profile?.avatar || "";
+  
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              avatar: previewUrl,
+            }
+          : prev
+      );
+  
+      setUser((prev: any) => ({
+        ...prev,
+        avatar: previewUrl,
+      }));
   
       setAvatarUploading(true);
       setAvatarProgress(0);
-
-      // Upload automatically
+      setAvatarSuccess(false);
+  
       try {
-        const url = await uploadToCloudinary({
+  
+        const completed = await uploadProfileMedia({
           file,
-          folder: 'Tribe/Avatars',
+          mediaType: "avatar",
           onProgress: setAvatarProgress,
         });
-        await apiRequest(`api/users/me/`, {
-          method: 'PATCH',
-          data: { avatar: url },
+  
+        if (!completed?.original_url) {
+          throw new Error(
+            "Avatar upload completed but no URL was returned."
+          );
+        }
+  
+        const uploadedUrl = completed.original_url;
+  
+        await apiRequest("api/users/me/", {
+          method: "PATCH",
+          data: {
+            avatar: uploadedUrl,
+          },
         });
-        console.log('Avatar uploaded:', url);
+  
+        setProfile((prev) =>
+          prev
+            ? {
+                ...prev,
+                avatar: uploadedUrl,
+              }
+            : prev
+        );
+  
+        setUser((prev: any) => ({
+          ...prev,
+          avatar: uploadedUrl,
+        }));
+  
         setAvatarProgress(100);
         setAvatarSuccess(true);
+  
+        toast.success("Profile picture updated");
+  
         setTimeout(() => {
           setAvatarSuccess(false);
           setAvatarUploading(false);
           setAvatarProgress(0);
+  
+          URL.revokeObjectURL(previewUrl);
         }, 700);
-        toast.success("Profile picture updated");
-        setProfile(prev =>
-          prev ? { ...prev, avatar: url } : prev
+  
+      } catch (err) {
+        console.error("Avatar upload failed:", err);
+  
+        setProfile((prev) =>
+          prev
+            ? {
+                ...prev,
+                avatar: previousAvatar,
+              }
+            : prev
         );
   
         setUser((prev: any) => ({
           ...prev,
-          avatar: url,
+          avatar: previousAvatar,
         }));
-      } catch (err) {
-        console.error('Avatar upload failed', err);
+  
         setAvatarUploading(false);
         setAvatarProgress(0);
         setAvatarSuccess(false);
-        toast.error("Failed to update profile picture");
+  
+        URL.revokeObjectURL(previewUrl);
+  
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : "Failed to update profile picture."
+        );
+      } finally {
+        // Allow selecting the same file again
+        target.value = "";
       }
     };
+  
+    input.click();
+  };
+  
+  
+  const handleChangeCover = () => {
+    const input = document.createElement("input");
+  
+    input.type = "file";
+    input.accept = "image/*";
+  
+    input.onchange = async (event: Event) => {
+      const target = event.target as HTMLInputElement;
+      const file = target.files?.[0];
+  
+      if (!file) return;
+  
+      if (coverUploading) {
+        toast.error("Please wait for the current upload to finish.");
+        return;
+      }
+  
+      const previewUrl = URL.createObjectURL(file);
+      const previousCover = profile?.cover_photo || "";
+  
+      setProfile((prev) =>
+        prev
+          ? {
+              ...prev,
+              cover_photo: previewUrl,
+            }
+          : prev
+      );
+  
+      setUser((prev: any) => ({
+        ...prev,
+        cover_photo: previewUrl,
+      }));
+  
+      setCoverUploading(true);
+      setCoverProgress(0);
+      setCoverSuccess(false);
+  
+      try {
+
+        const completed = await uploadProfileMedia({
+          file,
+          mediaType: "cover",
+          onProgress: setCoverProgress,
+        });
+  
+        if (!completed?.original_url) {
+          throw new Error(
+            "Cover upload completed but no URL was returned."
+          );
+        }
+  
+        const uploadedUrl = completed.original_url;
+  
+        await apiRequest("api/users/me/", {
+          method: "PATCH",
+          data: {
+            cover_photo: uploadedUrl,
+          },
+        });
+  
+        setProfile((prev) =>
+          prev
+            ? {
+                ...prev,
+                cover_photo: uploadedUrl,
+              }
+            : prev
+        );
+  
+        setUser((prev: any) => ({
+          ...prev,
+          cover_photo: uploadedUrl,
+        }));
+  
+        setCoverProgress(100);
+        setCoverSuccess(true);
+  
+        toast.success("Cover photo updated");
+  
+        setTimeout(() => {
+          setCoverSuccess(false);
+          setCoverUploading(false);
+          setCoverProgress(0);
+  
+          URL.revokeObjectURL(previewUrl);
+        }, 700);
+  
+      } catch (err) {
+        console.error("Cover upload failed:", err);
+  
+        setProfile((prev) =>
+          prev
+            ? {
+                ...prev,
+                cover_photo: previousCover,
+              }
+            : prev
+        );
+  
+        setUser((prev: any) => ({
+          ...prev,
+          cover_photo: previousCover,
+        }));
+  
+        setCoverUploading(false);
+        setCoverProgress(0);
+        setCoverSuccess(false);
+  
+        URL.revokeObjectURL(previewUrl);
+  
+        toast.error(
+          err instanceof Error
+            ? err.message
+            : "Failed to update cover photo."
+        );
+      } finally {
+        // Allow selecting the same file again
+        target.value = "";
+      }
+    };
+  
     input.click();
   };
   
@@ -741,74 +1004,6 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
       console.error(err)
     }
   }
-
-  // handle cover change with preview + automatic upload
-  const handleChangeCover = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = async (e: any) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-  
-      // Preview immediately
-      const reader = new FileReader();
-      reader.onload = () => {
-        const preview = reader.result as string;
-      
-        setProfile(prev =>
-          prev ? { ...prev, cover_photo: preview } : prev
-        );
-      
-        setUser((prev: any) => ({
-          ...prev,
-          cover_photo: preview,
-        }));
-      };
-      
-      reader.readAsDataURL(file);
-  
-      setCoverUploading(true);
-      setCoverProgress(0);
-
-      // Upload automatically
-      try {
-        const url = await uploadToCloudinary({
-          file,
-          folder: 'Tribe/Covers',
-          onProgress: setCoverProgress,
-        });
-        await apiRequest(`api/users/me/`, {
-          method: 'PATCH',
-          data: { cover_photo: url },
-        });
-        console.log('Cover uploaded:', url);
-        setCoverProgress(100);
-        setCoverSuccess(true);
-        toast.success("Cover photo updated");
-        setTimeout(() => {
-          setCoverSuccess(false);
-          setCoverUploading(false);
-          setCoverProgress(0);
-        }, 700);
-        setProfile(prev =>
-          prev ? { ...prev, cover_photo: url } : prev
-        );
-  
-        setUser((prev: any) => ({
-          ...prev,
-          cover_photo: url,
-        }));
-      } catch (err) {
-        setCoverUploading(false);
-        setCoverProgress(0);
-        setCoverSuccess(false);
-        console.error('Cover upload failed', err);
-        toast.error("Failed to update cover photo");
-      }
-    };
-    input.click();
-  };
   
   const handleOpenChat = async () => {
     if (!profileUserId) return;
@@ -841,8 +1036,62 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
         break;
   
       // DELETE POST
-      case 'delete':
-        console.log('Delete post', postId);
+      case "delete_repost":
+        try {
+          await deletePostEverywhere(
+            postId,
+            "repost"
+          );
+      
+          setPosts(prev =>
+            prev.filter(
+              (post: any) =>
+                Number(post.id) !== Number(postId)
+            )
+          );
+      
+          toast.success("Repost deleted");
+      
+        } catch (err) {
+          console.error(err);
+          toast.error("Failed to delete repost");
+        }
+      
+        break;
+  
+      case "delete":
+
+        try {
+      
+          await deletePostEverywhere(postId);
+      
+          setPosts(prev =>
+            prev.filter((post: any) => {
+      
+              if (post.id === postId) {
+                return false;
+              }
+      
+              if (
+                post.type === "repost" &&
+                (
+                  post.post?.id === postId ||
+                  post.post_id === postId
+                )
+              ) {
+                return false;
+              }
+      
+              return true;
+            })
+          );
+      
+          toast.success("Post deleted");
+      
+        } catch (err) {
+          console.error(err);
+        }
+      
         break;
   
       // NORMAL REPOST
@@ -876,28 +1125,43 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
   
         break;
 
-      case 'delete_repost':
-        setPosts(prev =>
-          prev.filter(
-            p => p.id !== postId
-          )
-        );
-        break;
-
       default:
         break;
     }
   };
   
-  const websiteUrl = profile?.website
-    ? websiteToUrl(profile.website)
-    : null;
+  const websiteUrl = useMemo(() => {
+    if (!profile?.website) {
+      return null;
+    }
   
-  const websiteHost = websiteUrl
-    ? new URL(websiteUrl).hostname
-    : "";
+    try {
+      return websiteToUrl(
+        profile.website
+      );
+    } catch {
+      return null;
+    }
+  }, [profile?.website]);
+  
+  const websiteHost = useMemo(() => {
+    if (!websiteUrl) {
+      return "";
+    }
+  
+    try {
+      return new URL(
+        websiteUrl
+      ).hostname.replace(
+        /^www\./,
+        ""
+      );
+    } catch {
+      return websiteUrl;
+    }
+  }, [websiteUrl]);
 
-  if (loading && !mounted)
+  if (loading)
     return (
       <div className="flex items-center justify-center h-screen">
         <Skeleton />
@@ -1357,19 +1621,67 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
     )}
 
       <div className="flex justify-center py-4">
-        {filteredPosts.length > 0 && (
-          <div className="flex justify-center py-4">
-            {nextPage ? (
-              <button
-                onClick={() => fetchPosts(nextPage)}
-                disabled={loadingMore}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg disabled:opacity-50"
-              >
-                {loadingMore ? "Loading..." : "Load More"}
-              </button>
-            ) : (
-              <span className="text-gray-500">No more posts</span>
-            )}
+        {nextPage && !isPrivate && (
+          <div className="flex justify-center py-6">
+            <button
+              type="button"
+              disabled={loadingMore}
+              onClick={() => {
+                if (!nextPage) {
+                  return;
+                }
+  
+                try {
+                  const url =
+                    new URL(
+                      nextPage,
+                      window.location.origin
+                    );
+  
+                  const page =
+                    url.searchParams.get(
+                      "page"
+                    );
+  
+                  if (page) {
+                    fetchPosts(page);
+                  }
+                } catch (err) {
+                  console.error(
+                    "Invalid pagination URL:",
+                    err
+                  );
+                }
+              }}
+              className="
+                px-5 py-2
+                rounded-lg
+                bg-indigo-600
+                text-white
+                hover:bg-indigo-700
+                disabled:opacity-50
+                disabled:cursor-not-allowed
+              "
+            >
+              {loadingMore
+                ? "Loading..."
+                : "Load more"}
+            </button>
+          </div>
+        )}
+  
+        {/* End of posts */}
+        {!loadingMore &&
+          !nextPage &&
+          filteredPosts.length > 0 && (
+            <p className="text-center text-xs text-gray-400 py-6">
+              You've reached the end.
+            </p>
+          )}
+  
+        {loadingMore && (
+          <div className="flex justify-center py-6">
+            <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
           </div>
         )}
       </div>

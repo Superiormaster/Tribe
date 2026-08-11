@@ -1,6 +1,7 @@
 # feed/cache.py
 
 import json
+from users.utils import redis_client
 
 def get_cached_feed(redis_client, user_id, tribe_id=None):
     key = f"feed:user:{user_id}:tribe:{tribe_id or 'all'}"
@@ -39,3 +40,18 @@ def mark_seen(redis_client, user_id, post_ids):
     if post_ids:
         redis_client.sadd(key, *post_ids)
         redis_client.expire(key, 86400)
+
+def invalidate_profile_cache(username):
+    """
+    Invalidate all cached profile stats and feed pages
+    for this username, regardless of which viewer requested them.
+    """
+
+    patterns = [
+        f"profile:{username}:stats:*",
+        f"profile:{username}:feed:*",
+    ]
+
+    for pattern in patterns:
+        for key in redis_client.scan_iter(match=pattern):
+            redis_client.delete(key)

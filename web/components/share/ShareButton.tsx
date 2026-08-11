@@ -5,7 +5,7 @@ type Props = {
   post: any;
   vertical?: boolean;
   dark?: boolean;
-  sharesCount: number;
+  sharesCount?: number;
   onOpen: (post: any) => void;
 };
 
@@ -13,7 +13,7 @@ export default function ShareButton({
   post,
   vertical = false,
   dark = false,
-  sharesCount,
+  sharesCount = 0,
   onOpen,
 }: Props) {
   return (

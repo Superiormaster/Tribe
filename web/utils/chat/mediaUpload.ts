@@ -1,6 +1,6 @@
 // utils/chat/mediaUpload.ts
 
-import { uploadToCloudinary } from "@/utils/cloudinary";
+import { uploadMediaResumable } from "@/utils/mediaUpload/uploadMediaResumable";
 import type { MessageType } from "@/utils/chat/messageContract";
 
 export async function uploadMediaFiles(
@@ -25,9 +25,8 @@ export async function uploadMediaFiles(
           );
 
     const url =
-      await uploadToCloudinary({
+      await uploadMediaResumable({
         file,
-        folder: "Tribe/Chat",
         onProgress: percent => {
           onProgress?.(
             percent,

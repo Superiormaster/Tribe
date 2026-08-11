@@ -101,12 +101,16 @@ export async function removeFeedPost(
     const db = await getDB();
     if (!db) return;
 
+    const id = Number(postId);
+
     const keys = await db.getAllKeys("feed");
 
     for (const key of keys) {
 
         const posts =
             (await db.get("feed", key)) || [];
+
+        if (!Array.isArray(posts)) continue;
 
         const filtered = posts.filter(
           (post: any) =>
@@ -351,4 +355,146 @@ export async function clearReels(
             await db.delete("reels", key);
         }
     }
+}
+
+export async function removePostsByUser(
+    userId: number
+) {
+    const db = await getDB();
+    if (!db) return;
+
+    const keys = await db.getAllKeys("feed");
+
+    for (const key of keys) {
+        const posts =
+            (await db.get("feed", key)) || [];
+
+        if (!Array.isArray(posts)) continue;
+
+        const filtered = posts.filter((item: any) => {
+            if (!item || typeof item !== "object") {
+                return false;
+            }
+
+            const ownerId =
+                item?.user?.id ??
+                item?.post?.user?.id ??
+                item?.data?.user?.id ??
+                item?.data?.post?.user?.id;
+
+            return Number(ownerId) !== Number(userId);
+        });
+
+        if (filtered.length !== posts.length) {
+            await db.put(
+                "feed",
+                filtered,
+                key
+            );
+        }
+    }
+}
+
+export async function removeReelsByUser(
+  userId: number
+) {
+  const db = await getDB();
+  if (!db) return;
+
+  const keys = await db.getAllKeys("reels");
+
+  for (const key of keys) {
+    const reels =
+      (await db.get("reels", key)) || [];
+
+    if (!Array.isArray(reels)) continue;
+
+    const filtered = reels.filter((reel: any) => {
+      return !(
+        reel?.user?.id &&
+        Number(reel.user.id) === Number(userId)
+      );
+    });
+
+    if (filtered.length !== reels.length) {
+      await db.put(
+        "reels",
+        filtered,
+        key
+      );
+    }
+  }
+}
+
+export async function removePostFromAllFeedCaches(
+  postId: number
+) {
+  const db = await getDB();
+  if (!db) return;
+
+  const id = Number(postId);
+
+  // =========================
+  // FEED CACHE
+  // =========================
+
+  const feedKeys = await db.getAllKeys("feed");
+
+  for (const key of feedKeys) {
+    const posts = await db.get("feed", key);
+
+    if (!Array.isArray(posts)) continue;
+
+    const filtered = posts.filter((post: any) => {
+      if (!post) return false;
+
+      const postIdFromItem = Number(post.id);
+
+      // Normal post
+      if (postIdFromItem === id) {
+        return false;
+      }
+
+      // Repost
+      if (post.type === "repost" || post.feed_type === "repost") {
+        const originalId = Number(
+          post.post?.id ??
+          post.post_id ??
+          post.original_post_id
+        );
+
+        if (originalId === id) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    if (filtered.length !== posts.length) {
+      await db.put("feed", filtered, key);
+    }
+  }
+
+  // =========================
+  // REELS CACHE
+  // =========================
+
+  const reelKeys = await db.getAllKeys("reels");
+
+  for (const key of reelKeys) {
+    const reels = await db.get("reels", key);
+
+    if (!Array.isArray(reels)) continue;
+
+    const filtered = reels.filter((reel: any) => {
+      if (!reel) return false;
+
+      return Number(reel.id) !== id;
+    });
+
+    if (filtered.length !== reels.length) {
+      await db.put("reels", filtered, key);
+    }
+  }
 }

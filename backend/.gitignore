@@ -15,6 +15,7 @@ out/
 
 # Env files
 .env
+*.rdb
 
 # Misc
 .DS_Store

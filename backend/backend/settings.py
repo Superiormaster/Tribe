@@ -12,6 +12,11 @@ import cloudinary
 from celery.schedules import crontab
 from dotenv import load_dotenv
 
+LANGUAGE_CODE = "en-us"
+TIME_ZONE = "Africa/Lagos"
+USE_I18N = True
+USE_TZ = True
+
 # -----------------------------
 # Environment & Paths
 # -----------------------------
@@ -57,6 +62,21 @@ CORS_ALLOW_HEADERS = [
 CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
 
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_TIME_LIMIT = 300
+CELERY_TASK_SOFT_TIME_LIMIT = 240
+CELERY_ACCEPT_CONTENT = [
+    "json",
+]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = True
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TASK_ACKS_LATE = True
+CELERY_TASK_REJECT_ON_WORKER_LOST = True
+CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=10),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
@@ -95,6 +115,7 @@ INSTALLED_APPS = [
     'search',
     'admin_panel',
     'feedback',
+    'media.apps.MediaConfig',
 ]
 
 # -----------------------------

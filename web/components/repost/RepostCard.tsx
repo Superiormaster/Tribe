@@ -101,16 +101,8 @@ export default function RepostCard({
     setIsStarred(starredUserIds.has(repost.user.id));
   }, [starredUserIds, repost?.user?.id]);
 
-  const handleDeleteRepost = async () => {
-    try {
-      await apiRequest(`api/reposts/${repost.id}/`, {
-        method: "DELETE",
-      });
-  
-      handlePostAction?.("delete_repost", repost.id);
-    } catch (err) {
-      console.error(err);
-    }
+  const handleDeleteRepost = () => {
+    handlePostAction?.("delete_repost", repost.id);
   };
   
   const isRepostOwner =
@@ -211,7 +203,7 @@ export default function RepostCard({
                     e.preventDefault();
                     e.stopPropagation();
         
-                    handleDeleteRepost();
+                    handleDeleteRepost()
         
                     setMenuOpen(false);
                   }}
