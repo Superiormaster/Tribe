@@ -85,7 +85,7 @@ export default function AnalyticsPage() {
 
       {/* Analytics Chart */}
       <AnalyticsChart
-          data={analytics.chart}
+          data={analytics.chart.data}
           type={chart.chartType}
       />
 

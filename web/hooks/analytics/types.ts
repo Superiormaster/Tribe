@@ -11,7 +11,7 @@ export type MetricType =
   | "reach"
   | "engagement"
   | "profileViews"
-  | "followers"
+  | "stars"
   | "likes"
   | "comments"
   | "shares"
@@ -43,7 +43,7 @@ export interface AnalyticsSummary {
   impressions: MetricCard;
   engagement: MetricCard;
   profileViews: MetricCard;
-  followers: MetricCard;
+  stars: MetricCard;
   likes: MetricCard;
   comments: MetricCard;
   shares: MetricCard;
