@@ -1,11 +1,14 @@
 from django.shortcuts import render
 from rest_framework import viewsets, permissions, status, generics
 from rest_framework.decorators import action
-from django.db.models import Count, F, Exists, OuterRef, Case, When, Q, Max, FloatField, Value, ExpressionWrapper
-from django.db.models.functions import Mod
+from .media import attach_post_media
+from .websocket import broadcast_post_stats
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+from django.db.models import Count, F, Exists, OuterRef, Case, When, Q, Max, FloatField, Value, ExpressionWrapper, Prefetch
+from django.db import IntegrityError, transaction
+from django.db.models.functions import Mod, Random
 from random import randint
-from django.db.models.functions import Random
-from django.db import transaction
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
@@ -93,7 +96,7 @@ class PostViewSet(viewsets.ModelViewSet):
         user = self.request.user
 
         queryset = Post.objects.filter(is_deleted=False, is_approved=True).select_related('user', 'community')\
-            .prefetch_related('likes', 'comments')\
+            .prefetch_related('likes', 'comments', 'media_files__asset')\
             .annotate(
                 likes_count=Count('likes', distinct=True),
                 comments_count=Count(
@@ -183,31 +186,89 @@ class PostViewSet(viewsets.ModelViewSet):
       if instance.user != user and not is_staff:
           raise PermissionDenied("Not allowed")
   
+      username = instance.user.username
       instance.is_deleted = True
-      instance.save()
+      instance.save(update_fields=["is_deleted"])
+      invalidate_profile_cache(username)
 
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-
-        self.perform_create(serializer)
-
-        # Get the newly created post
-        post = Post.objects.select_related(
-            "user",
-            "community",
-        ).prefetch_related(
-            "likes",
-            "comments",
-            "media_files",
-        ).get(pk=serializer.instance.pk)
-
-        data = PostSerializer(
-            post,
-            context={"request": request}
-        ).data
-
-        return Response(data, status=status.HTTP_201_CREATED)
+      client_post_id = request.data.get("client_post_id")
+  
+      if client_post_id:
+          existing_post = (
+              Post.objects
+              .select_related("user", "community")
+              .prefetch_related(
+                  "likes",
+                  "comments",
+                  "media_files__asset",
+              )
+              .filter(
+                  client_post_id=client_post_id,
+                  user=request.user,
+                  is_deleted=False,
+              )
+              .first()
+          )
+  
+          if existing_post:
+              return Response(
+                  PostSerializer(
+                      existing_post,
+                      context={"request": request},
+                  ).data,
+                  status=status.HTTP_200_OK,
+              )
+  
+      serializer = self.get_serializer(data=request.data)
+      serializer.is_valid(raise_exception=True)
+  
+      try:
+          with transaction.atomic():
+              self.perform_create(serializer)
+  
+      except IntegrityError:
+          # Another request created the same post
+          existing_post = (
+              Post.objects
+              .select_related("user", "community")
+              .prefetch_related(
+                  "likes",
+                  "comments",
+                  "media_files__asset",
+              )
+              .get(
+                  client_post_id=client_post_id,
+                  user=request.user,
+              )
+          )
+  
+          return Response(
+              PostSerializer(
+                  existing_post,
+                  context={"request": request},
+              ).data,
+              status=status.HTTP_200_OK,
+          )
+  
+      post = (
+          Post.objects
+          .select_related("user", "community")
+          .prefetch_related(
+              "likes",
+              "comments",
+              "media_files__asset",
+          )
+          .get(pk=serializer.instance.pk)
+      )
+  
+      return Response(
+          PostSerializer(
+              post,
+              context={"request": request},
+          ).data,
+          status=status.HTTP_201_CREATED,
+      )
   
     def update(self, request, *args, **kwargs):
       partial = kwargs.pop("partial", False)
@@ -228,7 +289,7 @@ class PostViewSet(viewsets.ModelViewSet):
       instance = (
           Post.objects
           .select_related("user", "community")
-          .prefetch_related("media_files", "likes", "comments")
+          .prefetch_related("media_files__asset", "likes", "comments")
           .annotate(
               likes_count=Count("likes", distinct=True),
               comments_count=Count("comments", distinct=True),
@@ -290,14 +351,18 @@ class PostViewSet(viewsets.ModelViewSet):
           ]
       )
   
-      media_files = self.request.data.get("media_files", [])
-      for media in media_files:
-          PostMedia.objects.create(
-              post=post,
-              file=media["url"],
-              media_type=media["type"],
-              thumbnail=media.get("thumbnail")
-          )
+      media_files = self.request.data.get(
+          "media_files",
+          []
+      )
+  
+      attach_post_media(
+          post=post,
+          user=user,
+          media_files=media_files,
+      )
+  
+      invalidate_profile_cache(user.username)
 
     def perform_update(self, serializer):
       instance = self.get_object()
@@ -318,34 +383,45 @@ class PostViewSet(viewsets.ModelViewSet):
   
       old_caption = instance.caption
       old_files = list(
-        instance.media_files.values_list("file", flat=True)
+          instance.media_files.values_list(
+              "asset__media_id",
+              flat=True,
+          )
       )
-  
+      
       updated_instance = serializer.save()
-  
-      media_files = self.request.data.get("media_files")
-  
-      if media_files is not None:
-          updated_instance.media_files.all().delete()
-  
-          for media in media_files:
-              PostMedia.objects.create(
-                  post=updated_instance,
-                  file=media["url"],
-                  thumbnail=media.get("thumbnail"),
-                  media_type=media["type"],
-              )
-  
-      new_files = list(
-        updated_instance.media_files.values_list("file", flat=True)
+      
+      media_files = self.request.data.get(
+          "media_files"
       )
-  
+      
+      if media_files is not None:
+      
+          updated_instance.media_files.all().delete()
+      
+          attach_post_media(
+              post=updated_instance,
+              user=user,
+              media_files=media_files,
+          )
+      
+      new_files = list(
+          updated_instance.media_files.values_list(
+              "asset__media_id",
+              flat=True,
+          )
+      )
+      
       if (
           updated_instance.caption != old_caption
           or old_files != new_files
       ):
           updated_instance.is_edited = True
-          updated_instance.save(update_fields=["is_edited"])
+      
+          updated_instance.save(
+              update_fields=["is_edited"]
+          )
+      invalidate_profile_cache(instance.user.username)
 
     @action(detail=True, methods=["post"])
     def repost(self, request, pk=None):
@@ -374,6 +450,7 @@ class PostViewSet(viewsets.ModelViewSet):
             repost_type=repost_type,
             quote_text=quote_text if repost_type == "quote" else None
         )
+        invalidate_profile_cache(request.user.username)
     
         if original_post.user != request.user:
 
@@ -401,7 +478,8 @@ class PostViewSet(viewsets.ModelViewSet):
         # UNDO REPOST
         if repost:
             repost.is_deleted = True
-            repost.save()
+            repost.save(update_fields=["is_deleted"])
+            invalidate_profile_cache(request.user.username)
     
             return Response({
                 "reposted": False
@@ -413,6 +491,17 @@ class PostViewSet(viewsets.ModelViewSet):
             post=post,
             repost_type="normal"
         )
+        invalidate_profile_cache(request.user.username)
+  
+        if post.user != request.user:
+
+            create_notification(
+                type="repost",
+                recipient=post.user,
+                actors=[request.user],
+                post=post,
+                community=post.community
+            )
     
         return Response({
             "reposted": True
@@ -508,6 +597,8 @@ class PostViewSet(viewsets.ModelViewSet):
             ])
     
         post.refresh_from_db()
+
+        broadcast_post_stats(post)
     
         if completed:
           value = 4
@@ -665,6 +756,8 @@ class PostViewSet(viewsets.ModelViewSet):
               topic,
               10,
           )
+  
+        broadcast_post_stats(post)
     
         if created and post.user != request.user:
 
@@ -944,14 +1037,6 @@ def get_annotated_post_queryset(user):
     )
 
 class RepostViewSet(viewsets.ModelViewSet):
-    queryset = Repost.objects.filter(
-        is_deleted=False
-    ).select_related(
-        "user",
-        "post",
-        "post__user",
-        "post__community"
-    ).order_by("-created_at")
 
     serializer_class = RepostSerializer
     permission_classes = [IsAuthenticated]
@@ -964,7 +1049,9 @@ class RepostViewSet(viewsets.ModelViewSet):
       annotated_posts = get_annotated_post_queryset(user)
   
       return Repost.objects.filter(
-          is_deleted=False
+          is_deleted=False,
+          post__is_deleted=False,
+          post__is_approved=True,
       ).select_related(
           "user",
           "post",
@@ -1006,8 +1093,10 @@ class RepostViewSet(viewsets.ModelViewSet):
         ):
             raise PermissionDenied("Not allowed")
 
+        username = instance.user.username
         instance.is_deleted = True
-        instance.save()
+        instance.save(update_fields=["is_deleted"])
+        invalidate_profile_cache(username)
 
     def retrieve(self, request, *args, **kwargs):
 
@@ -1033,7 +1122,9 @@ class RepostViewSet(viewsets.ModelViewSet):
         reposts = (
             Repost.objects.filter(
                 user=user,
-                is_deleted=False
+                is_deleted=False,
+                post__is_deleted=False,
+                post__is_approved=True,
             )
             .select_related(
                 "user",
@@ -1201,17 +1292,10 @@ class LikeViewSet(viewsets.ModelViewSet):
             liked = False
         else:
             liked = True
-            if post.user != user:
-
-              create_notification(
-                  type="like",
-                  recipient=post.user,
-                  actors=[user],
-                  post=post,
-                  community=post.community
-              )
 
         likes_count = post.likes.count()
+  
+        broadcast_post_stats(post)
 
         value = 5 if liked else -5
 
@@ -1241,22 +1325,44 @@ class CommentViewSet(viewsets.ModelViewSet):
       )
 
     def list(self, request, *args, **kwargs):
-      post_id = request.query_params.get('post')
+      post_id = request.query_params.get("post")
   
-      queryset = self.get_queryset()
-  
-      if post_id:
-          queryset = queryset.filter(post_id=post_id)
-  
-      queryset = queryset.annotate(
-          likes_count=Count('likes', distinct=True),
-          is_liked=Exists(
-              CommentLike.objects.filter(
-                  comment=OuterRef('pk'),
-                  user=request.user
+      queryset = (
+          self.get_queryset()
+          .filter(
+              post_id=post_id,
+              parent__isnull=True,
+          )
+          .annotate(
+              likes_count=Count("likes", distinct=True),
+              is_liked=Exists(
+                  CommentLike.objects.filter(
+                      comment=OuterRef("pk"),
+                      user=request.user,
+                  )
+              ),
+          )
+          .prefetch_related(
+              Prefetch(
+                  "replies",
+                  queryset=Comment.objects.filter(
+                      is_deleted=False
+                  )
+                  .select_related("user")
+                  .annotate(
+                      likes_count=Count("likes", distinct=True),
+                      is_liked=Exists(
+                          CommentLike.objects.filter(
+                              comment=OuterRef("pk"),
+                              user=request.user,
+                          )
+                      ),
+                  )
+                  .order_by("created_at"),
               )
           )
-      ).order_by('-created_at')
+          .order_by("-created_at")
+      )
   
       serializer = self.get_serializer(queryset, many=True)
       return Response(serializer.data)
@@ -1281,6 +1387,20 @@ class CommentViewSet(viewsets.ModelViewSet):
       comment.text = "[deleted]"
       comment.save()
   
+      channel_layer = get_channel_layer()
+
+      async_to_sync(channel_layer.group_send)(
+          f"post_{comment.post.id}",
+          {
+              "type": "comment_deleted",
+              "post_id": comment.post.id,
+              "comment_id": comment.id,
+              "comments_count": comment.post.comments.filter(
+                  is_deleted=False
+              ).count(),
+          }
+      )
+  
       return Response({"status": "deleted"})
 
     def perform_create(self, serializer):
@@ -1295,7 +1415,25 @@ class CommentViewSet(viewsets.ModelViewSet):
   
       comment = serializer.save(
           user=self.request.user,
-          parent=parent
+          parent=parent,
+          client_id=self.request.data.get("client_id"),
+      )
+  
+      channel_layer = get_channel_layer()
+  
+      comment_data = CommentSerializer(
+        comment,
+        context={"request": self.request},
+      ).data
+
+      async_to_sync(channel_layer.group_send)(
+          f"post_{comment.post.id}",
+          {
+              "type": "new_comment",
+              "post_id": comment.post.id,
+              "comment": comment_data,
+              "comments_count": comment.post.comments.filter(is_deleted=False).count(),
+          }
       )
 
       post = comment.post
@@ -1370,6 +1508,16 @@ class CommentViewSet(viewsets.ModelViewSet):
     
         comment.text = text
         comment.save()
+
+        channel_layer = get_channel_layer()
+
+        async_to_sync(channel_layer.group_send)(
+            f"post_{comment.post.id}",
+            {
+                "type": "comment_updated",
+                "comment": CommentSerializer(comment).data,
+            }
+        )
     
         return Response({
             "success": True,

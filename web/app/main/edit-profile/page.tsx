@@ -180,6 +180,15 @@ export default function EditProfile() {
       }
   
       await apiRequest('api/users/me/', { method: 'PATCH', data: formData })
+      setUser((prev: any) => ({
+        ...prev,
+        username,
+        full_name: fullName,
+        email,
+        bio,
+        avatar: finalAvatar || prev.avatar,
+        cover_photo: finalCover || prev.cover_photo,
+      }));
       push(`/main/profile/${user.username}`)
     } catch (err: any) {
       if (!navigator.onLine) {

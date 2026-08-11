@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import React from "react";
 import { useNavigation } from "@/utils/useNavigation"
 import AppLink from '@/components/AppLink';
+import { connectCommentsSocket } from "@/lib/comment-socket";
 import { apiRequest } from '@/utils/api';  
 import { starCreator } from '@/lib/api'
 import { Share2, ThumbsUp, AlarmClock, MessageCircle, ChartNoAxesColumn, Edit, Trash2, Repeat, MoreHorizontal } from 'lucide-react';  
@@ -17,6 +18,7 @@ import { useSmartPostView } from '@/lib/useSmartPostView'
 import { useContext } from 'react'  
 import { UserContext } from '@/components/UserContext'
 import { useInView } from '@/components/UseInView'
+import { usePostSocket } from '@/hooks/usePostSocket'
 import Linkify from "linkify-react";
 import RepostActions from '@/components/repost/RepostActions';
 import { formatCount } from '@/utils/formatCount';
@@ -58,7 +60,17 @@ type PostCardProps = {
     views_count: number
     created_at: string  
     is_starred_by_user: boolean
-  }  
+  }
+  setPosts?: React.Dispatch<
+      React.SetStateAction<any[]>
+  >;
+  updateFeedPost?: (
+      postId: number,
+      updates: Partial<any>
+  ) => Promise<void>;
+  removeFeedPost?: (
+      postId: number
+  ) => Promise<void>;
   starredUserIds?: Set<number>
   setStarredUsers?: React.Dispatch<
     React.SetStateAction<Set<number>>
@@ -108,11 +120,13 @@ type PostCardProps = {
   showPinnedLabel?: boolean
 }  
   
-function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyProfile, canPin, setSelectMode, isPinnedDraggable, onToggleProfilePin, onLongPress, onToggleCommunityPin, canBulkSelect, canEdit, canRepost, canReport, onApprove, onReject, canDelete, onSelect, isSelected, isPending = false, isEmbedded, isRepostContext, repostId, repostOwnerId, starredUserIds, setStarredUsers, context = "feed",
+function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyProfile, canPin, setSelectMode, isPinnedDraggable, onToggleProfilePin, onLongPress, onToggleCommunityPin, canBulkSelect, canEdit, canRepost, canReport, onApprove, onReject, canDelete, onSelect, isSelected, isPending = false, isEmbedded, isRepostContext, repostId, setPosts, updateFeedPost, removeFeedPost, repostOwnerId, starredUserIds, setStarredUsers, context = "feed",
   handlePostAction, hideCommunityName = false, hideStarButton = false, showJoinButton = false, showManageButtons = false, showPinnedLabel=true }: PostCardProps) {
   const [liked, setLiked] = useState(!!post.is_liked || !!post.liked_by_user)
   const [likes, setLikes] = useState(post.likes_count || 0)
-  const isStarred = starredUserIds?.has(post.user.id);
+  const isStarred =
+    starredUserIds?.has(post.user.id) ||
+    post.is_starred_by_user;
   const isSearch = context === "search";
   const [menuOpen, setMenuOpen] = useState(false);
   const { user: currentUser } = useContext(UserContext)!
@@ -155,6 +169,16 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
     onViewed,
   });
   
+  const [commentsCount, setCommentsCount] = useState(
+      post.comments_count
+  );
+  const [viewsCount, setViewsCount] = useState(post.views_count || 0);
+  const [sharesCount, setSharesCount] = useState(post.shares_count || 0);
+  
+  useEffect(() => {
+    setCommentsCount(post.comments_count);
+  }, [post.comments_count]);
+  
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
 
   const handleTouchStart = () => {
@@ -170,6 +194,40 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
       clearTimeout(longPressTimer.current);
     }
   };
+  
+  usePostSocket({
+    postId: post.id,
+  
+    onStats: async (data) => {
+      setLikes(data.likes_count);
+      setCommentsCount(data.comments_count);
+      setSharesCount(data.shares_count);
+      setViewsCount(data.views_count);
+  
+      await updateFeedPost?.(post.id, {
+        likes_count: data.likes_count,
+        comments_count: data.comments_count,
+        shares_count: data.shares_count,
+        views_count: data.views_count,
+      });
+    },
+  
+    onNewComment: async (data) => {
+      setCommentsCount(data.comments_count);
+  
+      await updateFeedPost?.(post.id, {
+        comments_count: data.comments_count,
+      });
+    },
+  
+    onCommentDeleted: async (data) => {
+      setCommentsCount(data.comments_count);
+  
+      await updateFeedPost?.(post.id, {
+        comments_count: data.comments_count,
+      });
+    },
+  });
 
   const handleJoin = async () => {
     try {
@@ -183,16 +241,58 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
         res.status === "already_joined"
       ) {
         setJoinStatus("joined");
+        setPosts?.(prev =>
+            prev.map(p =>
+                p.id === post.id
+                    ? {
+                          ...p,
+                          community_joined: true,
+                      }
+                    : p
+            )
+        );
+  
+        await updateFeedPost?.(post.id, {
+            community_joined: true,
+        });
       } else if (
         res.status === "requested" ||
         res.status === "already_requested"
       ) {
         setJoinStatus("requested");
+        setPosts?.(prev =>
+            prev.map(p =>
+                p.id === post.id
+                    ? {
+                          ...p,
+                          community_joined: false,
+                      }
+                    : p
+            )
+        );
+        
+        await updateFeedPost?.(post.id, {
+            community_joined: false,
+        });
       } else if (
         res.status === "invited" ||
         res.status === "already_invited"
       ) {
         setJoinStatus("invited");
+        setPosts?.(prev =>
+            prev.map(p =>
+                p.id === post.id
+                    ? {
+                          ...p,
+                          community_joined: true,
+                      }
+                    : p
+            )
+        );
+        
+        await updateFeedPost?.(post.id, {
+            community_joined: true,
+        });
       }
     } catch (err) {
       console.error(err);
@@ -219,6 +319,24 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
       return next;
     });
   
+    setPosts?.(prev =>
+        prev.map(p =>
+            p.user.id === creatorId
+                ? {
+                      ...p,
+                      is_starred_by_user: true,
+                  }
+                : p
+        )
+    );
+  
+    await updateFeedPost?.(
+        post.id,
+        {
+            is_starred_by_user: true,
+        }
+    );
+  
     try {
       const res = await starCreator(creatorId);
   
@@ -232,6 +350,21 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
         }
   
         return next;
+      });
+
+      setPosts?.(prev =>
+        prev.map(p =>
+            p.user.id === creatorId
+                ? {
+                      ...p,
+                      is_starred_by_user: res.starred,
+                  }
+                : p
+        )
+      );
+    
+      await updateFeedPost?.(post.id, {
+        is_starred_by_user: res.starred,
       });
     } catch (err) {
       console.error(err);
@@ -253,18 +386,34 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
 
   // Toggle like  
   const handleLike = async () => {
-    // Save previous state in case the request fails
-    const previousLiked = liked;
-    const previousLikes = likes;
-  
-    // Optimistic update
-    if (liked) {
-      setLiked(false);
-      setLikes((prev) => Math.max(0, prev - 1));
-    } else {
-      setLiked(true);
-      setLikes((prev) => prev + 1);
-    }
+    const optimisticLiked = !liked;
+
+    const optimisticLikes =
+        optimisticLiked
+            ? likes + 1
+            : Math.max(0, likes - 1);
+    
+    setLiked(optimisticLiked);
+    setLikes(optimisticLikes);
+    
+    setPosts?.(prev =>
+        prev.map(p =>
+            p.id === post.id
+                ? {
+                      ...p,
+                      liked_by_user: optimisticLiked,
+                      is_liked: optimisticLiked,
+                      likes_count: optimisticLikes,
+                  }
+                : p
+        )
+    );
+    
+    await updateFeedPost?.(post.id, {
+        liked_by_user: optimisticLiked,
+        is_liked: optimisticLiked,
+        likes_count: optimisticLikes,
+    });
   
     try {
       const result = await apiRequest(
@@ -277,10 +426,53 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
       // Sync with backend
       setLiked(result.liked);
       setLikes(result.likes_count);
+  
+      setPosts?.(prev =>
+          prev.map(p =>
+              p.id === post.id
+                  ? {
+                        ...p,
+                        liked_by_user: result.liked,
+                        is_liked: result.liked,
+                        likes_count: result.likes_count,
+                    }
+                  : p
+          )
+      );
+  
+      await updateFeedPost?.(post.id, {
+          liked_by_user: result.liked,
+          is_liked: result.liked,
+          likes_count: result.likes_count,
+      });
     } catch (error) {
       // Roll back if request fails
-      setLiked(previousLiked);
-      setLikes(previousLikes);
+      const previousLiked = liked;
+      const previousLikes = likes;
+  
+      const optimisticLiked = !liked;
+      const optimisticLikes = optimisticLiked
+          ? likes + 1
+          : Math.max(0, likes - 1);
+
+      setPosts?.(prev =>
+          prev.map(p =>
+              p.id === post.id
+                  ? {
+                        ...p,
+                        liked_by_user: previousLiked,
+                        is_liked: previousLiked,
+                        likes_count: previousLikes,
+                    }
+                  : p
+          )
+      );
+
+      await updateFeedPost?.(post.id, {
+          liked_by_user: previousLiked,
+          is_liked: previousLiked,
+          likes_count: previousLikes,
+      });
   
       toast.error("Failed to update like");
       console.error(error);
@@ -294,6 +486,11 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
       await apiRequest(`api/post/${post.id}/`, { method: "DELETE" });
 
       onDelete?.(post.id);
+      setPosts?.(prev =>
+          prev.filter(p => p.id !== post.id)
+      );
+      
+      await removeFeedPost?.(post.id);
 
       alert("Post deleted");
       setMenuOpen(false);
@@ -641,21 +838,23 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
                   </button>
                 )}
 
-                {canRepost && !post.community_pinned && (
+                {canRepost && !post.community_pinned && !post.has_reposted && (
                   <RepostActions
-                    onNormal={() =>
+                    onNormal={() => {
+                      setMenuOpen(false);
                       handlePostAction?.(
                         'repost_normal',
                         post.id
                       )
-                    }
+                    }}
                 
-                    onQuote={() =>
+                    onQuote={() => {
+                      setMenuOpen(false);
                       handlePostAction?.(
                         'repost_quote',
                         post.id
                       )
-                    }
+                    }}
                   />
                 )}
               </div>
@@ -775,18 +974,19 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
         >  
           <MessageCircle className="mr-2" />
           {post.comments_count > 0 && (
-            <span>{formatCount(post.comments_count)}</span>
+            <span>{formatCount(commentsCount)}</span>
           )}
         </button>  
   
         <ShareButton
             post={post}
             onOpen={showShare}
+            sharesCount={sharesCount}
         />
 
         <span className="flex items-center text-gray-500"> <ChartNoAxesColumn className="mr-2" />
           {post.views_count && post.views_count > 0 && (
-            <span>{formatCount(post.views_count)}</span>
+            <span>{formatCount(viewsCount)}</span>
           )}
         </span>
   

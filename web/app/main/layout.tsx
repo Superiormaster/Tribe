@@ -6,7 +6,9 @@ import { NotificationProvider } from "@/components/NotificationContext"
 import NotificationToast from "@/components/NotificationToast";
 import GlobalSocketProvider from "@/components/GlobalSocketProvider";
 import { AccountSwitcherProvider } from "@/components/AccountSwitcherContext";
+import { PostSocketProvider } from "@/components/PostSocketContext";
 import { ShareProvider } from "@/components/share/ShareContext";
+import Providers from "@/components/providers";
 import { InviteProvider } from "@/components/invite/InviteContext";
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
@@ -16,34 +18,38 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       <NotificationProvider>
         <GlobalSocketProvider />
 
-        <ShareProvider>
-          <InviteProvider>
-            <AccountSwitcherProvider>
-              {/* ROOT CONTAINER */}
-              <div className="relative min-h-screen bg-gray-100 w-full dark:bg-gray-900 overflow-x-hidden">
-      
-                {/* NAVBAR */}
-                <TopNavWrapper />
-      
-                {/* PAGE WRAPPER */}
-                <div className="relative z-10">
-      
-                  <div className="w-full max-w-6xl gap-6">
-      
-                    {/* CENTER */}
-                    <main className="max-w-2xl">
-                      {children}
-                      <NotificationToast />
-                    </main>
-      
+        <PostSocketProvider>
+          <ShareProvider>
+            <InviteProvider>
+              <AccountSwitcherProvider>
+                <Providers>
+                  {/* ROOT CONTAINER */}
+                  <div className="relative min-h-screen bg-gray-100 w-full dark:bg-gray-900 overflow-x-hidden">
+          
+                    {/* NAVBAR */}
+                    <TopNavWrapper />
+          
+                    {/* PAGE WRAPPER */}
+                    <div className="relative z-10">
+          
+                      <div className="w-full max-w-6xl gap-6">
+          
+                        {/* CENTER */}
+                        <main className="max-w-2xl">
+                          {children}
+                          <NotificationToast />
+                        </main>
+          
+                      </div>
+                    </div>
+          
+                    <BottomWrapper />
                   </div>
-                </div>
-      
-                <BottomWrapper />
-              </div>
-            </AccountSwitcherProvider>
-          </InviteProvider>
-        </ShareProvider>
+                </Providers>
+              </AccountSwitcherProvider>
+            </InviteProvider>
+          </ShareProvider>
+        </PostSocketProvider>
 
       </NotificationProvider>
     </ProtectedRoute>

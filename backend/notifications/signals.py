@@ -42,28 +42,6 @@ def create_like_notification(
         post=instance.post,
     )
 
-
-# --- COMMENT SIGNAL ---
-@receiver(post_save, sender=Comment)
-def create_comment_notification(
-    sender,
-    instance,
-    created,
-    **kwargs
-):
-    if not created:
-        return
-
-    if instance.post.user == instance.user:
-        return
-
-    create_notification(
-        type="comment",
-        recipient=instance.post.user,
-        actors=[instance.user],
-        post=instance.post,
-    )
-
 # --- STAR / FOLLOW SIGNAL ---
 @receiver(post_save, sender=Star)
 def create_star_notification(

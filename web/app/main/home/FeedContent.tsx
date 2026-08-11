@@ -18,6 +18,7 @@ import { UserContext } from "@/components/UserContext";
 import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import { apiRequest } from '@/utils/api';
 import { useIsInstalled } from "@/hooks/useIsInstalled";
+import toast from 'react-hot-toast';
 import AppLink from '@/components/AppLink';
 import { REFRESH_HOME_EVENT } from "@/lib/authEvents";
 import { saveReels, saveFeed, getFeed, getReels, clearFeed, clearReels } from "@/lib/feedDb";
@@ -77,13 +78,18 @@ export default function HomePage() {
     reachedLimit,
     feedResponse,
     loadMoreRef,
-    starredUserIds,
+    
     setStarredUsers,
     starredUsers,
 
     refreshFeed,
     loadMore,
     incrementPostView,
+    updateFeedPost,
+    insertFeedPost,
+    addFeedPost,
+    removeFeedPost,
+    updateReel,
   } = useHomeFeed({
     filter,
     selectedTribe,
@@ -182,7 +188,7 @@ export default function HomePage() {
   
         try {
   
-          await apiRequest(
+          const repost = await apiRequest(
             `api/post/${postId}/repost/`,
             {
               method: 'POST',
@@ -191,8 +197,12 @@ export default function HomePage() {
               },
             }
           );
-  
-          alert("Reposted!");
+          toast.success("reposted");
+          await updateFeedPost?.(postId, {
+            has_reposted: true,
+          });
+
+          await addFeedPost(repost);
   
         } catch (err) {
   
@@ -342,14 +352,17 @@ export default function HomePage() {
                   repost={post}
                   currentUser={user}
                   handlePostAction={handlePostAction}
-                  starredUserIds={starredUserIds}
+                  starredUserIds={starredUsers}
                 />
               
               ) : (
               
                 <PostCard
                   post={post}
-                  starredUserIds={starredUserIds}
+                  setPosts={setPosts}
+                  updateFeedPost={updateFeedPost}
+                  removeFeedPost={removeFeedPost}
+                  starredUserIds={starredUsers}
                   setStarredUsers={setStarredUsers}
               
                   showJoinButton={
@@ -396,6 +409,7 @@ export default function HomePage() {
                  return (
                    <ReelCard
                      post={reel}
+                     updateReel={updateReel}
                      showEntertainment
                    />
                  );

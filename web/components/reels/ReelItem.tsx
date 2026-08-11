@@ -10,6 +10,7 @@ import ReelSkeleton from "./ReelSkeleton";
 import ReelCaption from "./ReelCaption";
 import ReelMenu from "./ReelMenu";
 import ReelReportModal from "./ReelReportModal";
+import { usePostSocket } from "@/hooks/usePostSocket"
 import { useNavigation } from "@/utils/useNavigation"
 import { useDoubleTapLike } from '@/reelsHook/useDoubleTapLike';
 import { useReelBuffer } from '@/reelsHook/useReelBuffer';
@@ -63,6 +64,52 @@ export default function ReelItem({
                     : r
             )
         );
+    },
+  });
+  
+  usePostSocket({
+    postId: reel.id,
+  
+    onStats: (data) => {
+      reelsState.setReels((prev: any[]) =>
+        prev.map((r: any) =>
+          r.id === data.post_id
+            ? {
+                ...r,
+                likes_count: data.likes_count,
+                comments_count: data.comments_count,
+                shares_count: data.shares_count,
+                views_count: data.views_count,
+              }
+            : r
+        )
+      );
+    },
+  
+    onNewComment: (data) => {
+      reelsState.setReels((prev: any[]) =>
+        prev.map((r: any) =>
+          r.id === data.post_id
+            ? {
+                ...r,
+                comments_count: data.comments_count,
+              }
+            : r
+        )
+      );
+    },
+  
+    onCommentDeleted: (data) => {
+      reelsState.setReels((prev: any[]) =>
+        prev.map((r: any) =>
+          r.id === data.post_id
+            ? {
+                ...r,
+                comments_count: data.comments_count,
+              }
+            : r
+        )
+      );
     },
   });
   

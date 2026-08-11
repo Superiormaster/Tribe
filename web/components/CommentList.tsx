@@ -22,12 +22,18 @@ type User = {
 
 type Comment = {
   id: number;
+  client_id?: string;
   text: string;
   created_at: string;
   user: User;
   replies?: Comment[];
   likes_count?: number;
   is_liked?: boolean;
+  parent?: number;
+  reply_to_user?: {
+    id: number;
+    username: string;
+  };
 };
 
 interface CommentListProps {
@@ -37,6 +43,7 @@ interface CommentListProps {
   setReplyTarget: React.Dispatch<React.SetStateAction<ReplyTarget>>;
   comments: Comment[];
   setComments: React.Dispatch<React.SetStateAction<Comment[]>>;
+  onCommentsCountChange?: (count: number) => void;
 }
 
 export default function CommentList({
@@ -45,6 +52,7 @@ export default function CommentList({
   setReplyTarget,
   comments,
   setComments,
+  onCommentsCountChange,
 }: CommentListProps) {
   const [nextPage, setNextPage] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -149,9 +157,33 @@ export default function CommentList({
   
       const results = Array.isArray(data) ? data : data.results || [];
 
-      setComments((prev) =>
-        url ? [...prev, ...results] : results
-      );
+      setComments(prev => {
+        if (url) {
+          // Pagination
+          const existingIds = new Set(prev.map(c => c.id));
+      
+          return [
+            ...prev,
+            ...results.filter((c: any) => !existingIds.has(c.id)),
+          ];
+        }
+      
+        // Initial fetch
+        const merged = [...results];
+      
+        prev.forEach(comment => {
+          const exists =
+            merged.some(c => c.id === comment.id) ||
+            (comment.client_id &&
+              merged.some(c => c.client_id === comment.client_id));
+      
+          if (!exists) {
+            merged.unshift(comment);
+          }
+        });
+      
+        return merged;
+      });
   
       setNextPage(data.next || null);
     } catch (err) {
@@ -241,6 +273,7 @@ export default function CommentList({
     const likesCount = item.likes_count ?? 0;
     const isOwner = user?.id === item.user?.id;
     const replies = item.replies ?? [];
+    const nextDepth = depth >= 1 ? 1 : depth + 1;
   
     return (
       <div className={`mt-2 ${depth > 0 ? "ml-6 border-l pl-3" : ""}`}>
@@ -257,6 +290,11 @@ export default function CommentList({
               <p className="text-sm text-gray-600 dark:text-gray-300 font-semibold">
                 {item.user?.username}
               </p>
+              {item.reply_to_user && (
+                  <p className="text-xs text-blue-500 mb-1">
+                      Replying to @{item.reply_to_user.username}
+                  </p>
+              )}
     
               {editTarget === item.id ? (
                 <div className="mt-2">
@@ -415,7 +453,7 @@ export default function CommentList({
                     <CommentItem
                       key={`reply-${child.id}-${depth}-${index}`}
                       item={child}
-                      depth={depth + 1}
+                      depth={nextDepth}
                     />
                   ))}
                 </div>
@@ -436,32 +474,113 @@ export default function CommentList({
   
       ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
-  
-        if (data.type === "new_comment") {
-          const newComment = data.comment;
-  
-          setComments(prev => {
-            const addReply = (list: Comment[]): Comment[] =>
-              list.map((c: Comment) => {
-                if (c.id === newComment.root_parent_id) {
-                  return {
-                    ...c,
-                    replies: [...(c.replies || []), newComment],
-                  };
+        console.log("foind", JSON.parse(event.data));
+    
+        switch (data.type) {
+    
+            case "new_comment":
+    
+                if (!data.comment.parent) {
+                    setComments(prev => {
+
+                      const existingById = prev.find(
+                          c => c.id === data.comment.id
+                      );
+                  
+                      if (existingById) return prev;
+                  
+                      const optimistic = prev.findIndex(
+                          c => c.client_id === data.comment.client_id
+                      );
+                  
+                      if (optimistic !== -1) {
+                          const copy = [...prev];
+                          copy[optimistic] = data.comment;
+                          return copy;
+                      }
+                  
+                      return [data.comment, ...prev];
+                    });
+                } else {
+    
+                    const addReply = (list: Comment[]): Comment[] =>
+                        list.map(c => {
+    
+                            if (c.id === data.comment.root_parent_id) {
+
+                              // Look for the optimistic reply
+                              const index = (c.replies ?? []).findIndex(
+                                  r => r.client_id === data.comment.client_id
+                              );
+                          
+                              // Replace optimistic reply with the real one
+                              if (index !== -1) {
+                                  const replies = [...(c.replies ?? [])];
+                                  replies[index] = data.comment;
+                          
+                                  return {
+                                      ...c,
+                                      replies,
+                                  };
+                              }
+                          
+                              // Ignore duplicate websocket events
+                              const exists = (c.replies ?? []).some(
+                                  r => r.id === data.comment.id
+                              );
+                          
+                              if (exists) return c;
+                          
+                              // Reply from another user
+                              return {
+                                  ...c,
+                                  replies: [...(c.replies ?? []), data.comment],
+                              };
+                            }
+    
+                            return {
+                                ...c,
+                                replies: c.replies
+                                    ? addReply(c.replies)
+                                    : [],
+                            };
+                        });
+    
+                    setComments(prev => addReply(prev));
                 }
-            
-                if (c.replies?.length) {
-                  return {
-                    ...c,
-                    replies: addReply(c.replies),
-                  };
-                }
-            
-                return c;
-              });
-  
-            return addReply(prev);
-          });
+    
+                onCommentsCountChange?.(
+                    data.comments_count
+                );
+    
+                break;
+    
+            case "comment_deleted":
+    
+                setComments(prev =>
+                    removeCommentFromTree(
+                        prev,
+                        data.comment_id
+                    )
+                );
+    
+                onCommentsCountChange?.(
+                    data.comments_count
+                );
+    
+                break;
+    
+            case "comment_updated":
+    
+                setComments(prev =>
+                    updateCommentTree(
+                        prev,
+                        data.comment.id,
+                        () => data.comment
+                    )
+                );
+    
+                break;
         }
       };
     };

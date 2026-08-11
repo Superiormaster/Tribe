@@ -11,6 +11,10 @@ import {
   getReels,
   clearFeed,
   clearReels,
+  updateFeedPost,
+  insertFeedPost,
+  removeFeedPost,
+  updateReel,
 } from "@/lib/feedDb";
 
 interface UseHomeFeedProps {
@@ -125,11 +129,34 @@ export function useHomeFeed({
     };
   }, []);
 
-  const starredUserIds = useMemo(() => {
+{/*  const starredUserIds = useMemo(() => {
     return new Set<number>(
       (feedResponse?.starred_user_ids ?? []) as number[]
     );
-  }, [feedResponse]);
+  }, [feedResponse]);*/}
+  
+  useEffect(() => {
+    if (!starredUsers.size) return;
+  
+    const syncStarred = async () => {
+      const updated = posts.map(post => ({
+        ...post,
+        is_starred_by_user: starredUsers.has(post.user.id),
+      }));
+  
+      setPosts(updated);
+  
+      await Promise.all(
+        updated.map(post =>
+          updateFeedPost(post.id, {
+            is_starred_by_user: starredUsers.has(post.user.id),
+          })
+        )
+      );
+    };
+  
+    syncStarred();
+  }, [starredUsers]);
 
 
   // -----------------------------
@@ -228,7 +255,7 @@ export function useHomeFeed({
         feed_type: item.type,
       
         is_starred_by_user:
-          starredUserIds.has(item.data.user?.id),
+          starredUsers.has(item.data.user?.id),
       }));
 
       await saveFeed(
@@ -264,7 +291,27 @@ export function useHomeFeed({
           );
         }
 
-        setPosts(newItems);
+        setPosts(prev => {
+
+          const map = new Map();
+      
+          prev.forEach(post => {
+              map.set(post.reactKey, post);
+          });
+      
+          newItems.forEach(post => {
+      
+              const old = map.get(post.reactKey);
+      
+              map.set(post.reactKey, {
+                  ...old,
+                  ...post,
+              });
+      
+          });
+      
+          return [...map.values()];
+        });
       } else {
         setPosts((prev) => {
           const ids = new Set(prev.map((p: any) => p.reactKey));
@@ -283,19 +330,32 @@ export function useHomeFeed({
 
       setPage(pageNumber);
     } catch (err) {
-      console.error(
-        "Failed to fetch posts",
-        err
-      );
 
+      console.error(err);
+  
+      const cached = await getFeed(
+          currentFilter,
+          currentTribe,
+          pageNumber
+      );
+  
+      if (cached.length) {
+  
+          setPosts(prev =>
+              pageNumber === 1
+                  ? cached
+                  : [...prev, ...cached]
+          );
+      }
+  
       window.dispatchEvent(
-        new CustomEvent(
-          "network-error",
-          {
-            detail:
-              "Failed to fetch posts",
-          }
-        )
+          new CustomEvent(
+              "network-error",
+              {
+                  detail:
+                      "Couldn't load latest posts. Showing cached feed."
+              }
+          )
       );
     } finally {
       loadingMoreRef.current =
@@ -308,7 +368,20 @@ export function useHomeFeed({
         setInitialLoad(false);
       }
     }
-  }, [filter, selectedTribe, starredUserIds,]);
+  }, [filter, selectedTribe, starredUsers,]);
+  
+  const addFeedPost = async (post: any) => {
+    await insertFeedPost(post);
+
+    setPosts(prev => [
+        {
+            ...post,
+            reactKey: `repost-${post.id}`,
+            feed_type: "repost",
+        },
+        ...prev,
+    ]);
+  };
 
     // -----------------------------
   // FETCH REELS
@@ -472,24 +545,25 @@ export function useHomeFeed({
       );
 
     if (cached.length) {
-      pagesCache.current[nextPage] =
-        cached;
 
-      setPosts((prev) => {
-        const ids = new Set(
-          prev.map((p) => p.id)
-        );
-
-        return [
-          ...prev,
-          ...cached.filter(
-            (p: any) => !ids.has(p.id)
-          ),
-        ];
+      pagesCache.current[nextPage] = cached;
+  
+      setPosts(prev => {
+  
+          const map = new Map();
+  
+          prev.forEach(post =>
+              map.set(post.reactKey, post)
+          );
+  
+          cached.forEach(post =>
+              map.set(post.reactKey, post)
+          );
+  
+          return [...map.values()];
       });
-
+  
       setPage(nextPage);
-      return;
     }
 
     await fetchPosts(nextPage);
@@ -498,21 +572,28 @@ export function useHomeFeed({
   // -----------------------------
   // INCREMENT VIEW
   // -----------------------------
-  const incrementPostView = (
+  const incrementPostView = async (
     postId: number
   ) => {
-    setPosts((prev) =>
-      prev.map((post) =>
-        post.id === postId
-          ? {
-              ...post,
-              views_count:
-                (post.views_count || 0) +
-                1,
-            }
-          : post
-      )
+
+    setPosts(prev =>
+        prev.map(post =>
+            post.id === postId
+                ? {
+                      ...post,
+                      views_count:
+                          (post.views_count || 0) + 1,
+                  }
+                : post
+        )
     );
+
+    await updateFeedPost(postId, {
+        views_count:
+            posts.find(
+                p => p.id === postId
+            )?.views_count + 1,
+    });
   };
 
   // -----------------------------
@@ -592,7 +673,6 @@ export function useHomeFeed({
     reachedLimit,
     feedResponse,
     loadMoreRef,
-    starredUserIds,
     setStarredUsers,
     starredUsers,
 
@@ -602,5 +682,10 @@ export function useHomeFeed({
     loadMore,
     incrementPostView,
     resetFeedState,
+    updateFeedPost,
+    insertFeedPost,
+    addFeedPost,
+    removeFeedPost,
+    updateReel,
   };
 }

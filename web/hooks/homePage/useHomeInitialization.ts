@@ -112,24 +112,41 @@ export function useHomeInitialization({
           setReels(cachedReels);
         }
 
-        if (!cachedPosts.length) {
-          await fetchPosts(
-            1,
-            true,
-            true,
-            filter,
-            selectedTribe
-          );
-        }
-
+        await fetchPosts(
+          1,
+          true,
+          !cachedPosts.length,
+          filter,
+          selectedTribe
+        );
+        
         if (filter === "all") {
           await fetchReels();
         }
       } catch (err) {
-        console.error(
-          "Initialization error:",
-          err
-        );
+
+          console.error(err);
+      
+          const cached = await getFeed(
+              currentFilter,
+              currentTribe,
+              pageNumber
+          );
+      
+          if (cached.length) {
+      
+              setPosts(prev =>
+                  pageNumber === 1
+                      ? cached
+                      : [...prev, ...cached]
+              );
+          }
+      
+          window.dispatchEvent(
+              new CustomEvent("network-error", {
+                  detail: "Couldn't load latest posts. Showing cached feed."
+              })
+          );
       }
     };
 

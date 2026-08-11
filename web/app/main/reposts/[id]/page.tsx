@@ -9,6 +9,7 @@ import Linkify from "linkify-react";
 import CommentInput from '@/components/CommentInput'
 import ShareButton from '@/components/share/ShareButton'
 import { useShareSheet } from '@/components/share/ShareContext'
+import { usePostSocket } from '@/hooks/usePostSocket'
 
 import { apiRequest } from '@/utils/api'
 import { timeAgo } from '@/utils/timeAgo'
@@ -34,6 +35,7 @@ export default function RepostDetailPage() {
   const [repost, setRepost] = useState<any>(null)
   const { showShare } = useShareSheet();
   const [comments, setComments] = useState<any[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null)
 
   const [liked, setLiked] = useState(false)
@@ -44,17 +46,72 @@ export default function RepostDetailPage() {
     type: null,
   });
   
-  const onReplaceComment = (tempId: string, comment: any) => {
+  const onReplaceComment = (clientId: string, comment: any) => {
     setComments(prev =>
-      prev.map(c => (c.id === tempId ? comment : c))
+      prev.map(c =>
+        c?.client_id === clientId ? comment : c
+      )
     );
   };
   
-  const onRemoveComment = (tempId: string) => {
+  const onRemoveComment = (clientId: string) => {
     setComments(prev =>
-      prev.filter(c => c.id !== tempId)
+      prev.filter(c => c?.client_id !== clientId)
     );
   };
+  
+  usePostSocket({
+    postId: post.id,
+  
+    onStats: (data) => {
+      setRepost(prev =>
+        prev
+          ? {
+              ...prev,
+              post: {
+                ...prev.post,
+                likes_count: data.likes_count,
+                comments_count: data.comments_count,
+                shares_count: data.shares_count,
+                views_count: data.views_count,
+              },
+            }
+          : prev
+      );
+    },
+  
+    onNewComment: (data) => {
+      setRepost(prev =>
+        prev
+          ? {
+              ...prev,
+              post: {
+                ...prev.post,
+                comments_count: data.comments_count,
+              },
+            }
+          : prev
+      );
+    },
+  
+    onCommentDeleted: (data) => {
+      setRepost(prev =>
+        prev
+          ? {
+              ...prev,
+              post: {
+                ...prev.post,
+                comments_count: data.comments_count,
+              },
+            }
+          : prev
+      );
+    },
+  
+    onCommentUpdated: (data) => {
+      // Optional if you need to update comment content in the UI.
+    },
+  });
  
   const videoRef = useRef<HTMLVideoElement | null>(null)
 
@@ -106,6 +163,18 @@ export default function RepostDetailPage() {
       console.error(err)
     }
   }
+  
+  const onCommentsCountChange = (count: number) => {
+    setRepost(prev =>
+        prev ? {
+            ...prev,
+            post: {
+                ...prev.post,
+                comments_count: count,
+            },
+        } : prev
+    );
+  };
 
   if (!repost) {
     return (
@@ -272,6 +341,7 @@ export default function RepostDetailPage() {
           postId={post.id}
           setReplyTarget={setReplyTarget}
           comments={comments}
+          onCommentsCountChange={onCommentsCountChange}
           setComments={setComments}
         />
 
@@ -285,6 +355,7 @@ export default function RepostDetailPage() {
           <CommentInput
             user={currentUser}
             postId={post.id}
+            onCommentsCountChange={onCommentsCountChange}
             replyTarget={replyTarget}
             onClearReply={() =>
               setReplyTarget({
@@ -294,12 +365,30 @@ export default function RepostDetailPage() {
             }
             onReplaceComment={onReplaceComment}
             onRemoveComment={onRemoveComment}
-            onNewComment={(newComment: any) =>
-              setComments((prev: any[]) => [
-                newComment,
-                ...prev
-              ])
-            }
+            onNewComment={(newComment) => {
+              setComments(prev => {
+                  if (!newComment.parent) {
+                      return [newComment, ...prev];
+                  }
+          
+                  const addReply = (list: any[]): any[] =>
+                      list.map(c => {
+                          if (c.id === newComment.root_parent_id) {
+                              return {
+                                  ...c,
+                                  replies: [...(c.replies ?? []), newComment],
+                              };
+                          }
+          
+                          return {
+                              ...c,
+                              replies: c.replies ? addReply(c.replies) : [],
+                          };
+                      });
+          
+                  return addReply(prev);
+              });
+            }}
           />
 
         </div>

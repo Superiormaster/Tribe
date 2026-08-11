@@ -20,6 +20,7 @@ export default function ReelsPage() {
         reels: reelsState.reels,
         loadMore: reelsState.loadMore,
     });
+    const openedPostId = reelsState.openCommentsPostId;
   
     if (reelsState.loading) {
       return <ReelSkeleton/>; 
@@ -53,17 +54,25 @@ export default function ReelsPage() {
                 />
             ))}
 
-            {reelsState.openCommentsPostId && (
-                <CommentsModal
-                    postId={
-                        reelsState.openCommentsPostId
-                    }
-                    onClose={() =>
-                        reelsState.setOpenCommentsPostId(
-                            null
-                        )
-                    }
-                />
+            {openedPostId && (
+              <CommentsModal
+                  postId={openedPostId}
+                  onCommentsCountChange={(count) => {
+                      reelsState.setReels(prev =>
+                          prev.map(reel =>
+                              reel.id === openedPostId
+                                  ? {
+                                        ...reel,
+                                        comments_count: count,
+                                    }
+                                  : reel
+                          )
+                      );
+                  }}
+                  onClose={() =>
+                      reelsState.setOpenCommentsPostId(null)
+                  }
+              />
             )}
         </div>
     );

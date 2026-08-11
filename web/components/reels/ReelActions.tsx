@@ -144,6 +144,7 @@ export default function ReelActions({
                 vertical
                 dark
                 onOpen={showShare}
+                sharesCount={reel.shares_count}
             />
 
             {/* Mute */}

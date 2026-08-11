@@ -15,6 +15,7 @@ import { deletePostDraft } from "@/lib/messageDB";
 import ButtonLoader from "@/components/ButtonLoader";
 import Skeleton from '@/components/Skeleton';
 import { apiRequest } from '@/utils/api';
+import { updateFeedPost } from "@/lib/feedDb";
 
 type ExistingVideo = {
   url: string;
@@ -273,9 +274,16 @@ export default function CreatePostPage() {
       let newPost = null;
 
       if (isEdit) {
-        await apiRequest(`api/post/${postId}/`, {
+        const updatedPost = await apiRequest(`api/post/${postId}/`, {
             method: "PUT",
             data: payload,
+        });
+  
+        await updateFeedPost(postId, {
+          caption: updatedPost.caption,
+          media_files: updatedPost.media_files,
+          updated_at: updatedPost.updated_at,
+          is_edited: true,
         });
     
         toast.success("Post updated!");

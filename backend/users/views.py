@@ -1524,12 +1524,24 @@ class ProfileView(generics.RetrieveUpdateAPIView):
           return Response(serializer.errors, status=400)
   
       serializer.save()
+
+      user = request.user
+
+      pipe = redis_client.pipeline()
+
+      for key in redis_client.scan_iter(f"profile:{user.username}:stats:*"):
+          pipe.delete(key)
+      
+      for key in redis_client.scan_iter(f"profile:{user.username}:feed:*"):
+          pipe.delete(key)
+      
+      pipe.execute()
   
-      request.user.onboarding_step = max(
-          request.user.onboarding_step,
+      user.onboarding_step = max(
+          user.onboarding_step,
           1,
       )
-      request.user.save(update_fields=["onboarding_step"])
+      user.save(update_fields=["onboarding_step"])
   
       return Response(serializer.data)
 

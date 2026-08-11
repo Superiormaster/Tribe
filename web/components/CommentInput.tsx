@@ -18,6 +18,7 @@ interface CommentInputProps {
   onReplaceComment?: (tempId: string, comment: any) => void;
   onRemoveComment?: (tempId: string) => void;
   onClearReply?: () => void;
+  onCommentsCountChange?: (count:number)=>void;
 }
 
 export default function CommentInput({
@@ -28,6 +29,7 @@ export default function CommentInput({
   onReplaceComment,
   onRemoveComment,
   onClearReply,
+  onCommentsCountChange,
 }: CommentInputProps) {
   const [text, setText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -48,10 +50,11 @@ export default function CommentInput({
   
     setSending(true);
   
-    const tempId = `temp-${Date.now()}`;
-  
+    const clientId = crypto.randomUUID();
+ 
     const optimisticComment = {
-      id: tempId,
+      id: clientId,
+      client_id: clientId,
       text: message,
       created_at: new Date().toISOString(),
       user,
@@ -59,6 +62,14 @@ export default function CommentInput({
       likes_count: 0,
       is_liked: false,
       pending: true,
+      parent: replyTarget?.id || null,
+      root_parent_id: replyTarget?.id || null,
+  
+      reply_to_user: replyTarget?.username
+          ? {
+              username: replyTarget.username,
+          }
+          : null,
     };
   
     // Clear UI immediately
@@ -79,17 +90,16 @@ export default function CommentInput({
           post: Number(postId),
           text: message,
           parent: replyTarget?.id || null,
+          client_id: clientId,
         },
       });
-  
-      // Replace temporary comment
-      onReplaceComment?.(tempId, res);
+      console.log("comment input", res);
   
     } catch (err) {
       console.error(err);
   
       // Remove temp comment if request failed
-      onRemoveComment?.(tempId);
+      onRemoveComment?.(clientId);
   
       alert("Failed to send comment.");
     } finally {

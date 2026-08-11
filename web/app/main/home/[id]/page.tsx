@@ -10,6 +10,7 @@ import CommentList from '@/components/CommentList'
 import CommentInput from '@/components/CommentInput'
 import ShareButton from '@/components/share/ShareButton'
 import { useShareSheet } from '@/components/share/ShareContext'
+import { usePostSocket } from '@/hooks/usePostSocket'
 import { apiRequest } from '@/utils/api'
 import { timeAgo } from '@/utils/timeAgo'
 
@@ -53,6 +54,7 @@ export default function PostPage() {
   const [openCommentsPostId, setOpenCommentsPostId] = useState<number | null>(null);
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [liked, setLiked] = useState(false)
+  const [posts, setPosts] = useState<Post[]>([]);
   const [likes, setLikes] = useState(0)
 
   const [replyTarget, setReplyTarget] = useState<{
@@ -64,15 +66,17 @@ export default function PostPage() {
     type: null,
   });
   
-  const onReplaceComment = (tempId: string, comment: any) => {
+  const onReplaceComment = (clientId: string, comment: any) => {
     setComments(prev =>
-      prev.map(c => (c.id === tempId ? comment : c))
+      prev.map(c =>
+        c?.client_id === clientId ? comment : c
+      )
     );
   };
   
-  const onRemoveComment = (tempId: string) => {
+  const onRemoveComment = (clientId: string) => {
     setComments(prev =>
-      prev.filter(c => c.id !== tempId)
+      prev.filter(c => c?.client_id !== clientId)
     );
   };
   
@@ -84,6 +88,45 @@ export default function PostPage() {
       setCurrentUser(null)
     }
   }
+  
+  usePostSocket({
+    postId,
+    onStats: (data) => {
+      setPost(prev =>
+        prev
+          ? {
+              ...prev,
+              likes_count: data.likes_count,
+              comments_count: data.comments_count,
+              shares_count: data.shares_count,
+              views_count: data.views_count,
+            }
+          : prev
+      );
+    },
+  
+    onNewComment: (data) => {
+      setPost(prev =>
+        prev
+          ? {
+              ...prev,
+              comments_count: data.comments_count,
+            }
+          : prev
+      );
+    },
+  
+    onCommentDeleted: (data) => {
+      setPost(prev =>
+        prev
+          ? {
+              ...prev,
+              comments_count: data.comments_count,
+            }
+          : prev
+      );
+    },
+  });
   
   useEffect(() => {
     if (!post?.id) return;
@@ -136,6 +179,15 @@ export default function PostPage() {
     fetchPost()
     fetchCurrentUser()
   }, [])
+  
+  const onCommentsCountChange = (count: number) => {
+    setPost(prev =>
+        prev ? {
+            ...prev,
+            comments_count: count,
+        } : prev
+    );
+  };
   
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
@@ -291,6 +343,7 @@ export default function PostPage() {
           user={currentUser}
           postId={postId}
           setReplyTarget={setReplyTarget}
+          onCommentsCountChange={onCommentsCountChange}
           comments={comments}
           setComments={setComments}
         />
@@ -307,11 +360,33 @@ export default function PostPage() {
             onClearReply={() =>
               setReplyTarget({ id: null, type: null })
             }
+            onCommentsCountChange={onCommentsCountChange}
             onReplaceComment={onReplaceComment}
             onRemoveComment={onRemoveComment}
-            onNewComment={(newComment: any) =>
-              setComments((prev) => [newComment, ...prev])
-            }
+            onNewComment={(newComment) => {
+              setComments(prev => {
+                  if (!newComment.parent) {
+                      return [newComment, ...prev];
+                  }
+          
+                  const addReply = (list: any[]): any[] =>
+                      list.map(c => {
+                          if (c.id === newComment.root_parent_id) {
+                              return {
+                                  ...c,
+                                  replies: [...(c.replies ?? []), newComment],
+                              };
+                          }
+          
+                          return {
+                              ...c,
+                              replies: c.replies ? addReply(c.replies) : [],
+                          };
+                      });
+          
+                  return addReply(prev);
+              });
+            }}
           />
         </div>
       </div>

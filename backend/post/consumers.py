@@ -39,27 +39,35 @@ class CommentConsumer(AsyncWebsocketConsumer):
                 self.channel_name
             )
 
-    async def receive(self, text_data):
-
-        data = json.loads(text_data)
-
-        # attach sender info safely
-        data["sender"] = {
-            "id": self.user.id,
-            "username": self.user.username,
-        }
-
-        # broadcast
-        await self.channel_layer.group_send(
-            self.room_group_name,
-            {
-                "type": "new_comment",
-                "comment": data,
-            }
-        )
-
     async def new_comment(self, event):
-
-        await self.send(
-            text_data=json.dumps(event["comment"])
-        )
+      await self.send(text_data=json.dumps({
+          "type": "new_comment",
+          "post_id": event["post_id"],
+          "comment": event["comment"],
+          "comments_count": event["comments_count"],
+      }))
+  
+    async def comment_deleted(self, event):
+      await self.send(text_data=json.dumps({
+          "type": "comment_deleted",
+          "post_id": event["post_id"],
+          "comment_id": event["comment_id"],
+          "comments_count": event["comments_count"],
+      }))
+  
+    async def comment_updated(self, event):
+      await self.send(text_data=json.dumps({
+          "type": "comment_updated",
+          "post_id": event["post_id"],
+          "comment": event["comment"],
+      }))
+  
+    async def post_stats(self, event):
+        await self.send(text_data=json.dumps({
+            "type": "post_stats",
+            "post_id": event["post_id"],
+            "likes_count": event["likes_count"],
+            "comments_count": event["comments_count"],
+            "shares_count": event["shares_count"],
+            "views_count": event["views_count"],
+        }))

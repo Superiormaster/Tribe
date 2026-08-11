@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { useNavigation } from "@/utils/useNavigation"
 import { apiRequest } from '@/utils/api';
 import PostCard from '@/components/PostCard';
+import toast from 'react-hot-toast';
 import Skeleton from '@/components/Skeleton';
 
 export default function RepostPage() {
@@ -24,13 +25,26 @@ export default function RepostPage() {
   }, [postId]);
 
   const handleRepost = async () => {
-    await apiRequest(`api/post/${postId}/repost/`, {
+    const repost = await apiRequest(`api/post/${postId}/repost/`, {
       method: 'POST',
       data: {
         type: 'quote',
         quote_text: text
       }
     });
+    
+    await insertFeedPost(repost);
+  
+    setPosts(prev => [
+      {
+        ...repost,
+        reactKey: `repost-${repost.id}`,
+        feed_type: "repost",
+      },
+      ...prev,
+    ]);
+    
+    toast.success("Reposted!");
 
     push('/main/home');
   };

@@ -59,7 +59,7 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
   const { user } = context; 
 
   const links = [
-    { name: "Dashboard", path: "/admin", icon: LayoutDashboard },
+    { name: "Dashboard", path: "/main/analytics", icon: LayoutDashboard },
   ];
   
   useEffect(() => {
@@ -154,19 +154,19 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
             </button>
           </li>
 
-          {/*{links.map(({ name, path, icon: Icon }) => {
+          {links.map(({ name, path, icon: Icon }) => {
 
             const active = pathname === path;
 
             return (
-              <Link key={name} href={path} onClick={closeMenu}>
+              <AppLink key={name} href={path} prefetch={false} onClick={closeMenu}>
                 <li className={`${navItem} ${active ? "bg-indigo-600 text-white" : ""}`}>
                   <Icon size={20} />
                   {name}
                 </li>
-              </Link>
+              </AppLink>
             );
-          })}*/}
+          })}
 
             <AppLink href="/main/settings" prefetch={false} onClick={closeMenu} className={navItem}>
               <Settings size={20} />

@@ -2,6 +2,7 @@ from django.db import models
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+import uuid
 from communities.models import Community
 
 User = get_user_model()
@@ -36,6 +37,12 @@ class Post(models.Model):
     is_approved = models.BooleanField(default=False)
     is_rejected = models.BooleanField(default=False)
     is_edited = models.BooleanField(default=False)
+    client_post_id = models.UUIDField(
+        db_index=True,
+        editable=False,
+        null=True,
+        blank=True,
+    )
 
     profile_pinned = models.BooleanField(default=False)
     profile_pin_order = models.PositiveIntegerField(
@@ -112,6 +119,17 @@ class PostMedia(models.Model):
     )
     file = models.URLField()
     thumbnail = models.URLField(blank=True, null=True)
+    asset = models.ForeignKey(
+        "media.MediaAsset",
+        on_delete=models.PROTECT,
+        related_name="post_media",
+        blank=True,
+        null=True,
+    )
+
+    order = models.PositiveIntegerField(
+        default=0
+    )
     media_type = models.CharField(max_length=20, choices=MEDIA_TYPES)
 
     def __str__(self):
@@ -134,6 +152,12 @@ class Comment(models.Model):
     post = models.ForeignKey(Post, related_name='comments', on_delete=models.CASCADE)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     text = models.TextField()
+    client_id = models.UUIDField(
+        editable=False,
+        db_index=True,
+        null=True,
+        blank=True,
+    )
     parent = models.ForeignKey(
         'self',
         null=True,

@@ -4,6 +4,7 @@ from communities.models import Community, CommunityMembership, CommunityBan
 from .models import Post, PostMedia, Like, Comment, Feed, Repost
 from users.serializers import UserSerializer
 from django.db.models import Count, Exists, OuterRef
+from users.utils import get_user_avatar
 
 def get_annotated_post_queryset(user):
     return Post.objects.select_related("user", "community").annotate(
@@ -23,27 +24,39 @@ class UserMiniSerializer(serializers.ModelSerializer):
         fields = ["id", "username", "avatar"]
 
     def get_avatar(self, obj):
-        if obj.avatar:
-            return str(obj.avatar)
-        return None
+      return get_user_avatar(obj)
 
 class PostMediaSerializer(serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()
     thumbnail_url = serializers.SerializerMethodField()
+    media_id = serializers.CharField(
+        source="asset.media_id",
+        read_only=True,
+    )
 
     class Meta:
         model = PostMedia
+
         fields = (
             "id",
+            "media_id",
             "media_type",
             "file_url",
             "thumbnail_url",
         )
 
     def get_file_url(self, obj):
+        if obj.asset:
+            return obj.asset.original_url
+
+        # Legacy records
         return obj.file
 
     def get_thumbnail_url(self, obj):
+        if obj.asset and obj.asset.thumbnail_url:
+            return obj.asset.thumbnail_url
+
+        # Legacy records
         return obj.thumbnail
 
 class PostSerializer(serializers.ModelSerializer):
@@ -61,6 +74,7 @@ class PostSerializer(serializers.ModelSerializer):
     community_pinned = serializers.BooleanField(read_only=True)
     community_pin_order = serializers.IntegerField(read_only=True)
     is_reposted = serializers.SerializerMethodField()
+    has_reposted = serializers.SerializerMethodField()
     views_count = serializers.IntegerField(read_only=True)
     shares_count = serializers.IntegerField(read_only=True)
     is_starred_by_user = serializers.SerializerMethodField()
@@ -89,7 +103,9 @@ class PostSerializer(serializers.ModelSerializer):
             'views_count',
             'shares_count',
             'is_reposted',
+            'has_reposted',
             'is_edited',
+            "client_post_id",
             'community_joined',
             "profile_pinned",
             "profile_pin_order",
@@ -119,6 +135,18 @@ class PostSerializer(serializers.ModelSerializer):
   
       return data
 
+    def get_has_reposted(self, obj):
+        request = self.context.get("request")
+
+        if not request or request.user.is_anonymous:
+            return False
+
+        return Repost.objects.filter(
+            user=request.user,
+            post=obj,
+            is_deleted=False,
+        ).exists()
+  
     def get_is_starred_by_user(self, obj):
       user = self.context["request"].user
   
@@ -182,11 +210,12 @@ class CommentSerializer(serializers.ModelSerializer):
         required=False,
         allow_null=True
     )
+    reply_to_user = serializers.SerializerMethodField()
     root_parent_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Comment
-        fields = ["id", "user", "post", "text", "created_at", "parent", "replies", "likes_count", "is_liked", "root_parent_id"]
+        fields = ["id", "user", "post", "text", "created_at", "parent", "replies", "client_id", "likes_count", "reply_to_user", "is_liked", "root_parent_id"]
         read_only_fields = ['user']
 
     def validate(self, data):
@@ -205,10 +234,18 @@ class CommentSerializer(serializers.ModelSerializer):
 
     def get_replies(self, obj):
       return CommentSerializer(
-          obj.replies.filter(is_deleted=False).order_by("created_at"),
+          obj.replies.all(),
           many=True,
-          context=self.context
+          context=self.context,
       ).data
+  
+    def get_reply_to_user(self, obj):
+      if obj.parent:
+          return {
+              "id": obj.parent.user.id,
+              "username": obj.parent.user.username,
+          }
+      return None
 
 # -------------------------------
 # Feed Serializer

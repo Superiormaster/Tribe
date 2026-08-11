@@ -13,10 +13,12 @@ export default function CommentsModal({
   postId,
   onClose,
   user,
+  onCommentsCountChange,
 }: {
   postId: number;
   onClose: () => void;
   user?: User | null;
+  onCommentsCountChange?: (count: number) => void;
 }) {
   const [comments, setComments] = useState<any[]>([]);
   const [replyTarget, setReplyTarget] = useState<{
@@ -28,15 +30,17 @@ export default function CommentsModal({
     type: null,
   });
   
-  const onReplaceComment = (tempId: string, comment: any) => {
+  const onReplaceComment = (clientId: string, comment: any) => {
     setComments(prev =>
-      prev.map(c => (c.id === tempId ? comment : c))
+      prev.map(c =>
+        c?.client_id === clientId ? comment : c
+      )
     );
   };
   
-  const onRemoveComment = (tempId: string) => {
+  const onRemoveComment = (clientId: string) => {
     setComments(prev =>
-      prev.filter(c => c.id !== tempId)
+      prev.filter(c => c?.client_id !== clientId)
     );
   };
   
@@ -60,6 +64,7 @@ export default function CommentsModal({
             comments={comments}
             setComments={setComments}
             setReplyTarget={setReplyTarget}
+            onCommentsCountChange={onCommentsCountChange}
           />
         </div>
 
@@ -67,11 +72,33 @@ export default function CommentsModal({
         <div className="border-t p-2">
           <CommentInput
             user={user ?? null}
+            onCommentsCountChange={onCommentsCountChange}
             postId={postId}
             replyTarget={replyTarget}
-            onNewComment={(comment) =>
-              setComments((prev) => [...prev, comment])
-            }
+            onNewComment={(newComment) => {
+              setComments(prev => {
+                  if (!newComment.parent) {
+                      return [newComment, ...prev];
+                  }
+          
+                  const addReply = (list: any[]): any[] =>
+                      list.map(c => {
+                          if (c.id === newComment.root_parent_id) {
+                              return {
+                                  ...c,
+                                  replies: [...(c.replies ?? []), newComment],
+                              };
+                          }
+          
+                          return {
+                              ...c,
+                              replies: c.replies ? addReply(c.replies) : [],
+                          };
+                      });
+          
+                  return addReply(prev);
+              });
+            }}
             onReplaceComment={onReplaceComment}
             onRemoveComment={onRemoveComment}
             onClearReply={() =>

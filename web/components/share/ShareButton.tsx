@@ -5,6 +5,7 @@ type Props = {
   post: any;
   vertical?: boolean;
   dark?: boolean;
+  sharesCount: number;
   onOpen: (post: any) => void;
 };
 
@@ -12,6 +13,7 @@ export default function ShareButton({
   post,
   vertical = false,
   dark = false,
+  sharesCount,
   onOpen,
 }: Props) {
   return (
@@ -45,9 +47,9 @@ export default function ShareButton({
         <Share2 className={vertical ? "w-7 h-7" : "mr-2"} />
       </div>
 
-      {post.shares_count > 0 && (
+      {sharesCount > 0 && (
         <span className={vertical ? "text-xs" : ""}>
-          {formatCount(post.shares_count)}
+          {formatCount(sharesCount)}
         </span>
       )}
     </button>

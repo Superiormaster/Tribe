@@ -1,4 +1,5 @@
 import { apiRequest } from "@/utils/api";
+import { updateFeedPost } from "@/lib/feedDb";
 
 export const useShare = () => {
   const recordShare = async (
@@ -16,6 +17,12 @@ export const useShare = () => {
         }
       );
 
+      if (typeof res.shares_count === "number") {
+        await updateFeedPost(postId, {
+          shares_count: res.shares_count,
+        });
+      }
+  
       return res;
     } catch (err) {
       console.error(err);
