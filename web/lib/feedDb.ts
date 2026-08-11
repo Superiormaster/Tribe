@@ -238,8 +238,8 @@ export async function updateReel(
         let changed = false;
 
         const updated = reels
-          .filter((reel) => reel && typeof reel === "object")
-          .map((reel) => {
+          .filter((reel: any) => reel && typeof reel === "object")
+          .map((reel: any) => {
               if (reel.id !== reelId) return reel;
         
               changed = true;

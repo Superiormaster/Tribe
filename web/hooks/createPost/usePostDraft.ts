@@ -366,7 +366,7 @@ export function usePostDraft({
     async (): Promise<boolean> => {
   
       if (manualDraftSaving.current) {
-        return;
+        return false;
       }
 
       manualDraftSaving.current = true;
@@ -407,8 +407,6 @@ export function usePostDraft({
 
         return true;
       } catch (error) {
-        console.error("saveDraft failed:", error);
-        throw error;
         console.error("saveDraft failed:", error);
         throw error;
       } finally {

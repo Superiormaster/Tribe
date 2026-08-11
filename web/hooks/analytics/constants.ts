@@ -28,7 +28,7 @@ export const METRIC_OPTIONS: {
   { value: "reach", label: "Reach" },
   { value: "engagement", label: "Engagement" },
   { value: "profileViews", label: "Profile Views" },
-  { value: "followers", label: "Followers" },
+  { value: "stars", label: "Stars" },
   { value: "likes", label: "Likes" },
   { value: "comments", label: "Comments" },
   { value: "shares", label: "Shares" },

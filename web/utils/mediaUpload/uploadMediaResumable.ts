@@ -26,31 +26,28 @@ type MultipartPart = {
   upload_url: string;
 };
 
-type MultipartInitResponse = {
-  media_id: string;
-  object_key: string;
-  original_url?: string;
-  multipart: boolean;
-  upload_id: string;
-  part_size: number;
-  part_count: number;
-  parts: MultipartPart[];
-};
-
-type ResumeResponse = {
+type MultipartSession = {
   media_id: string;
   object_key?: string;
   multipart?: boolean;
   upload_id?: string;
-  part_size?: number;
-  part_count?: number;
+
+  part_size: number;
+  part_count: number;
+
+  parts?: MultipartPart[];
   uploaded_parts?: UploadedPart[];
   remaining_parts?: MultipartPart[];
+
   completed?: boolean;
   success?: boolean;
+
   original_url?: string;
   thumbnail_url?: string | null;
 };
+
+type MultipartInitResponse = MultipartSession;
+type ResumeResponse = MultipartSession;
 
 type CompleteResponse = {
   success: boolean;
@@ -103,9 +100,7 @@ export async function uploadMediaResumable({
   let saved =
     await getUploadByFile(file);
 
-  let session:
-    | MultipartInitResponse
-    | ResumeResponse;
+  let session: MultipartSession | null = null;
 
   if (saved) {
 
@@ -146,19 +141,38 @@ export async function uploadMediaResumable({
 
         if (
           response?.completed === true ||
-          response?.success === true &&
-          response?.original_url
+          (
+            response?.success === true &&
+            !!response?.original_url
+          )
         ) {
-
           console.log(
             "[UPLOAD] Server says upload is already complete."
           );
-
-          await deleteUpload(
-            uploadKey
-          );
-
-          return response as CompleteResponse;
+        
+          await deleteUpload(uploadKey);
+        
+          if (
+            !response.original_url ||
+            !response.object_key
+          ) {
+            throw new Error(
+              "Server reported upload as complete but did not return the completed media details."
+            );
+          }
+        
+          return {
+            success: true,
+            media_id: response.media_id,
+            object_key: response.object_key,
+            original_url: response.original_url,
+            thumbnail_url:
+              response.thumbnail_url ?? null,
+            media_type: undefined,
+            content_type: file.type,
+            size: file.size,
+            status: "completed",
+          };
         }
 
         if (
@@ -952,7 +966,7 @@ export async function uploadMediaResumable({
 async function initializeMultipart(
   file: File,
   signal?: AbortSignal
-): Promise<MultipartInitResponse> {
+): Promise<MultipartSession> {
 
   if (
     signal?.aborted
@@ -968,16 +982,13 @@ async function initializeMultipart(
     await apiRequest(
       "api/media/initialize/",
       {
-        method:
-          "POST",
+        method: "POST",
         data: {
-          content_type:
-            file.type,
-          size:
-            file.size,
+          content_type: file.type,
+          size: file.size,
         },
       }
-    ) as MultipartInitResponse;
+    ) as MultipartSession;
 
   if (
     !response?.multipart ||

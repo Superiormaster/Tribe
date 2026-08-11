@@ -124,27 +124,14 @@ export function useHomeInitialization({
           await fetchReels();
         }
       } catch (err) {
-
-          console.error(err);
+        console.error(
+          "Home initialization failed:",
+          err
+        );
       
-          const cached = await getFeed(
-              currentFilter,
-              currentTribe,
-              pageNumber
-          );
-      
-          if (cached.length) {
-      
-              setPosts(prev =>
-                  pageNumber === 1
-                      ? cached
-                      : [...prev, ...cached]
-              );
-          }
-      
-          window.dispatchEvent(
-              new CustomEvent("network-error")
-          );
+        window.dispatchEvent(
+          new CustomEvent("network-error")
+        );
       }
     };
 

@@ -19,81 +19,53 @@ export interface AnalyticsQuery {
 
 const analytics = {
   async overview(params: AnalyticsQuery = {}) {
-    const { data } = await apiRequest.get<AnalyticsResponse>(
-      "analytics/overview/",
-      {
-        params,
-      }
-    );
-
-    return data;
+    return await apiRequest("analytics/overview/", {
+      method: "GET",
+      params,
+    }) as AnalyticsResponse;
   },
 
   async content(params: AnalyticsQuery = {}) {
-    const { data } = await apiRequest.get(
-      "analytics/content/",
-      {
-        params,
-      }
-    );
-
-    return data;
+    return await apiRequest("analytics/content/", {
+      method: "GET",
+      params,
+    });
   },
 
   async audience(params: AnalyticsQuery = {}) {
-    const { data } = await apiRequest.get(
-      "analytics/audience/",
-      {
-        params,
-      }
-    );
-
-    return data;
+    return await apiRequest("analytics/audience/", {
+      method: "GET",
+      params,
+    });
   },
 
   async communities(params: AnalyticsQuery = {}) {
-    const { data } = await apiRequest.get(
-      "analytics/communities/",
-      {
-        params,
-      }
-    );
-
-    return data;
+    return await apiRequest("analytics/communities/", {
+      method: "GET",
+      params,
+    });
   },
 
   async topPosts(range: AnalyticsRange) {
-    const { data } = await apiRequest.get(
-      "analytics/top-posts/",
-      {
-        params: { range },
-      }
-    );
-
-    return data;
+    return await apiRequest("analytics/top-posts/", {
+      method: "GET",
+      params: { range },
+    });
   },
 
   async reels(range: AnalyticsRange) {
-    const { data } = await apiRequest.get(
-      "analytics/reels/",
-      {
-        params: { range },
-      }
-    );
-
-    return data;
+    return await apiRequest("analytics/reels/", {
+      method: "GET",
+      params: { range },
+    });
   },
 
   async exportCSV(range: AnalyticsRange) {
-    const response = await apiRequest.get(
-      "analytics/export/",
-      {
-        params: { range },
-        responseType: "blob",
-      }
-    );
-
-    return response.data;
+    return await apiRequest("analytics/export/", {
+      method: "GET",
+      params: { range },
+      responseType: "blob",
+    });
   },
 };
 

@@ -183,17 +183,17 @@ export function useMediaUpload({
               }
 
               if (
-                !uploaded?.original_url
+                !uploaded?.original_url ||
+                uploaded?.media_id == null
               ) {
-
                 throw new Error(
-                  "Media upload completed but no URL was returned."
+                  "Media upload completed but required media information was not returned."
                 );
               }
-
+              
               return buildUploadedMedia(
                 uploaded.original_url,
-                uploaded.media_id,
+                String(uploaded.media_id),
                 file,
                 uploaded.thumbnail_url,
               );

@@ -321,7 +321,7 @@ export function useHomeFeed({
               map.set(post.reactKey, post);
           });
       
-          newItems.forEach(post => {
+          newItems.forEach((post: any) => {
       
               const old = map.get(post.reactKey);
       
@@ -570,15 +570,15 @@ export function useHomeFeed({
 
       pagesCache.current[nextPage] = cached;
   
-      setPosts(prev => {
+      setPosts((prev: any) => {
   
           const map = new Map();
   
-          prev.forEach(post =>
+          prev.forEach((post: any) =>
               map.set(post.reactKey, post)
           );
   
-          cached.forEach(post =>
+          cached.forEach((post: any) =>
               map.set(post.reactKey, post)
           );
   
