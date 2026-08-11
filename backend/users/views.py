@@ -729,7 +729,9 @@ def profile_posts(request, username):
 
     reposts = Repost.objects.filter(
         user=user,
-        is_deleted=False
+        is_deleted=False,
+        post__is_deleted=False,
+        post__is_approved=True,
     ).select_related("user", "post", "post__user", "post__community").prefetch_related("post__media_files")
 
     post_items = [
@@ -770,7 +772,7 @@ def profile_posts(request, username):
         else:
             r = item["data"]
 
-            post_obj = Post.objects.filter(id=r.post.id)\
+            post_obj = Post.objects.filter(id=r.post.id, is_deleted=False, is_approved=True)\
             .select_related("user", "community")\
             .annotate(
                 likes_count=Count("likes", distinct=True),
@@ -1370,7 +1372,6 @@ def onboarding_status(request):
         user.full_name,
         user.username,
         user.email,
-        user.bio,
         user.country,
         user.gender,
     ])
@@ -1911,7 +1912,12 @@ def unblock_user(request, user_id):
 def blocked_users_list(request):
     search = request.query_params.get("search", "").strip()
 
-    qs = BlockedUser.objects.filter(user=request.user).select_related("blocked_user")
+    qs = (
+        BlockedUser.objects
+        .filter(user=request.user)
+        .select_related("blocked_user")
+        .order_by("-created_at")
+    )
 
     if search:
         qs = qs.filter(
@@ -1959,6 +1965,12 @@ def unmute_user(request, user_id):
 def muted_users_list(request):
     search = request.query_params.get("search", "").strip()
 
+    qs = (
+        MutedUser.objects
+        .filter(user=request.user)
+        .select_related("muted_user")
+        .order_by("-created_at")
+    )
     qs = MutedUser.objects.filter(user=request.user).select_related("muted_user")
 
     if search:

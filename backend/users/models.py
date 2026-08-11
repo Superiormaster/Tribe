@@ -18,6 +18,21 @@ class User(AbstractUser):
     bio = models.TextField(blank=True, null=True)
     avatar = models.URLField(blank=True, null=True)
     cover_photo = models.URLField(blank=True, null=True)
+    avatar_asset = models.ForeignKey(
+        "media.MediaAsset",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="avatar_users",
+    )
+    
+    cover_asset = models.ForeignKey(
+        "media.MediaAsset",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="cover_users",
+    )
 
     onboarding_step = models.IntegerField(default=1)
 
@@ -123,6 +138,9 @@ class BlockedUser(models.Model):
         auto_now_add=True
     )
 
+    class Meta:
+      ordering = ["-created_at"]
+
 class MutedUser(models.Model):
     user = models.ForeignKey(
         User,
@@ -139,6 +157,9 @@ class MutedUser(models.Model):
     created_at = models.DateTimeField(
         auto_now_add=True
     )
+  
+    class Meta:
+      ordering = ["-created_at"]
 
 class PrivacySettings(models.Model):
     PROFILE_VISIBILITY = (

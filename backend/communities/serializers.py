@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from .models import Community, Tribe, CommunityMembership, TribeRequest, CommunityJoinRequest, CommunityMute, CommunityBan, CommunityInvite
 from users.models import User
+from media.models import MediaAsset
+from users.utils import get_user_avatar
 
 class TribeSerializer(serializers.ModelSerializer):
     class Meta:
@@ -16,10 +18,7 @@ class JoinedCommunitySerializer(serializers.ModelSerializer):
         source="community.name",
         read_only=True,
     )
-    cover_image = serializers.CharField(
-        source="community.cover_image",
-        read_only=True,
-    )
+    cover_image = serializers.SerializerMethodField()
 
     class Meta:
         model = CommunityMembership
@@ -28,6 +27,14 @@ class JoinedCommunitySerializer(serializers.ModelSerializer):
             "name",
             "cover_image",
         ]
+  
+    def get_cover_image(self, obj):
+        community = obj.community
+
+        if community.cover_image_asset:
+            return community.cover_image_asset.original_url
+
+        return community.cover_image
 
 class CommunityMuteSerializer(serializers.ModelSerializer):
 
@@ -47,10 +54,24 @@ class CommunityNestedSerializer(serializers.ModelSerializer):
     joined = serializers.SerializerMethodField()
     requested = serializers.SerializerMethodField()
     invited = serializers.SerializerMethodField()
+    cover_image = serializers.SerializerMethodField()
+    intro_video = serializers.SerializerMethodField()
 
     class Meta:
         model = Community
         fields = ['id', 'name', 'members_count', 'owner', "intro_video", "requested", "require_post_approval", 'cover_image', 'joined', 'invited', 'description']
+
+    def get_cover_image(self, obj):
+        if obj.cover_image_asset:
+            return obj.cover_image_asset.original_url
+
+        return obj.cover_image
+
+    def get_intro_video(self, obj):
+        if obj.intro_video_asset:
+            return obj.intro_video_asset.original_url
+
+        return obj.intro_video
 
     def get_owner(self, obj):
         return {
@@ -142,6 +163,29 @@ class CommunitySerializer(serializers.ModelSerializer):
     requested = serializers.SerializerMethodField()
     invited = serializers.SerializerMethodField()
     permissions = serializers.SerializerMethodField()
+    cover_image_asset_id = serializers.SlugRelatedField(
+        slug_field="media_id",
+        source="cover_image_asset",
+        queryset=MediaAsset.objects.all(),
+        required=False,
+        allow_null=True,
+        write_only=True,
+    )
+
+    intro_video_asset_id = serializers.SlugRelatedField(
+        slug_field="media_id",
+        source="intro_video_asset",
+        queryset=MediaAsset.objects.all(),
+        required=False,
+        allow_null=True,
+        write_only=True,
+    )
+
+    cover_image_media_id = serializers.SerializerMethodField()
+    intro_video_media_id = serializers.SerializerMethodField()
+
+    cover_image_url = serializers.SerializerMethodField()
+    intro_video_url = serializers.SerializerMethodField()
 
     class Meta:
         model = Community
@@ -149,8 +193,15 @@ class CommunitySerializer(serializers.ModelSerializer):
             'id',
             'name',
             'description',
-            'cover_image',
-            'intro_video',
+            "cover_image_url",
+            "intro_video_url",
+
+            'cover_image_media_id',
+            'intro_video_media_id',
+
+            # Media input
+            "cover_image_asset_id",
+            "intro_video_asset_id",
             'allow_videos',
             'require_post_approval',
             'join_approval_required',
@@ -168,9 +219,71 @@ class CommunitySerializer(serializers.ModelSerializer):
         read_only_fields = [
             'owner',
             'members_count',
-            'joined'
+            'joined',
+            "cover_image_url",
+            "intro_video_url",
         ]
 
+    def get_cover_image_url(self, obj):
+
+        if obj.cover_image_asset:
+            return obj.cover_image_asset.original_url
+
+        # Legacy communities
+        return obj.cover_image
+
+    # --------------------------------
+    # INTRO VIDEO
+    # --------------------------------
+
+    def get_intro_video_url(self, obj):
+
+        if obj.intro_video_asset:
+            return obj.intro_video_asset.original_url
+
+        # Legacy communities
+        return obj.intro_video
+
+    def get_cover_image_media_id(self, obj):
+        if obj.cover_image_asset:
+            return obj.cover_image_asset.media_id
+        return None
+
+    def get_intro_video_media_id(self, obj):
+        if obj.intro_video_asset:
+            return obj.intro_video_asset.media_id
+        return None
+
+    def validate_cover_image_asset_id(self, asset):
+        request = self.context.get("request")
+
+        if request and asset.user_id != request.user.id:
+            raise serializers.ValidationError(
+                "You do not own this media asset."
+            )
+
+        if asset.status != "ready":
+            raise serializers.ValidationError(
+                "The cover image is not ready."
+            )
+
+        return asset
+
+    def validate_intro_video_asset_id(self, asset):
+        request = self.context.get("request")
+
+        if request and asset.user_id != request.user.id:
+            raise serializers.ValidationError(
+                "You do not own this media asset."
+            )
+
+        if asset.status != "ready":
+            raise serializers.ValidationError(
+                "The intro video is not ready."
+            )
+
+        return asset
+  
     def get_members_count(self, obj):
       banned_users = CommunityBan.objects.filter(
           community=obj
@@ -289,7 +402,7 @@ class InviteUserSerializer(serializers.ModelSerializer):
         ]
 
     def get_avatar(self, obj):
-        return getattr(obj, "avatar", None)
+        return get_user_avatar(obj)
 
     def get_invited(self, obj):
 
@@ -320,9 +433,7 @@ class CommunityInviteSerializer(serializers.ModelSerializer):
         return {
             "id": obj.sender.id,
             "username": obj.sender.username,
-            "avatar": (
-                avatar.url if hasattr(avatar, "url") and avatar else avatar
-            )
+            "avatar": get_user_avatar(obj.sender)
         }
 
     def get_community(self, obj):
@@ -361,9 +472,7 @@ class TribeRequestSerializer(serializers.ModelSerializer):
         )
 
     def get_creator_avatar(self, obj):
-      if obj.creator.avatar:
-          return obj.creator.avatar
-      return None
+      return get_user_avatar(obj.creator)
 
     def validate_name(self, value):
         value = value.strip()

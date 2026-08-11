@@ -1,15 +1,7 @@
 // utils/media.ts
 
-export const getLowQuality = (url?: string) => {
-  if (!url) return "";
-
-  return url.replace(
-    "/upload/",
-    "/upload/q_30,f_auto/"
-  );
-};
-
 export type UploadedMedia = {
+  mediaId: string;
   url: string;
   thumbnail: string | null;
   type: "image" | "video";
@@ -17,48 +9,35 @@ export type UploadedMedia = {
   height?: number;
 };
 
+export function toPostMediaPayload(
+  media: UploadedMedia
+) {
+  return {
+    media_id: media.mediaId,
+    media_type: media.type,
+  };
+}
+
 /**
  * Convert a Cloudinary upload URL into
  * the media object expected by the backend.
  */
- export function buildUploadedMedia(
-  secureUrl: string,
+export function buildUploadedMedia(
+  originalUrl: string,
+  mediaId: string,
   file: File,
-  contentType: string,
-  isPortrait = false
+  thumbnailUrl?: string | null,
+  width?: number,
+  height?: number
 ): UploadedMedia {
-
-  const isVideo = file.type.startsWith("video");
-
-  let thumbnail = secureUrl;
-
-  if (isVideo) {
-
-    const transform =
-      contentType === "short_video" || isPortrait
-        ? "so_0,c_fill,g_auto,ar_9:16,w_720,h_1280,q_auto,f_jpg/"
-        : "so_0,c_fill,g_auto,ar_16:9,w_1280,h_720,q_auto,f_jpg/";
-
-    thumbnail = secureUrl.replace(
-      "/video/upload/",
-      `/video/upload/${transform}`
-    );
-
-  } else {
-
-    // Image thumbnail
-    thumbnail = secureUrl.replace(
-      "/image/upload/",
-      "/image/upload/c_fill,g_auto,w_720,h_720,q_auto,f_auto/"
-    );
-
-  }
-
   return {
-    url: secureUrl,
-    thumbnail,
-    type: isVideo ? "video" : "image",
-    width: undefined,
-    height: undefined,
+    mediaId,
+    url: originalUrl,
+    thumbnail: thumbnailUrl ?? null,
+    type: file.type.startsWith("video/")
+      ? "video"
+      : "image",
+    width,
+    height,
   };
 }

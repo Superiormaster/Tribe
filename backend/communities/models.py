@@ -80,6 +80,21 @@ class Community(models.Model):
     description = models.TextField(blank=True, null=True)
     cover_image = models.URLField(default="https://res.cloudinary.com/demo/image/upload/default.png", blank=True)
     intro_video = models.URLField(blank=True, null=True)
+    cover_image_asset = models.ForeignKey(
+        "media.MediaAsset",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="community_cover_images",
+    )
+    
+    intro_video_asset = models.ForeignKey(
+        "media.MediaAsset",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="community_intro_videos",
+    )
     require_post_approval = models.BooleanField(default=False)
     join_approval_required = models.BooleanField(
         default=False

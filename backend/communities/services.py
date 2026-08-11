@@ -57,7 +57,7 @@ def build_community_feed(community, user, joined_communities, starred_ids, two_w
         "user",
         "community"
     ).prefetch_related(
-        "media_files"
+        "media_files__asset"
     ).annotate(
         likes_count=Count("likes", distinct=True),
         comments_count=Count("comments", distinct=True),
@@ -92,14 +92,16 @@ def build_community_feed(community, user, joined_communities, starred_ids, two_w
     )
 
     reposts = Repost.objects.filter(
-        post__community=community
+        post__community=community,
+        post__is_deleted=False,
+        post__is_approved=True,
     ).select_related(
         "user",
         "post",
         "post__user",
         "post__community",
     ).prefetch_related(
-        "post__media_files"
+        "post__media_files__asset"
     ).annotate(
         likes_count=Count(
             "post__likes",

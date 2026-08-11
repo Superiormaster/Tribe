@@ -3,12 +3,36 @@ from django.contrib.auth import get_user_model
 from django.db import models
 from django.contrib.auth.password_validation import validate_password
 from django.core.validators import validate_email
+import ast
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.db import IntegrityError
 from .models import Star, PrivacySettings, BlockedUser, MutedUser
+from .utils import get_user_avatar, get_user_cover
 from post.models import PostView
 
 User = get_user_model()
+
+class AvatarMixin:
+    avatar = serializers.SerializerMethodField()
+
+    def get_avatar(self, obj):
+        return get_user_avatar(obj)
+
+class CoverMixin:
+    cover_photo = serializers.SerializerMethodField()
+
+    def get_cover_photo(self, obj):
+        return get_user_cover(obj)
+
+class AvatarCoverMixin:
+    avatar = serializers.SerializerMethodField()
+    cover_photo = serializers.SerializerMethodField()
+
+    def get_avatar(self, obj):
+        return get_user_avatar(obj)
+
+    def get_cover_photo(self, obj):
+        return get_user_cover(obj)
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=8)
@@ -87,9 +111,11 @@ class GoogleAuthSerializer(serializers.Serializer):
         data['name'] = idinfo.get('name')
         return data
 
-class ProfileSerializer(serializers.ModelSerializer):
+class ProfileSerializer(AvatarCoverMixin, serializers.ModelSerializer):
     stars_count = serializers.SerializerMethodField()
     starred_count = serializers.SerializerMethodField()
+    avatar_asset_id = serializers.SerializerMethodField()
+    cover_asset_id = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -99,6 +125,8 @@ class ProfileSerializer(serializers.ModelSerializer):
             "email",
             "avatar",
             "cover_photo",
+            "avatar_asset_id",
+            "cover_asset_id",
             "full_name",
             "bio",
             "city",
@@ -122,8 +150,22 @@ class ProfileSerializer(serializers.ModelSerializer):
             "onboarding_step",
         ]
 
-        read_only_fields = ["email"]
+        read_only_fields = ["email", "avatar", "cover_photo", "avatar_asset_id", "cover_asset_id"]
 
+    def get_avatar_asset_id(self, obj):
+        return (
+            obj.avatar_asset.media_id
+            if obj.avatar_asset
+            else None
+        )
+
+    def get_cover_asset_id(self, obj):
+        return (
+            obj.cover_asset.media_id
+            if obj.cover_asset
+            else None
+        )
+  
     def validate_avatar(self, value):
         # Only check size if it's a file upload
         if hasattr(value, "size") and value.size > 5 * 1024 * 1024:
@@ -150,7 +192,7 @@ class ProfileSerializer(serializers.ModelSerializer):
     def get_starred_count(self, obj):
         return obj.stars_received.count() if hasattr(obj, "stars_received") else 0
 
-class PublicProfileSerializer(serializers.ModelSerializer):
+class PublicProfileSerializer(AvatarMixin, serializers.ModelSerializer):
     stars_count = serializers.SerializerMethodField()
     starred_count = serializers.SerializerMethodField()
 
@@ -167,12 +209,12 @@ class PublicProfileSerializer(serializers.ModelSerializer):
     def get_starred_count(self, obj):
         return obj.stars_received.count() if hasattr(obj, "stars_received") else 0
 
-class UserSerializer(serializers.ModelSerializer):
+class UserSerializer(AvatarMixin, serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['id', 'username', 'email', 'avatar', 'bio']
 
-class MiniUserSerializer(serializers.ModelSerializer):
+class MiniUserSerializer(AvatarMixin, serializers.ModelSerializer):
     is_starred_by_user = serializers.SerializerMethodField()
 
     class Meta:
@@ -198,7 +240,7 @@ class MiniUserSerializer(serializers.ModelSerializer):
             starred_user=obj
         ).exists()
 
-class DiscoveryUserSerializer(serializers.ModelSerializer):
+class DiscoveryUserSerializer(AvatarMixin, serializers.ModelSerializer):
     stars_received_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -224,12 +266,7 @@ class BlockedUserSerializer(serializers.ModelSerializer):
         fields = ["id", "username", "full_name", "avatar", "created_at"]
 
     def get_avatar(self, obj):
-        user = obj.blocked_user
-
-        if not user.avatar:
-            return None
-
-        return user.avatar.url if hasattr(user.avatar, "url") else user.avatar
+      return get_user_avatar(obj.blocked_user)
 
 class MutedUserSerializer(serializers.ModelSerializer):
     id = serializers.IntegerField(source="muted_user.id")
@@ -242,10 +279,7 @@ class MutedUserSerializer(serializers.ModelSerializer):
         fields = ["id", "username", "full_name", "avatar", "created_at"]
 
     def get_avatar(self, obj):
-        user = obj.muted_user
-        if not user.avatar:
-            return None
-        return user.avatar.url if hasattr(user.avatar, "url") else user.avatar
+        return get_user_avatar(obj.muted_user)
 
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(required=True)

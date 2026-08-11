@@ -4,6 +4,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from random import shuffle
 from rest_framework.views import APIView
+from media.services.media import get_owned_ready_asset
 from users.utils import redis_client
 from .services import build_community_feed, serialize_community_feed
 from django.utils import timezone
@@ -100,21 +101,166 @@ class CommunityViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticated]
 
     def perform_create(self, serializer):
-      print("REQUEST DATA:", self.request.data)
+
+      user = self.request.user
   
-      serializer.is_valid(raise_exception=True)
+      cover_image_asset_id = (
+          self.request.data.get(
+              "cover_image_asset_id"
+          )
+      )
   
-      tribe_id = self.request.data.get("tribe")
+      intro_video_asset_id = (
+          self.request.data.get(
+              "intro_video_asset_id"
+          )
+      )
+  
+      tribe_id = self.request.data.get(
+          "tribe"
+      )
+  
+      # --------------------------------
+      # COVER IMAGE
+      # --------------------------------
+  
+      cover_asset = get_owned_ready_asset(
+          media_id=cover_image_asset_id,
+          user=user,
+          media_type="image",
+      )
+  
+      # --------------------------------
+      # INTRO VIDEO
+      # --------------------------------
+  
+      intro_asset = get_owned_ready_asset(
+          media_id=intro_video_asset_id,
+          user=user,
+          media_type="video",
+      )
+  
+      # --------------------------------
+      # CREATE COMMUNITY
+      # --------------------------------
   
       community = serializer.save(
-          owner=self.request.user,
+          owner=user,
           tribe_id=tribe_id,
+          cover_image_asset=cover_asset,
+          intro_video_asset=intro_asset,
       )
+  
+      # --------------------------------
+      # LEGACY URL COMPATIBILITY
+      # --------------------------------
+  
+      update_fields = []
+  
+      if cover_asset:
+          community.cover_image = (
+              cover_asset.original_url
+          )
+          update_fields.append(
+              "cover_image"
+          )
+  
+      if intro_asset:
+          community.intro_video = (
+              intro_asset.original_url
+          )
+          update_fields.append(
+              "intro_video"
+          )
+  
+      if update_fields:
+          community.save(
+              update_fields=update_fields
+          )
+  
+      # --------------------------------
+      # OWNER MEMBERSHIP
+      # --------------------------------
   
       CommunityMembership.objects.create(
           community=community,
-          user=self.request.user,
+          user=user,
           role="owner",
+      )
+  
+    def perform_update(self, serializer):
+
+      user = self.request.user
+      instance = self.get_object()
+  
+      cover_image_asset_id = (
+          self.request.data.get(
+              "cover_image_asset_id"
+          )
+      )
+  
+      intro_video_asset_id = (
+          self.request.data.get(
+              "intro_video_asset_id"
+          )
+      )
+  
+      update_data = {}
+  
+      # --------------------------------
+      # COVER
+      # --------------------------------
+  
+      if (
+          "cover_image_asset_id"
+          in self.request.data
+      ):
+  
+          cover_asset = get_owned_ready_asset(
+              media_id=cover_image_asset_id,
+              user=user,
+              media_type="image",
+          )
+  
+          update_data[
+              "cover_image_asset"
+          ] = cover_asset
+  
+          if cover_asset:
+              update_data[
+                  "cover_image"
+              ] = cover_asset.original_url
+  
+      # --------------------------------
+      # INTRO VIDEO
+      # --------------------------------
+  
+      if (
+          "intro_video_asset_id"
+          in self.request.data
+      ):
+  
+          intro_asset = get_owned_ready_asset(
+              media_id=intro_video_asset_id,
+              user=user,
+              media_type="video",
+          )
+  
+          update_data[
+              "intro_video_asset"
+          ] = intro_asset
+  
+          if intro_asset:
+              update_data[
+                  "intro_video"
+              ] = intro_asset.original_url
+  
+      # --------------------------------
+      # SAVE
+      # --------------------------------
+  
+      serializer.save(
+          **update_data
       )
 
     @action(detail=True, methods=["post"])
@@ -479,8 +625,31 @@ class CommunityViewSet(viewsets.ModelViewSet):
                 "name": community.name,
                 "description": community.description,
                 "website": community.website,
-                "cover_image": community.cover_image,
-                "intro_video": community.intro_video,
+            
+                # New MediaAsset system
+                "cover_image_url": (
+                    community.cover_image_asset.original_url
+                    if community.cover_image_asset
+                    else community.cover_image
+                ),
+            
+                "intro_video_url": (
+                    community.intro_video_asset.original_url
+                    if community.intro_video_asset
+                    else community.intro_video
+                ),
+            
+                "cover_image_asset_id": (
+                    community.cover_image_asset.media_id
+                    if community.cover_image_asset
+                    else None
+                ),
+                
+                "intro_video_asset_id": (
+                    community.intro_video_asset.media_id
+                    if community.intro_video_asset
+                    else None
+                ),
                 "require_post_approval": community.require_post_approval,
                 "join_approval_required": community.join_approval_required,
                 "owner": {
@@ -519,42 +688,68 @@ class CommunityViewSet(viewsets.ModelViewSet):
 
         # UPDATE SETTINGS
         if request.method == "PATCH":
-
-            if request.user != community.owner and not CommunityMembership.objects.filter(
-                user=request.user,
-                community=community,
-                role="admin"
-            ).exists():
-                return Response({"error": "Not allowed"}, status=403)
-
-            community.name = request.data.get("name", community.name)
-            community.description = request.data.get("description", community.description)
-            community.website = request.data.get("website", community.website)
-            community.cover_image = request.data.get("cover_image", community.cover_image)
-            community.intro_video = request.data.get("intro_video", community.intro_video)
-            community.require_post_approval = request.data.get(
-                "require_post_approval",
-                community.require_post_approval
+        
+            if (
+                request.user != community.owner
+                and not CommunityMembership.objects.filter(
+                    user=request.user,
+                    community=community,
+                    role="admin",
+                ).exists()
+            ):
+                return Response(
+                    {"error": "Not allowed"},
+                    status=403,
+                )
+        
+            serializer = CommunitySerializer(
+                community,
+                data=request.data,
+                partial=True,
+                context={"request": request},
             )
-            community.join_approval_required = request.data.get(
-                "join_approval_required",
-                community.join_approval_required
-            )
-            allow_videos = request.data.get("allow_videos")
-
-            if allow_videos is not None:
-              allow_videos = bool(allow_videos)
-          
-              if allow_videos:
-                  community.override_reels = True
-                  community.allow_videos = True
-              else:
-                  community.override_reels = False
-                  community.allow_videos = False
-            community.save()
-
-            return Response({"status": "updated", "require_post_approval": community.require_post_approval, "join_approval_required": community.join_approval_required})
-
+        
+            serializer.is_valid(raise_exception=True)
+            serializer.save()
+        
+            community.refresh_from_db()
+        
+            return Response({
+                "status": "updated",
+        
+                "id": community.id,
+        
+                "cover_image_url": (
+                    community.cover_image_asset.original_url
+                    if community.cover_image_asset
+                    else community.cover_image
+                ),
+        
+                "intro_video_url": (
+                    community.intro_video_asset.original_url
+                    if community.intro_video_asset
+                    else community.intro_video
+                ),
+        
+                "cover_image_asset_id": (
+                    community.cover_image_asset.media_id
+                    if community.cover_image_asset
+                    else None
+                ),
+                
+                "intro_video_asset_id": (
+                    community.intro_video_asset.media_id
+                    if community.intro_video_asset
+                    else None
+                ),
+        
+                "require_post_approval":
+                    community.require_post_approval,
+        
+                "join_approval_required":
+                    community.join_approval_required,
+            })
+  
     @action(detail=True, methods=["get"])
     def feed(self, request, pk=None):
     
