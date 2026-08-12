@@ -22,7 +22,7 @@ urlpatterns = [
     ),
 
     path(
-        "api/media/debug/",
+        "debug/",
         MediaUploadDebugView.as_view(),
     ),
 
