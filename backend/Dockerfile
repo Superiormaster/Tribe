@@ -34,7 +34,9 @@ RUN python -m pip install \
 
 RUN python -m pip install \
         --prefix=/install \
-        -r requirements.txt
+        --no-cache-dir \
+        -r requirements.txt \
+        packaging==25.0
 
 
 # ============================================================
