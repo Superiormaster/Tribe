@@ -1,6 +1,7 @@
 // utils/r2.ts
 
 import { apiRequest } from "@/utils/api";
+import { uploadDebug } from "@/utils/mediaUpload/uploadDebug";
 
 type CompleteMediaResponse = {
   success: boolean;
@@ -63,10 +64,8 @@ export async function uploadProfileMedia({
         data: {
           media_type:
             mediaType,
-
           content_type:
             file.type,
-
           size:
             file.size,
         },
@@ -78,6 +77,17 @@ export async function uploadProfileMedia({
       "Profile upload initialization failed."
     );
   }
+  
+  void uploadDebug(
+    "[PROFILE R2] INIT SUCCESS",
+    {
+      mediaType,
+      mediaId: init.media_id,
+      objectKey: init.object_key,
+      fileSize: file.size,
+      fileType: file.type,
+    }
+  );
 
   await uploadToPresignedUrl(
     init.upload_url,
@@ -122,6 +132,15 @@ export async function uploadProfileMedia({
       "Profile media upload completed but no original URL was returned."
     );
   }
+  
+  void uploadDebug(
+    "[PROFILE R2] COMPLETE SUCCESS",
+    {
+      mediaId: completed.media_id,
+      objectKey: completed.object_key,
+      originalUrl: completed.original_url,
+    }
+  );
 
   return completed;
 }
@@ -225,6 +244,16 @@ async function uploadToPresignedUrl(
 
     try {
 
+      void uploadDebug(
+        "[PROFILE R2] UPLOAD ATTEMPT",
+        {
+          attempt,
+          maxRetries: MAX_RETRIES,
+          fileSize: file.size,
+          fileType: file.type,
+        }
+      );
+  
       await uploadWithXHR(
         uploadUrl,
         file,
@@ -245,6 +274,16 @@ async function uploadToPresignedUrl(
 
       lastError = error;
 
+      void uploadDebug(
+        `[PROFILE R2] ATTEMPT ${attempt}/${MAX_RETRIES} FAILED`,
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : String(error),
+        }
+      );
+  
       console.warn(
         `[PROFILE UPLOAD] Attempt ${attempt}/${MAX_RETRIES} failed:`,
         error
@@ -293,6 +332,43 @@ function uploadWithXHR(
         new XMLHttpRequest();
 
       let settled = false;
+      let cancelledBySignal = false;
+
+      void uploadDebug(
+        "[PROFILE R2] BEFORE OPEN",
+        {
+          origin:
+            window.location.origin,
+
+          urlHost:
+            (() => {
+              try {
+                return new URL(
+                  uploadUrl
+                ).host;
+              } catch {
+                return "INVALID_URL";
+              }
+            })(),
+
+          urlProtocol:
+            (() => {
+              try {
+                return new URL(
+                  uploadUrl
+                ).protocol;
+              } catch {
+                return "INVALID_URL";
+              }
+            })(),
+
+          fileSize:
+            file.size,
+
+          fileType:
+            file.type,
+        }
+      );
 
       const cleanup = () => {
 
@@ -300,6 +376,12 @@ function uploadWithXHR(
           "abort",
           handleAbort
         );
+  
+        xhr.upload.onprogress = null;
+        xhr.onload = null;
+        xhr.onerror = null;
+        xhr.onabort = null;
+        xhr.ontimeout = null;
       };
 
       const finishResolve = () => {
@@ -309,9 +391,7 @@ function uploadWithXHR(
         }
 
         settled = true;
-
         cleanup();
-
         resolve();
       };
 
@@ -324,14 +404,29 @@ function uploadWithXHR(
         }
 
         settled = true;
-
         cleanup();
-
         reject(error);
       };
 
       const handleAbort = () => {
 
+        if (settled) {
+          return;
+        }
+  
+        cancelledBySignal = true;
+
+        void uploadDebug(
+          "[PROFILE R2] SIGNAL ABORT",
+          {
+            readyState:
+              xhr.readyState,
+
+            status:
+              xhr.status,
+          }
+        );
+  
         xhr.abort();
 
         finishReject(
@@ -347,6 +442,7 @@ function uploadWithXHR(
       ) => {
 
         if (
+          settled ||
           !event.lengthComputable
         ) {
           return;
@@ -371,6 +467,28 @@ function uploadWithXHR(
 
       xhr.onload = () => {
 
+        void uploadDebug(
+          "[PROFILE R2] LOAD",
+          {
+            status:
+              xhr.status,
+
+            statusText:
+              xhr.statusText,
+
+            readyState:
+              xhr.readyState,
+
+            responseURL:
+              xhr.responseURL,
+
+            etag:
+              xhr.getResponseHeader(
+                "ETag"
+              ),
+          }
+        );
+  
         if (
           xhr.status >= 200 &&
           xhr.status < 300
@@ -381,7 +499,6 @@ function uploadWithXHR(
           );
 
           finishResolve();
-
           return;
         }
 
@@ -394,6 +511,34 @@ function uploadWithXHR(
 
       xhr.onerror = () => {
 
+        void uploadDebug(
+          "[PROFILE R2] NETWORK ERROR",
+          {
+            status:
+              xhr.status,
+
+            statusText:
+              xhr.statusText,
+
+            readyState:
+              xhr.readyState,
+
+            responseURL:
+              xhr.responseURL,
+
+            withCredentials:
+              xhr.withCredentials,
+
+            cancelledBySignal,
+          }
+        );
+  
+        if (
+          cancelledBySignal
+        ) {
+          return;
+        }
+  
         finishReject(
           new Error(
             "Network error while uploading profile media."
@@ -402,6 +547,25 @@ function uploadWithXHR(
       };
 
       xhr.onabort = () => {
+
+        void uploadDebug(
+          "[PROFILE R2] ABORT",
+          {
+            status:
+              xhr.status,
+
+            readyState:
+              xhr.readyState,
+
+            cancelledBySignal,
+          }
+        );
+
+        if (
+          cancelledBySignal
+        ) {
+          return;
+        }
 
         if (!settled) {
 
@@ -416,12 +580,60 @@ function uploadWithXHR(
 
       xhr.ontimeout = () => {
 
+        void uploadDebug(
+          "[PROFILE R2] TIMEOUT",
+          {
+            status:
+              xhr.status,
+
+            readyState:
+              xhr.readyState,
+          }
+        );
+  
         finishReject(
           new Error(
             "Profile media upload timed out."
           )
         );
       };
+
+      xhr.onloadend = () => {
+
+        void uploadDebug(
+          "[PROFILE R2] LOAD END",
+          {
+            status:
+              xhr.status,
+
+            statusText:
+              xhr.statusText,
+
+            readyState:
+              xhr.readyState,
+
+            responseURL:
+              xhr.responseURL,
+          }
+        );
+      };
+
+      void uploadDebug(
+        "[PROFILE R2] BEFORE SEND",
+        {
+          size:
+            file.size,
+
+          type:
+            file.type,
+
+          readyState:
+            xhr.readyState,
+
+          withCredentials:
+            xhr.withCredentials,
+        }
+      );
 
       signal?.addEventListener(
         "abort",
@@ -431,27 +643,82 @@ function uploadWithXHR(
         }
       );
 
-      xhr.open(
-        "PUT",
-        uploadUrl
-      );
+      try {
 
-      /*
-       * IMPORTANT:
-       *
-       * Do not add Authorization,
-       * Content-Type overrides,
-       * or custom headers unless
-       * your backend explicitly included
-       * them when generating the presigned URL.
-       *
-       * The presigned URL determines what
-       * R2/S3 will accept.
-       */
+        xhr.open(
+          "PUT",
+          uploadUrl,
+          true
+        );
 
-      xhr.send(
-        file
-      );
+        void uploadDebug(
+          "[PROFILE R2] OPEN SUCCESS",
+          {
+            readyState:
+              xhr.readyState,
+
+            method:
+              "PUT",
+          }
+        );
+
+      } catch (error) {
+
+        void uploadDebug(
+          "[PROFILE R2] OPEN FAILED",
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : String(error),
+          }
+        );
+
+        finishReject(
+          error instanceof Error
+            ? error
+            : new Error(
+                "Failed to initialize profile upload."
+              )
+        );
+
+        return;
+      }
+
+      try {
+
+        xhr.send(
+          file
+        );
+
+        void uploadDebug(
+          "[PROFILE R2] SEND SUCCESS",
+          {
+            readyState:
+              xhr.readyState,
+          }
+        );
+
+      } catch (error) {
+
+        void uploadDebug(
+          "[PROFILE R2] SEND FAILED",
+          {
+            error:
+              error instanceof Error
+                ? error.message
+                : String(error),
+          }
+        );
+
+        finishReject(
+          error instanceof Error
+            ? error
+            : new Error(
+                "Failed to send profile media upload."
+              )
+        );
+      }
     }
   );
 }

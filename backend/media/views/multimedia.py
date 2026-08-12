@@ -1,5 +1,6 @@
 from django.core.exceptions import ValidationError
 
+from celery import current_app
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -642,6 +643,58 @@ class CompleteMultipartMediaUploadView(APIView):
                     ]
                 )
 
+            print(
+                "=== BEFORE CELERY THUMBNAIL TASK ===",
+                flush=True,
+            )
+            
+            try:
+            
+                connection = current_app.connection_for_write()
+            
+                print(
+                    "=== CELERY CONNECTION DEBUG ===",
+                    flush=True,
+                )
+            
+                print(
+                    "BROKER URL:",
+                    connection.as_uri(),
+                    flush=True,
+                )
+            
+                connection.ensure_connection(
+                    max_retries=1
+                )
+            
+                print(
+                    "CELERY PRODUCER CONNECTION: SUCCESS",
+                    flush=True,
+                )
+            
+            except Exception as e:
+            
+                print(
+                    "CELERY PRODUCER CONNECTION: FAILED",
+                    repr(e),
+                    flush=True,
+                )
+            
+                raise
+            
+            
+            generate_media_thumbnail.delay(
+                asset.id
+            )
+            
+            print(
+                "=== CELERY TASK DISPATCHED ===",
+                flush=True,
+            )
+            
+            thumbnail_status = (
+                "processing"
+            )
             generate_media_thumbnail.delay(
                 asset.id
             )
