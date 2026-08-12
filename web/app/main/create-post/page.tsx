@@ -10,6 +10,7 @@ import { useEditPost } from "@/hooks/createPost/useEditPost";
 import { usePostMedia } from "@/hooks/createPost/usePostMedia";
 import { usePostDraft } from "@/hooks/createPost/usePostDraft";
 import { useMediaUpload, getFileKey } from "@/hooks/createPost/useMediaUpload";
+import { UploadNetworkError } from "@/utils/mediaUpload/errors";
 import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import { deletePostDraft } from "@/lib/messageDB";
 import ButtonLoader from "@/components/ButtonLoader";
@@ -24,15 +25,6 @@ type ExistingVideo = {
   url: string;
   thumbnail?: string;
 };
-
-export class UploadNetworkError extends Error {
-  isNetworkError = true;
-
-  constructor(message = "Network error during media upload.") {
-    super(message);
-    this.name = "UploadNetworkError";
-  }
-}
 
 export default function CreatePostPage() {
   const [content, setContent] = useState('');

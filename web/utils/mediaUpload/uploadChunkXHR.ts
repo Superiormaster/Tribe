@@ -73,17 +73,6 @@ export function uploadChunkXHR(
         );
       };
 
-      /*
-       * =====================================================
-       * ABORT
-       * =====================================================
-       *
-       * This is a deliberate cancellation.
-       *
-       * It must NOT be treated as a network failure
-       * and must NOT trigger a retry.
-       */
-
       const handleAbort = () => {
 
         if (settled) {
@@ -102,12 +91,6 @@ export function uploadChunkXHR(
         );
       };
 
-      /*
-       * =====================================================
-       * CHECK SIGNAL BEFORE STARTING
-       * =====================================================
-       */
-
       if (signal?.aborted) {
 
         rejectOnce(
@@ -119,12 +102,6 @@ export function uploadChunkXHR(
 
         return;
       }
-
-      /*
-       * =====================================================
-       * OPEN REQUEST
-       * =====================================================
-       */
 
       try {
 
@@ -147,12 +124,6 @@ export function uploadChunkXHR(
         return;
       }
 
-      /*
-       * =====================================================
-       * ABORT LISTENER
-       * =====================================================
-       */
-
       if (signal) {
 
         signal.addEventListener(
@@ -164,12 +135,6 @@ export function uploadChunkXHR(
         );
 
       }
-
-      /*
-       * =====================================================
-       * PROGRESS
-       * =====================================================
-       */
 
       xhr.upload.onprogress = (
         event
@@ -187,17 +152,17 @@ export function uploadChunkXHR(
         );
       };
 
-      /*
-       * =====================================================
-       * SUCCESS / HTTP RESPONSE
-       * =====================================================
-       */
-
       xhr.onload = () => {
 
         if (settled) {
           return;
         }
+  
+        console.log("[R2 UPLOAD] Response", {
+          status: xhr.status,
+          statusText: xhr.statusText,
+          etag: xhr.getResponseHeader("ETag"),
+        });
 
         if (
           xhr.status >= 200 &&
@@ -220,26 +185,11 @@ export function uploadChunkXHR(
             return;
           }
 
-          /*
-           * R2 normally returns:
-           *
-           * "abc123..."
-           *
-           * We store:
-           *
-           * abc123...
-           */
-
           const etag =
             rawEtag.replace(
               /^"|"$/g,
               ""
             );
-
-          /*
-           * Make sure progress reaches
-           * the exact chunk size.
-           */
 
           onProgress?.(
             chunk.size
@@ -252,32 +202,12 @@ export function uploadChunkXHR(
           return;
         }
 
-        /*
-         * HTTP errors are normal errors.
-         *
-         * uploadPart.ts will decide whether
-         * this should be retried.
-         */
-
         rejectOnce(
           new Error(
             `Part upload failed: ${xhr.status} ${xhr.statusText}`
           )
         );
       };
-
-      /*
-       * =====================================================
-       * NETWORK ERROR
-       * =====================================================
-       *
-       * IMPORTANT:
-       *
-       * Do NOT convert this into AbortError.
-       *
-       * uploadPart.ts needs to know this was
-       * a network failure so it can retry.
-       */
 
       xhr.onerror = () => {
 
@@ -296,32 +226,15 @@ export function uploadChunkXHR(
         );
       };
 
-      /*
-       * =====================================================
-       * XHR ABORT
-       * =====================================================
-       */
-
       xhr.onabort = () => {
 
         if (settled) {
           return;
         }
 
-        /*
-         * If our AbortController caused this,
-         * handleAbort() has already rejected it.
-         */
-
         if (cancelledBySignal) {
           return;
         }
-
-        /*
-         * An unexpected XHR abort is still an
-         * upload failure, not necessarily a user
-         * cancellation.
-         */
 
         rejectOnce(
           new Error(
@@ -330,13 +243,17 @@ export function uploadChunkXHR(
         );
       };
 
-      /*
-       * =====================================================
-       * SEND
-       * =====================================================
-       */
-
       try {
+
+        console.log("[R2 UPLOAD] Sending part", {
+          partSize: chunk.size,
+          url,
+        });
+
+        xhr.setRequestHeader(
+          "Content-Type",
+          chunk.type || "application/octet-stream"
+        );
 
         xhr.send(
           chunk

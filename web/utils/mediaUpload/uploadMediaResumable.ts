@@ -12,7 +12,7 @@ import {
   type StoredUpload,
   type StoredUploadedPart,
 } from "@/utils/mediaUpload/uploadDb";
-
+import { UploadNetworkError } from "@/utils/mediaUpload/errors";
 import { uploadPart } from "@/utils/mediaUpload/uploadPart";
 
 type UploadedPart = {
@@ -797,6 +797,12 @@ export async function uploadMediaResumable({
         }
       );
 
+      if (isNetworkError(error)) {
+        throw new UploadNetworkError(
+          "Network connection lost during media upload."
+        );
+      }
+  
       throw error;
     }
   }
@@ -1171,15 +1177,32 @@ export async function cancelMediaUpload(
 
     } catch {
 
-      /*
-       * Server cancellation succeeded.
-       *
-       * Local cleanup failure should not make
-       * cancellation appear to have failed.
-       */
-
     }
   }
 
   return response;
+}
+
+function isNetworkError(error: unknown): boolean {
+  if (error instanceof TypeError) {
+    return true;
+  }
+
+  if (error instanceof DOMException) {
+    return error.name === "NetworkError";
+  }
+
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+
+    return (
+      message.includes("network") ||
+      message.includes("failed to fetch") ||
+      message.includes("fetch") ||
+      message.includes("connection") ||
+      message.includes("timeout")
+    );
+  }
+
+  return false;
 }
