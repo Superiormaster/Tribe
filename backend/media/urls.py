@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import InitializeProfileMediaUploadView, CompleteProfileMediaUploadView, InitializeMediaUploadView, CompleteMediaUploadView, AbortMultipartUploadView, CompleteMultipartMediaUploadView, CancelMultipartUploadView, ResumeMultipartUploadView
+from .views import InitializeProfileMediaUploadView, CompleteProfileMediaUploadView, InitializeMediaUploadView, CompleteMediaUploadView, AbortMultipartUploadView, CompleteMultipartMediaUploadView, CancelMultipartUploadView, ResumeMultipartUploadView, MediaUploadDebugView
 
 urlpatterns = [
 
