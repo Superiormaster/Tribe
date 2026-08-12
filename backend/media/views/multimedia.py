@@ -101,6 +101,21 @@ class CompleteMediaUploadView(APIView):
             media_id,
         )
 
+        print(
+          "=== MEDIA COMPLETE START ===",
+          {
+              "media_id": media_id,
+              "user_id": request.user.id,
+              "status": asset.status if asset else None,
+              "multipart_upload_id": (
+                  asset.multipart_upload_id
+                  if asset
+                  else None
+              ),
+          },
+          flush=True,
+        )
+
         if not asset:
 
             return Response(
@@ -425,6 +440,16 @@ class CompleteMultipartMediaUploadView(APIView):
                     upload_id=
                         upload_id,
                 )
+            )
+            
+            print(
+              "=== R2 PARTS FOUND ===",
+              {
+                  "media_id": asset.media_id,
+                  "parts_count": len(uploaded_parts),
+                  "parts": uploaded_parts,
+              },
+              flush=True,
             )
 
         except Exception as exc:

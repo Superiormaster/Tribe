@@ -120,19 +120,11 @@ class CommunityViewSet(viewsets.ModelViewSet):
           "tribe"
       )
   
-      # --------------------------------
-      # COVER IMAGE
-      # --------------------------------
-  
       cover_asset = get_owned_ready_asset(
           media_id=cover_image_asset_id,
           user=user,
           media_type="image",
       )
-  
-      # --------------------------------
-      # INTRO VIDEO
-      # --------------------------------
   
       intro_asset = get_owned_ready_asset(
           media_id=intro_video_asset_id,
@@ -140,20 +132,12 @@ class CommunityViewSet(viewsets.ModelViewSet):
           media_type="video",
       )
   
-      # --------------------------------
-      # CREATE COMMUNITY
-      # --------------------------------
-  
       community = serializer.save(
           owner=user,
           tribe_id=tribe_id,
           cover_image_asset=cover_asset,
           intro_video_asset=intro_asset,
       )
-  
-      # --------------------------------
-      # LEGACY URL COMPATIBILITY
-      # --------------------------------
   
       update_fields = []
   
@@ -177,10 +161,6 @@ class CommunityViewSet(viewsets.ModelViewSet):
           community.save(
               update_fields=update_fields
           )
-  
-      # --------------------------------
-      # OWNER MEMBERSHIP
-      # --------------------------------
   
       CommunityMembership.objects.create(
           community=community,
@@ -207,10 +187,6 @@ class CommunityViewSet(viewsets.ModelViewSet):
   
       update_data = {}
   
-      # --------------------------------
-      # COVER
-      # --------------------------------
-  
       if (
           "cover_image_asset_id"
           in self.request.data
@@ -231,10 +207,6 @@ class CommunityViewSet(viewsets.ModelViewSet):
                   "cover_image"
               ] = cover_asset.original_url
   
-      # --------------------------------
-      # INTRO VIDEO
-      # --------------------------------
-  
       if (
           "intro_video_asset_id"
           in self.request.data
@@ -254,10 +226,6 @@ class CommunityViewSet(viewsets.ModelViewSet):
               update_data[
                   "intro_video"
               ] = intro_asset.original_url
-  
-      # --------------------------------
-      # SAVE
-      # --------------------------------
   
       serializer.save(
           **update_data

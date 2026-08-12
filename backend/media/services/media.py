@@ -20,18 +20,10 @@ def get_owned_ready_asset(
     A post can be created as soon as the original media is ready.
     """
 
-    # --------------------------------------------------
-    # MEDIA ID
-    # --------------------------------------------------
-
     if not media_id:
         raise ValidationError({
             "media": "media_id is required."
         })
-
-    # --------------------------------------------------
-    # FIND ASSET
-    # --------------------------------------------------
 
     try:
         asset = MediaAsset.objects.get(
@@ -45,34 +37,12 @@ def get_owned_ready_asset(
             )
         })
 
-    # --------------------------------------------------
-    # OWNERSHIP
-    # --------------------------------------------------
-
     if asset.user_id != user.id:
         raise ValidationError({
             "media": (
                 "You do not own this media asset."
             )
         })
-
-    # --------------------------------------------------
-    # ORIGINAL MEDIA MUST BE READY
-    # --------------------------------------------------
-    #
-    # IMPORTANT:
-    #
-    # We check ONLY asset.status here.
-    #
-    # thumbnail_status is deliberately ignored.
-    #
-    # Therefore:
-    #
-    # status="ready"
-    # thumbnail_status="processing"
-    #
-    # is valid and the post can be created.
-    # --------------------------------------------------
 
     if asset.status != "ready":
         if asset.status == "pending":
@@ -105,10 +75,6 @@ def get_owned_ready_asset(
             "media": message
         })
 
-    # --------------------------------------------------
-    # MEDIA TYPE
-    # --------------------------------------------------
-
     if asset.media_type != media_type:
         raise ValidationError({
             "media": (
@@ -116,10 +82,6 @@ def get_owned_ready_asset(
                 f"but received {asset.media_type}."
             )
         })
-
-    # --------------------------------------------------
-    # DEBUG INFORMATION
-    # --------------------------------------------------
 
     print(
         "MEDIA READY FOR POST:",
