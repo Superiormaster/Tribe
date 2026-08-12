@@ -33,13 +33,13 @@ class MediaAsset(models.Model):
     )
 
     media_id = models.CharField(
-        max_length=64,
+        max_length=1000,
         unique=True,
         db_index=True,
     )
   
     multipart_upload_id = models.CharField(
-        max_length=300,
+        max_length=1000,
         blank=True,
         null=True,
         db_index=True,
@@ -50,7 +50,7 @@ class MediaAsset(models.Model):
     )
 
     object_key = models.CharField(
-        max_length=500,
+        max_length=1000,
         unique=True,
     )
 
@@ -60,7 +60,7 @@ class MediaAsset(models.Model):
     )
 
     thumbnail_key = models.CharField(
-        max_length=500,
+        max_length=1000,
         blank=True,
         null=True,
     )
@@ -71,13 +71,13 @@ class MediaAsset(models.Model):
     )
 
     thumbnail_status = models.CharField(
-        max_length=20,
+        max_length=100,
         choices=THUMBNAIL_STATUS,
         default="none",
     )
 
     media_type = models.CharField(
-        max_length=20,
+        max_length=100,
         choices=MEDIA_TYPES,
     )
 
@@ -105,7 +105,7 @@ class MediaAsset(models.Model):
     )
 
     status = models.CharField(
-        max_length=20,
+        max_length=100,
         choices=STATUS_CHOICES,
         default="uploaded",
     )
