@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { connectCommentsSocket } from "@/lib/comment-socket";
 
 type Props = {
@@ -16,16 +16,62 @@ export function usePostSocket({
   onCommentDeleted,
   onCommentUpdated,
 }: Props) {
+
+  // ==========================================
+  // CALLBACK REFS
+  // ==========================================
+
+  const onStatsRef = useRef(onStats);
+  const onNewCommentRef = useRef(onNewComment);
+  const onCommentDeletedRef = useRef(onCommentDeleted);
+  const onCommentUpdatedRef = useRef(onCommentUpdated);
+
+
+  // ==========================================
+  // KEEP REFS UPDATED
+  // ==========================================
+
+  useEffect(() => {
+    onStatsRef.current = onStats;
+  }, [onStats]);
+
+  useEffect(() => {
+    onNewCommentRef.current = onNewComment;
+  }, [onNewComment]);
+
+  useEffect(() => {
+    onCommentDeletedRef.current = onCommentDeleted;
+  }, [onCommentDeleted]);
+
+  useEffect(() => {
+    onCommentUpdatedRef.current = onCommentUpdated;
+  }, [onCommentUpdated]);
+
+
+  // ==========================================
+  // WEBSOCKET
+  // ==========================================
+
   useEffect(() => {
     let ws: WebSocket | null = null;
     let cancelled = false;
+
+    console.log(
+      "[COMMENT WS] MOUNT:",
+      postId
+    );
 
     (async () => {
       try {
         const socket =
           await connectCommentsSocket(postId);
 
-        if (!socket || cancelled) {
+        if (!socket) {
+          return;
+        }
+
+        if (cancelled) {
+          socket.close();
           return;
         }
 
@@ -33,62 +79,65 @@ export function usePostSocket({
 
         ws.onmessage = (event) => {
           try {
-            const data = JSON.parse(event.data);
+            const data =
+              JSON.parse(event.data);
 
             switch (data.type) {
+
               case "post_stats":
-                onStats?.(data);
+                onStatsRef.current?.(data);
                 break;
 
               case "new_comment":
-                onNewComment?.(data);
+                onNewCommentRef.current?.(data);
                 break;
 
               case "comment_deleted":
-                onCommentDeleted?.(data);
+                onCommentDeletedRef.current?.(data);
                 break;
 
               case "comment_updated":
-                onCommentUpdated?.(data);
+                onCommentUpdatedRef.current?.(data);
                 break;
+
             }
+
           } catch (error) {
             console.error(
-              "Failed to parse comment socket message:",
+              "[COMMENT WS] Failed to parse message:",
               error
             );
           }
         };
 
-        ws.onerror = (error) => {
-          console.error(
-            "Post comment socket error:",
-            error
-          );
-        };
       } catch (error) {
+
         if (!cancelled) {
           console.error(
-            "Failed to connect post comment socket:",
+            "[COMMENT WS] Connection failed:",
+            postId,
             error
           );
         }
+
       }
     })();
 
     return () => {
+
       cancelled = true;
+
+      console.log(
+        "[COMMENT WS] CLEANUP:",
+        postId
+      );
 
       if (ws) {
         ws.close();
         ws = null;
       }
+
     };
-  }, [
-    postId,
-    onStats,
-    onNewComment,
-    onCommentDeleted,
-    onCommentUpdated,
-  ]);
+
+  }, [postId]);
 }

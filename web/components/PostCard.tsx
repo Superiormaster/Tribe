@@ -22,7 +22,6 @@ import { useInView } from '@/components/UseInView'
 import {
   removePostsByUser, removeReelsByUser
 } from "@/lib/feedDb";
-import { usePostSocket } from '@/hooks/usePostSocket'
 import Linkify from "linkify-react";
 import RepostActions from '@/components/repost/RepostActions';
 import { formatCount } from '@/utils/formatCount';
@@ -206,40 +205,6 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
       clearTimeout(longPressTimer.current);
     }
   };
-  
-  usePostSocket({
-    postId: post.id,
-  
-    onStats: async (data) => {
-      setLikes(data.likes_count);
-      setCommentsCount(data.comments_count);
-      setSharesCount(data.shares_count);
-      setViewsCount(data.views_count);
-  
-      await updateFeedPost?.(post.id, {
-        likes_count: data.likes_count,
-        comments_count: data.comments_count,
-        shares_count: data.shares_count,
-        views_count: data.views_count,
-      });
-    },
-  
-    onNewComment: async (data) => {
-      setCommentsCount(data.comments_count);
-  
-      await updateFeedPost?.(post.id, {
-        comments_count: data.comments_count,
-      });
-    },
-  
-    onCommentDeleted: async (data) => {
-      setCommentsCount(data.comments_count);
-  
-      await updateFeedPost?.(post.id, {
-        comments_count: data.comments_count,
-      });
-    },
-  });
 
   const handleJoin = async () => {
     try {

@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useContext } from "react";
 import { UserContext } from "@/components/UserContext";
 import { useNavigation } from "@/utils/useNavigation"
 import AppLink from '@/components/AppLink';
+import { usePostSocket } from '@/hooks/usePostSocket'
 
 import CommunityHeader from "@/components/community/CommunityHeader";
 import CommunityTabs from "@/components/community/CommunityTabs";

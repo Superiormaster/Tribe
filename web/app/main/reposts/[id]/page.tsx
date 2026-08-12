@@ -77,6 +77,8 @@ export default function RepostDetailPage() {
             }
           : prev
       );
+  
+      setLikes(data.likes_count);
     },
   
     onNewComment: (data) => {
@@ -91,6 +93,50 @@ export default function RepostDetailPage() {
             }
           : prev
       );
+  
+      const newComment = data.comment;
+  
+      if (!newComment) return;
+  
+      setComments(prev => {
+        const exists = prev.some(
+          comment =>
+            Number(comment.id) ===
+            Number(newComment.id)
+        );
+  
+        if (exists) return prev;
+  
+        if (!newComment.parent) {
+          return [newComment, ...prev];
+        }
+  
+        const addReply = (list: any[]): any[] =>
+          list.map(comment => {
+  
+            if (
+              Number(comment.id) ===
+              Number(newComment.root_parent_id)
+            ) {
+              return {
+                ...comment,
+                replies: [
+                  ...(comment.replies ?? []),
+                  newComment,
+                ],
+              };
+            }
+  
+            return {
+              ...comment,
+              replies: comment.replies
+                ? addReply(comment.replies)
+                : [],
+            };
+          });
+  
+        return addReply(prev);
+      });
     },
   
     onCommentDeleted: (data) => {
@@ -105,10 +151,59 @@ export default function RepostDetailPage() {
             }
           : prev
       );
+  
+      const deletedCommentId =
+        Number(data.comment_id);
+  
+      if (!deletedCommentId) return;
+  
+      const removeComment = (list: any[]): any[] =>
+        list
+          .filter(
+            comment =>
+              Number(comment.id) !== deletedCommentId
+          )
+          .map(comment => ({
+            ...comment,
+            replies: comment.replies
+              ? removeComment(comment.replies)
+              : [],
+          }));
+  
+      setComments(prev =>
+        removeComment(prev)
+      );
     },
   
     onCommentUpdated: (data) => {
-      // Optional if you need to update comment content in the UI.
+      const updatedComment = data.comment;
+  
+      if (!updatedComment) return;
+  
+      const updateComment = (list: any[]): any[] =>
+        list.map(comment => {
+  
+          if (
+            Number(comment.id) ===
+            Number(updatedComment.id)
+          ) {
+            return {
+              ...comment,
+              ...updatedComment,
+            };
+          }
+  
+          return {
+            ...comment,
+            replies: comment.replies
+              ? updateComment(comment.replies)
+              : [],
+          };
+        });
+  
+      setComments(prev =>
+        updateComment(prev)
+      );
     },
   });
  

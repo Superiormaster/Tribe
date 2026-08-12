@@ -3,6 +3,7 @@ import { useState, useEffect, useMemo, useContext } from 'react';
 import { useParams } from 'next/navigation';
 import { useNavigation } from "@/utils/useNavigation"
 import AppLink from '@/components/AppLink';
+import { usePostSocket } from '@/hooks/usePostSocket'
 import { uploadProfileMedia } from "@/utils/r2";
 import { deletePostEverywhere } from '@/utils/deletePost';
 import { UserContext } from '@/components/UserContext';

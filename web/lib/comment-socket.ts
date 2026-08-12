@@ -28,9 +28,16 @@ export async function connectCommentsSocket(postId: number) {
   socket.onopen = () => {
     console.log("[COMMENT WS] CONNECTED:", socket.url);
   };
+  socket.onopen = () => {
+    console.log(
+      "[COMMENT WS] OPEN:",
+      postId
+    );
+  };
 
   socket.onclose = (event) => {
     console.error("[COMMENT WS] CLOSED:", {
+      postId,
       code: event.code,
       reason: event.reason,
       clean: event.wasClean,
@@ -38,7 +45,7 @@ export async function connectCommentsSocket(postId: number) {
   };
 
   socket.onerror = (event) => {
-    console.error("[COMMENT WS] ERROR:", event);
+    console.error("[COMMENT WS] ERROR:", postId, event);
   };
 
   return socket;

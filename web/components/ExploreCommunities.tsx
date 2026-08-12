@@ -35,7 +35,7 @@ export default function ExploreCommunities({
                         className="flex-none w-28 rounded-xl shadow p-2 flex flex-col items-center"
                     >
                         <img
-                            src={community.cover_image}
+                            src={community.cover_image_url}
                             className="w-20 h-20 rounded-xl object-cover"
                         />
                     
