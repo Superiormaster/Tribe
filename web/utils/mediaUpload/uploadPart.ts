@@ -1,6 +1,7 @@
 import {
   uploadChunkXHR,
 } from "@/utils/mediaUpload/uploadChunkXHR";
+import { uploadDebug } from "@/utils/mediaUpload/uploadDebug";
 
 const MAX_RETRIES = 3;
 
@@ -19,26 +20,6 @@ export type UploadPartOptions = {
   ) => void;
 };
 
-/**
- * Upload one multipart part.
- *
- * Flow:
- *
- * uploadPart()
- *      ↓
- * uploadChunkXHR()
- *      ↓
- * R2
- *      ↓
- * ETag
- *      ↓
- * saveUploadedPart()
- *      ↓
- * IndexedDB
- *
- * A part is NEVER saved to IndexedDB
- * until R2 confirms the upload.
- */
 export async function uploadPart({
   url,
   file,
@@ -121,6 +102,14 @@ export async function uploadPart({
       );
     }
 
+    void uploadDebug({
+      event: "PART_UPLOAD_SUCCESS",
+      part_number: partNumber,
+      data: {
+        chunk_size: chunkSize,
+      },
+    });
+
     try {
       const etag =
         await uploadChunkXHR(
@@ -129,8 +118,20 @@ export async function uploadPart({
           signal,
           loaded => {
             onProgress?.(loaded);
-          }
+          },
+          partNumber,
+          attempt + 1,
         );
+  
+      void uploadDebug({
+        event: "PART_UPLOAD_START",
+        part_number: partNumber,
+        data: {
+          start,
+          end: safeEnd,
+          chunk_size: chunkSize,
+        },
+      });
   
       if (!etag) {
         throw new Error(
@@ -141,6 +142,19 @@ export async function uploadPart({
       return etag;
 
     } catch (error) {
+
+      void uploadDebug({
+        event: "PART_UPLOAD_FAILED",
+        level: "error",
+        part_number: partNumber,
+        data: {
+          attempt,
+          error:
+            error instanceof Error
+              ? error.message
+              : String(error),
+        },
+      });
 
       if (
         error instanceof DOMException &&

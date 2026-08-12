@@ -536,3 +536,31 @@ class ResumeMultipartUploadView(APIView):
             "uploaded_parts":
                 uploaded_parts,
         })
+
+class MediaUploadDebugView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+
+        event = request.data.get("event")
+        level = request.data.get("level", "info")
+        media_id = request.data.get("media_id")
+        part_number = request.data.get("part_number")
+        data = request.data.get("data")
+
+        print(
+            "\n"
+            "==================================================\n"
+            "=== FRONTEND MEDIA UPLOAD DEBUG ===\n"
+            f"EVENT: {event}\n"
+            f"LEVEL: {level}\n"
+            f"MEDIA ID: {media_id}\n"
+            f"PART: {part_number}\n"
+            f"DATA: {data}\n"
+            "==================================================\n",
+            flush=True,
+        )
+
+        return Response({
+            "success": True,
+        })

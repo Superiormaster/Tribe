@@ -22,6 +22,11 @@ urlpatterns = [
     ),
 
     path(
+        "api/media/debug/",
+        MediaUploadDebugView.as_view(),
+    ),
+
+    path(
         "complete/",
         CompleteMediaUploadView.as_view(),
         name="complete-media-upload",

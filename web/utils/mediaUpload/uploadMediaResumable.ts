@@ -13,6 +13,7 @@ import {
   type StoredUploadedPart,
 } from "@/utils/mediaUpload/uploadDb";
 import { UploadNetworkError } from "@/utils/mediaUpload/errors";
+import { uploadDebug } from "@/utils/mediaUpload/uploadDebug";
 import { uploadPart } from "@/utils/mediaUpload/uploadPart";
 
 type UploadedPart = {
@@ -73,14 +74,21 @@ export async function uploadMediaResumable({
   signal,
 }: {
   file: File;
-
   onProgress?: (
     percent: number
   ) => void;
-
   signal?: AbortSignal;
 }): Promise<CompleteResponse> {
 
+  void uploadDebug({
+    event: "UPLOAD_START",
+    data: {
+      file_name: file.name,
+      file_size: file.size,
+      file_type: file.type,
+    },
+  });
+  
   if (!file) {
     throw new Error(
       "No file provided."
@@ -103,7 +111,6 @@ export async function uploadMediaResumable({
   let session: MultipartSession | null = null;
 
   if (saved) {
-
     let resumed = false;
 
     for (
@@ -120,7 +127,6 @@ export async function uploadMediaResumable({
       }
 
       try {
-
         console.log(
           `[UPLOAD] Resume attempt ${attempt}/${MAX_RESUME_ATTEMPTS}`,
           saved.media_id
@@ -131,7 +137,6 @@ export async function uploadMediaResumable({
             "api/media/multipart/resume/",
             {
               method: "POST",
-
               data: {
                 media_id:
                   saved.media_id,
@@ -191,10 +196,8 @@ export async function uploadMediaResumable({
             {
               media_id:
                 response.media_id,
-
               part_size:
                 response.part_size,
-
               part_count:
                 response.part_count,
             }
@@ -252,6 +255,16 @@ export async function uploadMediaResumable({
           file,
           signal
         );
+  
+      void uploadDebug({
+        event: "MULTIPART_INITIALIZED",
+        media_id: session.media_id,
+        data: {
+          part_size: session.part_size,
+          part_count: session.part_count,
+          multipart: session.multipart,
+        },
+      });
 
       const now =
         Date.now();
@@ -439,6 +452,17 @@ export async function uploadMediaResumable({
       number,
       string
     >();
+  
+  void uploadDebug({
+    event: "UPLOAD_URLS_READY",
+    media_id: session.media_id,
+    data: {
+      part_count: session.part_count,
+      urls_received: urlMap.size,
+      expected_urls: session.part_count,
+      uploaded_parts: uploadedMap.size,
+    },
+  });
 
   if (
     "parts" in session &&
@@ -474,7 +498,6 @@ export async function uploadMediaResumable({
       const part
       of session.remaining_parts
     ) {
-
       if (
         part.upload_url
       ) {
@@ -494,16 +517,12 @@ export async function uploadMediaResumable({
 
           part_number:
             part.part_number,
-
           etag:
             part.etag,
-
           size:
             getPartSize(
               part.part_number,
-
               session.part_size!,
-
               file.size
             ),
         })
@@ -517,7 +536,6 @@ export async function uploadMediaResumable({
       ) =>
         total +
         part.size,
-
       0
     );
 
@@ -593,7 +611,6 @@ export async function uploadMediaResumable({
         partNumber
       )
     ) {
-
       continue;
     }
 
@@ -617,12 +634,10 @@ export async function uploadMediaResumable({
       ) *
       session.part_size;
 
-
     const end =
       Math.min(
         start +
           session.part_size,
-
         file.size
       );
 
@@ -646,24 +661,19 @@ export async function uploadMediaResumable({
 
       const etag =
         await uploadPart({
-
           url,
-
           file,
-
           start,
-
           end,
           partNumber,
           uploadKey,
           signal,
           onProgress:
             loaded => {
-
               const totalLoaded =
                 previousCompletedBytes +
                 loaded;
-
+  
               const progress =
                 file.size > 0
                   ? Math.min(
@@ -684,6 +694,21 @@ export async function uploadMediaResumable({
               );
             },
         });
+  
+      void uploadDebug({
+        event: "PART_PREPARING",
+        media_id: session.media_id,
+        part_number: partNumber,
+        data: {
+          start,
+          end,
+          size: currentPartSize,
+          already_uploaded:
+            uploadedMap.has(partNumber),
+          has_url:
+            Boolean(url),
+        },
+      });
 
       const uploadedPart:
         UploadedPart = {
@@ -877,6 +902,16 @@ export async function uploadMediaResumable({
         `[UPLOAD] Complete attempt ${attempt}/${MAX_COMPLETE_ATTEMPTS}`
       );
 
+      void uploadDebug({
+        event: "MULTIPART_COMPLETE_START",
+        media_id: session.media_id,
+        data: {
+          parts: finalParts.length,
+          expected_parts:
+            session.part_count,
+        },
+      });
+  
       completed =
         await apiRequest(
           "api/media/multipart/complete/",
@@ -898,6 +933,15 @@ export async function uploadMediaResumable({
             },
           }
         ) as CompleteResponse;
+
+      void uploadDebug({
+        event: "MULTIPART_COMPLETE_SUCCESS",
+        media_id: session.media_id,
+        data: {
+          parts: finalParts.length,
+          status: completed.status,
+        },
+      });
 
       console.log("COMPLETED MEDIA:", completed);
   
@@ -941,6 +985,19 @@ export async function uploadMediaResumable({
           ),
         signal
       );
+  
+      void uploadDebug({
+        event: "MULTIPART_COMPLETE_FAILED",
+        level: "error",
+        media_id: session.media_id,
+        data: {
+          attempt,
+          error:
+            error instanceof Error
+              ? error.message
+              : String(error),
+        },
+      });
     }
   }
 

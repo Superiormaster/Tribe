@@ -1,3 +1,5 @@
+import { uploadDebug } from "@/utils/mediaUpload/uploadDebug";
+
 export function uploadChunkXHR(
   url: string,
   chunk: Blob,
@@ -5,6 +7,8 @@ export function uploadChunkXHR(
   onProgress?: (
     loaded: number
   ) => void,
+  partNumber?: number,
+  attempt?: number,
 ): Promise<string> {
 
   return new Promise(
@@ -15,6 +19,15 @@ export function uploadChunkXHR(
 
       const xhr =
         new XMLHttpRequest();
+  
+      void uploadDebug({
+        event: "XHR_CREATED",
+        part_number: partNumber,
+        data: {
+          chunk_size: chunk.size,
+          chunk_type: chunk.type,
+        },
+      });
 
       let settled = false;
       let cancelledBySignal = false;
@@ -42,15 +55,11 @@ export function uploadChunkXHR(
       const resolveOnce = (
         etag: string
       ) => {
-
         if (settled) {
           return;
         }
-
         settled = true;
-
         cleanup();
-
         resolve(
           etag
         );
@@ -59,30 +68,22 @@ export function uploadChunkXHR(
       const rejectOnce = (
         error: Error
       ) => {
-
         if (settled) {
           return;
         }
-
         settled = true;
-
         cleanup();
-
         reject(
           error
         );
       };
 
       const handleAbort = () => {
-
         if (settled) {
           return;
         }
-
         cancelledBySignal = true;
-
         xhr.abort();
-
         rejectOnce(
           new DOMException(
             "Upload cancelled.",
@@ -110,6 +111,21 @@ export function uploadChunkXHR(
           url,
           true
         );
+  
+        void uploadDebug({
+          event: "XHR_OPEN",
+          part_number: partNumber,
+          data: {
+            method: "PUT",
+            url_host: (() => {
+              try {
+                return new URL(url).host;
+              } catch {
+                return "invalid-url";
+              }
+            })(),
+          },
+        });
 
       } catch (error) {
 
@@ -170,9 +186,30 @@ export function uploadChunkXHR(
         ) {
 
           const rawEtag =
-            xhr.getResponseHeader(
-              "ETag"
-            );
+            xhr.getResponseHeader("ETag");
+  
+          console.log("[R2 UPLOAD] Response", {
+            status: xhr.status,
+            statusText: xhr.statusText,
+            etag: rawEtag,
+          });
+  
+          void uploadDebug({
+            event: "R2_RESPONSE",
+            part_number: partNumber,
+            data: {
+              status: xhr.status,
+              status_text: xhr.statusText,
+              has_etag: Boolean(rawEtag),
+              response_url_host: (() => {
+                try {
+                  return new URL(url).host;
+                } catch {
+                  return "invalid-url";
+                }
+              })(),
+            },
+          });
 
           if (!rawEtag) {
 
@@ -194,11 +231,9 @@ export function uploadChunkXHR(
           onProgress?.(
             chunk.size
           );
-
           resolveOnce(
             etag
           );
-
           return;
         }
 
@@ -214,11 +249,28 @@ export function uploadChunkXHR(
         if (settled) {
           return;
         }
-
+      
         if (cancelledBySignal) {
           return;
         }
-
+      
+        void uploadDebug({
+          event: "R2_NETWORK_ERROR",
+          level: "error",
+          part_number: partNumber,
+          data: {
+            status: xhr.status,
+            ready_state: xhr.readyState,
+            response_url_host: (() => {
+              try {
+                return new URL(url).host;
+              } catch {
+                return "invalid-url";
+              }
+            })(),
+          },
+        });
+      
         rejectOnce(
           new Error(
             "Network error during part upload."
@@ -231,11 +283,21 @@ export function uploadChunkXHR(
         if (settled) {
           return;
         }
-
+  
         if (cancelledBySignal) {
           return;
         }
-
+  
+        void uploadDebug({
+          event: "R2_UNEXPECTED_ABORT",
+          level: "error",
+          part_number: partNumber,
+          data: {
+            status: xhr.status,
+            ready_state: xhr.readyState,
+          },
+        });
+      
         rejectOnce(
           new Error(
             "Chunk upload was unexpectedly aborted."
@@ -247,7 +309,18 @@ export function uploadChunkXHR(
 
         console.log("[R2 UPLOAD] Sending part", {
           partSize: chunk.size,
-          url,
+          partNumber,
+        });
+
+        void uploadDebug({
+          event: "R2_SEND",
+          part_number: partNumber,
+          data: {
+            part_size: chunk.size,
+            content_type:
+              chunk.type ||
+              "application/octet-stream",
+          },
         });
 
         xhr.setRequestHeader(
