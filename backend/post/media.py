@@ -1,7 +1,6 @@
 from rest_framework.exceptions import ValidationError
 
 from media.models import MediaAsset
-from media.services.media import get_owned_ready_asset
 from .models import PostMedia
 
 
@@ -37,57 +36,63 @@ def attach_post_media(
                 {"media_files": "Invalid media type."}
             )
 
+        # Get the user's media asset
         try:
-            asset = get_owned_ready_asset(
+            asset = MediaAsset.objects.get(
                 media_id=media_id,
                 user=user,
-                media_type=(
-                  "video"
-                  if post.content_type in ["short_video", "long_video"]
-                  else "image"
-              ),
             )
         except MediaAsset.DoesNotExist:
             raise ValidationError(
-                {"media_files": "Media asset not found."}
+                {
+                    "media_files": (
+                        f"Media asset '{media_id}' "
+                        "does not exist or does not belong to you."
+                    )
+                }
             )
 
-        # --------------------------------
-        # SECURITY
-        # --------------------------------
-
-        if asset.user_id != user.id:
-            raise ValidationError(
-                {"media_files": "You do not own this media."}
-            )
-
-        # --------------------------------
-        # MUST BE READY
-        # --------------------------------
-
+        # Media must be fully uploaded
         if asset.status != "ready":
             raise ValidationError(
                 {
                     "media_files": (
                         f"Media {asset.media_id} "
-                        "is not ready."
+                        f"is not ready. "
+                        f"Current status: {asset.status}"
                     )
                 }
             )
 
-        # --------------------------------
-        # TYPE MUST MATCH
-        # --------------------------------
-
+        # Media type must match the request
         if asset.media_type != requested_type:
             raise ValidationError(
-                {"media_files": "Media type mismatch."}
+                {
+                    "media_files": (
+                        f"Media type mismatch. "
+                        f"Expected {requested_type}, "
+                        f"got {asset.media_type}."
+                    )
+                }
             )
 
-        # --------------------------------
-        # CREATE RELATION
-        # --------------------------------
+        # For video posts, make sure the asset is actually video
+        expected_asset_type = (
+            "video"
+            if post.content_type in ["short_video", "long_video"]
+            else "image"
+        )
 
+        if asset.media_type != expected_asset_type:
+            raise ValidationError(
+                {
+                    "media_files": (
+                        f"This post requires {expected_asset_type} media."
+                    )
+                }
+            )
+
+        # Attach media to post
         PostMedia.objects.create(
             post=post,
             asset=asset,

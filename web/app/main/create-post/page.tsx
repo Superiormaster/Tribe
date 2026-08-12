@@ -25,6 +25,15 @@ type ExistingVideo = {
   thumbnail?: string;
 };
 
+export class UploadNetworkError extends Error {
+  isNetworkError = true;
+
+  constructor(message = "Network error during media upload.") {
+    super(message);
+    this.name = "UploadNetworkError";
+  }
+}
+
 export default function CreatePostPage() {
   const [content, setContent] = useState('');
   const searchParams = useSearchParams();
@@ -464,18 +473,33 @@ export default function CreatePostPage() {
       
       push("/main/home");
       return;
-    } catch (err:any) {
+    } catch (err: any) {
       console.log("FULL ERROR:", err.data || err);
       console.error(err);
-  
-      if (!isOnline) {
-        await handleOfflinePost();
+    
+      const isUploadNetworkError =
+        err?.isNetworkError === true ||
+        err?.name === "UploadNetworkError" ||
+        err?.message?.toLowerCase().includes("network error");
+    
+      if (!isOnline || isUploadNetworkError) {
+        const saved = await handleOfflinePost();
+    
+        if (saved) {
+          toast.error(
+            "Connection lost. Your post was saved to Drafts and can be resumed when you're back online."
+          );
+        }
+    
         return;
       }
-  
+    
       toast.error(
+        err?.data?.media ||
+        err?.data?.detail ||
         "Failed to create post."
       );
+    
       setFileProgress({});
     } finally {
       setLoading(false);

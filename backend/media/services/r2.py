@@ -405,6 +405,7 @@ def initialize_media_upload(
             content_type=content_type,
             size=size or 0,
             multipart_upload_id=upload_id,
+            multipart_part_size=PART_SIZE,
             status="pending",
         )
 
@@ -491,12 +492,12 @@ def resume_multipart_media_upload(
             continue
 
         remaining_parts.append({
-            "part_number": part_number,
-            "upload_url": create_presigned_part_urls(
-                object_key=asset.object_key,
-                upload_id=asset.multipart_upload_id,
-                part_number=part_number,
-            ),
+          "part_number": part_number,
+          "upload_url": create_presigned_part_url(
+              object_key=asset.object_key,
+              upload_id=asset.multipart_upload_id,
+              part_number=part_number,
+          ),
         })
 
     return {
