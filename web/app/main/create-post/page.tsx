@@ -417,12 +417,12 @@ export default function CreatePostPage() {
         event: "POST_CREATE_START",
         level: "info",
         data: {
-          text_length: text?.length ?? 0,
-          media_count: media?.length ?? 0,
-          media_ids: media?.map(
-            item => item.media_id
+          text_length: content.length,
+          media_count: media.length,
+          media_ids: media.map(
+            item => item.mediaId
           ),
-          has_text: Boolean(text?.trim()),
+          has_text: Boolean(content.trim()),
         },
       });
 
@@ -430,14 +430,14 @@ export default function CreatePostPage() {
         method: "POST",
         data: payload,
       });
-
+  
       await uploadDebug({
         event: "POST_CREATE_RESPONSE",
         level: "info",
         data: {
-          status: response?.status,
-          success: response?.success,
-          media_id: response?.media_id,
+          success: true,
+          post_id: newPost?.id,
+          media_count: newPost?.media_files?.length ?? 0,
         },
       });
   
@@ -498,9 +498,9 @@ export default function CreatePostPage() {
         level: "error",
         data: {
           message:
-            error instanceof Error
-              ? error.message
-              : String(error),
+            err instanceof Error
+              ? err.message
+              : String(err),
         },
       });
 

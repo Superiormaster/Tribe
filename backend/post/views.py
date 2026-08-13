@@ -432,19 +432,31 @@ class PostViewSet(viewsets.ModelViewSet):
           []
       )
   
-      attach_post_media(
-          post=post,
-          user=user,
-          media_files=media_files,
-      )
-  
       print(
-          "=== POST MEDIA ATTACHED ===",
-          post.id,
+          "=== MEDIA FILES BEFORE ATTACH ===",
+          media_files,
           flush=True,
       )
   
-      invalidate_profile_cache(user.username)
+      try:
+          attach_post_media(
+              post=post,
+              user=user,
+              media_files=media_files,
+          )
+  
+          print(
+              "=== MEDIA ATTACH FINISHED ===",
+              flush=True,
+          )
+  
+      except Exception as exc:
+          print(
+              "🔥🔥🔥 MEDIA ATTACH ERROR 🔥🔥🔥",
+              repr(exc),
+              flush=True,
+          )
+          raise
 
       transaction.on_commit(
           lambda: extract_post_topics_task.delay(
@@ -457,6 +469,8 @@ class PostViewSet(viewsets.ModelViewSet):
           post.id,
           flush=True,
       )
+  
+      invalidate_profile_cache(user.username)
   
       print(
           "🔥🔥🔥 PERFORM_CREATE FINISHED 🔥🔥🔥",
