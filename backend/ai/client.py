@@ -17,6 +17,13 @@ def openai_chat(
     model="gpt-4.1-mini",
     temperature=0.2,
 ):
+    if not OPENAI_API_KEY:
+        print(
+            "OPENAI ERROR: OPENAI_API_KEY is missing",
+            flush=True,
+        )
+        return None
+
     payload = {
         "model": model,
         "messages": [
@@ -45,8 +52,12 @@ def openai_chat(
 
         return r.json()["choices"][0]["message"]["content"]
 
-    except Exception as e:
+    except Exception as exc:
 
-        print("OPENAI ERROR:", e)
+        print(
+            "OPENAI ERROR:",
+            repr(exc),
+            flush=True,
+        )
 
         return None

@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 from .media import attach_post_media
 from .websocket import broadcast_post_stats
 from channels.layers import get_channel_layer
+from .tasks import extract_post_topics_task
 from asgiref.sync import async_to_sync
 from django.db.models import Count, F, Exists, OuterRef, Case, When, Q, Max, FloatField, Value, ExpressionWrapper, Prefetch
 from django.db import IntegrityError, transaction
@@ -192,6 +193,30 @@ class PostViewSet(viewsets.ModelViewSet):
       invalidate_profile_cache(username)
 
     def create(self, request, *args, **kwargs):
+      print(
+          "USER:",
+          self.request.user.id,
+          flush=True,
+      )
+      
+      print(
+          "REQUEST DATA:",
+          self.request.data,
+          flush=True,
+      )
+      
+      print(
+          "CONTENT TYPE:",
+          self.request.content_type,
+          flush=True,
+      )
+      
+      print(
+          "FILES:",
+          self.request.FILES,
+          flush=True,
+      )
+      
       client_post_id = request.data.get("client_post_id")
   
       if client_post_id:
@@ -221,14 +246,34 @@ class PostViewSet(viewsets.ModelViewSet):
               )
   
       serializer = self.get_serializer(data=request.data)
-      serializer.is_valid(raise_exception=True)
+      if not serializer.is_valid():
+
+        print(
+            "🔥🔥🔥 POST SERIALIZER ERROR 🔥🔥🔥",
+            serializer.errors,
+            flush=True,
+        )
+    
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST,
+        )
   
       try:
           with transaction.atomic():
               self.perform_create(serializer)
   
-      except IntegrityError:
-          # Another request created the same post
+      except IntegrityError as exc:
+
+          print(
+              "=== POST INTEGRITY ERROR ===",
+              repr(exc),
+              flush=True,
+          )
+      
+          if not client_post_id:
+              raise
+
           existing_post = (
               Post.objects
               .select_related("user", "community")
@@ -237,19 +282,24 @@ class PostViewSet(viewsets.ModelViewSet):
                   "comments",
                   "media_files__asset",
               )
-              .get(
+              .filter(
                   client_post_id=client_post_id,
                   user=request.user,
+                  is_deleted=False,
               )
+              .first()
           )
   
-          return Response(
-              PostSerializer(
-                  existing_post,
-                  context={"request": request},
-              ).data,
-              status=status.HTTP_200_OK,
-          )
+          if existing_post:
+            return Response(
+                PostSerializer(
+                    existing_post,
+                    context={"request": request},
+                ).data,
+                status=status.HTTP_200_OK,
+            )
+  
+          raise
   
       post = (
           Post.objects
@@ -310,6 +360,45 @@ class PostViewSet(viewsets.ModelViewSet):
       community = serializer.validated_data.get("community")
       user = self.request.user
   
+      print(
+          "========================================",
+          flush=True,
+      )
+      
+      print(
+          "=== POST CREATE DEBUG ===",
+          flush=True,
+      )
+      
+      print(
+          "USER:",
+          self.request.user.id,
+          flush=True,
+      )
+      
+      print(
+          "REQUEST DATA:",
+          self.request.data,
+          flush=True,
+      )
+      
+      print(
+          "CONTENT TYPE:",
+          self.request.content_type,
+          flush=True,
+      )
+      
+      print(
+          "FILES:",
+          self.request.FILES,
+          flush=True,
+      )
+    
+      print(
+          "========================================",
+          flush=True,
+      )
+  
       # default behavior: auto approve
       is_approved = True
   
@@ -331,24 +420,11 @@ class PostViewSet(viewsets.ModelViewSet):
           user=user,
           is_approved=is_approved
       )
-      
-      text = " ".join(
-        filter(
-            None,
-            [
-                post.caption,
-            ]
-        )
-      )
-      
-      topics = extract_topics(text)
-      
-      post.topics = topics
-      
-      post.save(
-          update_fields=[
-              "topics",
-          ]
+     
+      print(
+          "=== POST SAVED ===",
+          post.id,
+          flush=True,
       )
   
       media_files = self.request.data.get(
@@ -362,7 +438,30 @@ class PostViewSet(viewsets.ModelViewSet):
           media_files=media_files,
       )
   
+      print(
+          "=== POST MEDIA ATTACHED ===",
+          post.id,
+          flush=True,
+      )
+  
       invalidate_profile_cache(user.username)
+
+      transaction.on_commit(
+          lambda: extract_post_topics_task.delay(
+              post.id
+          )
+      )
+
+      print(
+          "=== TOPIC EXTRACTION SCHEDULED ===",
+          post.id,
+          flush=True,
+      )
+  
+      print(
+          "🔥🔥🔥 PERFORM_CREATE FINISHED 🔥🔥🔥",
+          flush=True,
+      )
 
     def perform_update(self, serializer):
       instance = self.get_object()

@@ -78,16 +78,16 @@ export async function uploadProfileMedia({
     );
   }
   
-  void uploadDebug(
-    "[PROFILE R2] INIT SUCCESS",
-    {
+  void uploadDebug({
+    event: "[PROFILE R2] INIT SUCCESS",
+    media_id: init.media_id,
+    data: {
       mediaType,
-      mediaId: init.media_id,
       objectKey: init.object_key,
       fileSize: file.size,
       fileType: file.type,
-    }
-  );
+    },
+  });
 
   await uploadToPresignedUrl(
     init.upload_url,
@@ -133,14 +133,14 @@ export async function uploadProfileMedia({
     );
   }
   
-  void uploadDebug(
-    "[PROFILE R2] COMPLETE SUCCESS",
-    {
-      mediaId: completed.media_id,
+  void uploadDebug({
+    event: "[PROFILE R2] COMPLETE SUCCESS",
+    media_id: completed.media_id,
+    data: {
       objectKey: completed.object_key,
       originalUrl: completed.original_url,
-    }
-  );
+    },
+  });
 
   return completed;
 }
@@ -244,15 +244,15 @@ async function uploadToPresignedUrl(
 
     try {
 
-      void uploadDebug(
-        "[PROFILE R2] UPLOAD ATTEMPT",
-        {
+      void uploadDebug({
+        event: "[PROFILE R2] UPLOAD ATTEMPT",
+        data: {
           attempt,
           maxRetries: MAX_RETRIES,
           fileSize: file.size,
           fileType: file.type,
-        }
-      );
+        },
+      });
   
       await uploadWithXHR(
         uploadUrl,
@@ -274,15 +274,16 @@ async function uploadToPresignedUrl(
 
       lastError = error;
 
-      void uploadDebug(
-        `[PROFILE R2] ATTEMPT ${attempt}/${MAX_RETRIES} FAILED`,
-        {
+      void uploadDebug({
+        event: `[PROFILE R2] ATTEMPT ${attempt}/${MAX_RETRIES} FAILED`,
+        level: "warn",
+        data: {
           error:
             error instanceof Error
               ? error.message
               : String(error),
-        }
-      );
+        },
+      });
   
       console.warn(
         `[PROFILE UPLOAD] Attempt ${attempt}/${MAX_RETRIES} failed:`,
@@ -334,11 +335,10 @@ function uploadWithXHR(
       let settled = false;
       let cancelledBySignal = false;
 
-      void uploadDebug(
-        "[PROFILE R2] BEFORE OPEN",
-        {
-          origin:
-            window.location.origin,
+      void uploadDebug({
+        event: "[PROFILE R2] BEFORE OPEN",
+        data: {
+          origin: window.location.origin,
 
           urlHost:
             (() => {
@@ -368,7 +368,7 @@ function uploadWithXHR(
           fileType:
             file.type,
         }
-      );
+      });
 
       const cleanup = () => {
 
@@ -416,16 +416,15 @@ function uploadWithXHR(
   
         cancelledBySignal = true;
 
-        void uploadDebug(
-          "[PROFILE R2] SIGNAL ABORT",
-          {
+        void uploadDebug({
+          event: "[PROFILE R2] SIGNAL ABORT",
+          data: {
             readyState:
               xhr.readyState,
-
             status:
               xhr.status,
-          }
-        );
+          },
+        });
   
         xhr.abort();
 
@@ -467,27 +466,21 @@ function uploadWithXHR(
 
       xhr.onload = () => {
 
-        void uploadDebug(
-          "[PROFILE R2] LOAD",
-          {
-            status:
-              xhr.status,
-
-            statusText:
-              xhr.statusText,
-
+        void uploadDebug({
+          event: "[PROFILE R2] LOAD",
+          data: {
+            status: xhr.status,
+            statusText: xhr.statusText,
             readyState:
               xhr.readyState,
-
             responseURL:
               xhr.responseURL,
-
             etag:
               xhr.getResponseHeader(
                 "ETag"
               ),
-          }
-        );
+          },
+        });
   
         if (
           xhr.status >= 200 &&
@@ -511,27 +504,23 @@ function uploadWithXHR(
 
       xhr.onerror = () => {
 
-        void uploadDebug(
-          "[PROFILE R2] NETWORK ERROR",
-          {
+        void uploadDebug({
+          event: "[PROFILE R2] NETWORK ERROR",
+          level: "error",
+          data: {
             status:
               xhr.status,
-
             statusText:
               xhr.statusText,
-
             readyState:
               xhr.readyState,
-
             responseURL:
               xhr.responseURL,
-
             withCredentials:
               xhr.withCredentials,
-
             cancelledBySignal,
-          }
-        );
+          },
+        });
   
         if (
           cancelledBySignal
@@ -548,18 +537,15 @@ function uploadWithXHR(
 
       xhr.onabort = () => {
 
-        void uploadDebug(
-          "[PROFILE R2] ABORT",
-          {
-            status:
-              xhr.status,
-
+        void uploadDebug({
+          event: "[PROFILE R2] ABORT",
+          data: {
+            status: xhr.status,
             readyState:
               xhr.readyState,
-
             cancelledBySignal,
-          }
-        );
+          },
+        });
 
         if (
           cancelledBySignal
@@ -580,16 +566,14 @@ function uploadWithXHR(
 
       xhr.ontimeout = () => {
 
-        void uploadDebug(
-          "[PROFILE R2] TIMEOUT",
-          {
-            status:
-              xhr.status,
-
+        void uploadDebug({
+          event: "[PROFILE R2] TIMEOUT",
+          data: {
+            status: xhr.status,
             readyState:
               xhr.readyState,
-          }
-        );
+          },
+        });
   
         finishReject(
           new Error(
@@ -600,40 +584,32 @@ function uploadWithXHR(
 
       xhr.onloadend = () => {
 
-        void uploadDebug(
-          "[PROFILE R2] LOAD END",
-          {
-            status:
-              xhr.status,
-
-            statusText:
-              xhr.statusText,
-
+        void uploadDebug({
+          event: "[PROFILE R2] LOAD END",
+          data: {
+            status: xhr.status,
+            statusText: xhr.statusText,
             readyState:
               xhr.readyState,
-
             responseURL:
               xhr.responseURL,
-          }
-        );
+          },
+        });
       };
 
-      void uploadDebug(
-        "[PROFILE R2] BEFORE SEND",
-        {
+      void uploadDebug({
+        event: "[PROFILE R2] BEFORE SEND",
+        data: {
           size:
             file.size,
-
           type:
             file.type,
-
           readyState:
             xhr.readyState,
-
           withCredentials:
             xhr.withCredentials,
-        }
-      );
+        },
+      });
 
       signal?.addEventListener(
         "abort",
@@ -651,28 +627,27 @@ function uploadWithXHR(
           true
         );
 
-        void uploadDebug(
-          "[PROFILE R2] OPEN SUCCESS",
-          {
+        void uploadDebug({
+          event: "[PROFILE R2] OPEN SUCCESS",
+          data: {
             readyState:
               xhr.readyState,
-
             method:
               "PUT",
-          }
-        );
+          },
+        });
 
       } catch (error) {
 
-        void uploadDebug(
-          "[PROFILE R2] OPEN FAILED",
-          {
+        void uploadDebug({
+          event: "[PROFILE R2] OPEN FAILED",
+          data: {
             error:
               error instanceof Error
                 ? error.message
                 : String(error),
-          }
-        );
+          },
+        });
 
         finishReject(
           error instanceof Error
@@ -691,25 +666,25 @@ function uploadWithXHR(
           file
         );
 
-        void uploadDebug(
-          "[PROFILE R2] SEND SUCCESS",
-          {
+        void uploadDebug({
+          event: "[PROFILE R2] SEND SUCCESS",
+          data: {
             readyState:
               xhr.readyState,
-          }
-        );
+          },
+        });
 
       } catch (error) {
 
-        void uploadDebug(
-          "[PROFILE R2] SEND FAILED",
-          {
+        void uploadDebug({
+          event: "[PROFILE R2] SEND FAILED",
+          data: {
             error:
               error instanceof Error
                 ? error.message
                 : String(error),
-          }
-        );
+          },
+        });
 
         finishReject(
           error instanceof Error

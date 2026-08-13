@@ -10,6 +10,7 @@ import { useEditPost } from "@/hooks/createPost/useEditPost";
 import { usePostMedia } from "@/hooks/createPost/usePostMedia";
 import { usePostDraft } from "@/hooks/createPost/usePostDraft";
 import { useMediaUpload, getFileKey } from "@/hooks/createPost/useMediaUpload";
+import { uploadDebug } from "@/utils/mediaUpload/uploadDebug";
 import { UploadNetworkError } from "@/utils/mediaUpload/errors";
 import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import { deletePostDraft } from "@/lib/messageDB";
@@ -412,9 +413,32 @@ export default function CreatePostPage() {
         return;
       }
   
+      await uploadDebug({
+        event: "POST_CREATE_START",
+        level: "info",
+        data: {
+          text_length: text?.length ?? 0,
+          media_count: media?.length ?? 0,
+          media_ids: media?.map(
+            item => item.media_id
+          ),
+          has_text: Boolean(text?.trim()),
+        },
+      });
+
       newPost = await apiRequest(`api/post/`, {
         method: "POST",
         data: payload,
+      });
+
+      await uploadDebug({
+        event: "POST_CREATE_RESPONSE",
+        level: "info",
+        data: {
+          status: response?.status,
+          success: response?.success,
+          media_id: response?.media_id,
+        },
       });
   
       clientPostIdRef.current = null;
@@ -469,6 +493,17 @@ export default function CreatePostPage() {
       console.log("FULL ERROR:", err.data || err);
       console.error(err);
     
+      await uploadDebug({
+        event: "POST_CREATE_ERROR",
+        level: "error",
+        data: {
+          message:
+            error instanceof Error
+              ? error.message
+              : String(error),
+        },
+      });
+
       const isUploadNetworkError =
         err?.isNetworkError === true ||
         err?.name === "UploadNetworkError" ||
