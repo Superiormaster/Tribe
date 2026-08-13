@@ -85,19 +85,11 @@ export function useMediaUpload({
       return uploadedMedia;
     }
   
-    const contentType =
-      video instanceof File
-        ? isReel
-          ? "short_video"
-          : "long_video"
-        : "image";
-  
     setUploadStatus("uploading");
     setUploadError(null);
   
     const promise = uploadSelectedMedia(
       files,
-      contentType
     );
   
     uploadPromiseRef.current = promise;
@@ -147,7 +139,6 @@ export function useMediaUpload({
   
   const uploadSelectedMedia = async (
     files: File[],
-    contentType: string
   ): Promise<UploadedMedia[]> => {
 
     const generation =
@@ -178,12 +169,9 @@ export function useMediaUpload({
               const uploaded =
                 await uploadMediaResumable({
                   file,
-
                   signal:
                     controller.signal,
-
                   onProgress: (percent) => {
-
                     setFileProgress(
                       (prev) => ({
                         ...prev,
@@ -298,58 +286,50 @@ export function useMediaUpload({
       false;
 
     async function upload() {
-
       setUploadStatus("uploading");
       setUploadError(null);
       setUploadedMedia([]);
       setFileProgress({});
-
+    
+      let promise: Promise<UploadedMedia[]> | null = null;
+    
       try {
-
-        const promise =
-          uploadSelectedMedia(
-            [videoFile],
-            isReel
-              ? "short_video"
-              : "long_video"
-          );
-
-        uploadPromiseRef.current =
-          promise;
-
-        const media =
-          await promise;
-
+        promise = uploadSelectedMedia(
+          [videoFile]
+        );
+    
+        uploadPromiseRef.current = promise;
+    
+        const media = await promise;
+    
         if (cancelled) {
           return;
         }
-
+    
         setUploadedMedia(media);
-
         setUploadStatus("success");
-
+    
       } catch (error) {
-
+    
         if (cancelled) {
           return;
         }
-
+    
         if (
           error instanceof DOMException &&
           error.name === "AbortError"
         ) {
-
           setUploadStatus("paused");
           return;
         }
-
+    
         console.error(
           "Video upload failed:",
           error
         );
-
+    
         setUploadedMedia([]);
-
+    
         setUploadError(
           error instanceof Error
             ? error
@@ -357,17 +337,16 @@ export function useMediaUpload({
                 "Video upload failed."
               )
         );
-
+    
         setUploadStatus("failed");
-
+    
       } finally {
-
+    
         if (
-          uploadPromiseRef.current
+          promise &&
+          uploadPromiseRef.current === promise
         ) {
-
-          uploadPromiseRef.current =
-            null;
+          uploadPromiseRef.current = null;
         }
       }
     }
@@ -377,7 +356,6 @@ export function useMediaUpload({
     return () => {
 
       cancelled = true;
-
       uploadGenerationRef.current++;
 
       abortControllersRef.current.forEach(
@@ -425,57 +403,50 @@ export function useMediaUpload({
       false;
 
     async function upload() {
-
       setUploadStatus("uploading");
       setUploadError(null);
       setUploadedMedia([]);
       setFileProgress({});
-
+    
+      let promise: Promise<UploadedMedia[]> | null = null;
+    
       try {
-
-        const promise =
-          uploadSelectedMedia(
-            files,
-            "image"
-          );
-
-        uploadPromiseRef.current =
-          promise;
-
-        const media =
-          await promise;
-
+        promise = uploadSelectedMedia(
+          files,
+        );
+    
+        uploadPromiseRef.current = promise;
+    
+        const media = await promise;
+    
         if (cancelled) {
           return;
         }
-
+    
         setUploadedMedia(media);
-
         setUploadStatus("success");
-
+    
       } catch (error) {
-
+    
         if (cancelled) {
           return;
         }
-
+    
         if (
           error instanceof DOMException &&
           error.name === "AbortError"
         ) {
-
           setUploadStatus("paused");
-
           return;
         }
-
+    
         console.error(
           "Image upload failed:",
           error
         );
-
+    
         setUploadedMedia([]);
-
+    
         setUploadError(
           error instanceof Error
             ? error
@@ -483,17 +454,16 @@ export function useMediaUpload({
                 "Image upload failed."
               )
         );
-
+    
         setUploadStatus("failed");
-
+    
       } finally {
-
+    
         if (
-          uploadPromiseRef.current
+          promise &&
+          uploadPromiseRef.current === promise
         ) {
-
-          uploadPromiseRef.current =
-            null;
+          uploadPromiseRef.current = null;
         }
       }
     }
@@ -503,7 +473,6 @@ export function useMediaUpload({
     return () => {
 
       cancelled = true;
-
       uploadGenerationRef.current++;
 
       abortControllersRef.current.forEach(

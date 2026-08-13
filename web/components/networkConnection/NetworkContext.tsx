@@ -34,11 +34,14 @@ interface NetworkContextType {
   latency: number | null;
 
   networkStatus: NetworkStatus;
-
   connectionType: ConnectionType;
 
   startReconnect: () => void;
   finishReconnect: () => void;
+
+  reportNetworkError: (
+    message?: string
+  ) => void;
 }
 
 const NetworkContext =
@@ -52,11 +55,12 @@ const NetworkContext =
     latency: null,
 
     networkStatus: 'offline',
-
     connectionType: 'unknown',
 
     startReconnect: () => {},
     finishReconnect: () => {},
+
+    reportNetworkError: () => {},
   });
 
 export function NetworkProvider({
@@ -94,11 +98,50 @@ export function NetworkProvider({
   const reconnectingRef =
     useRef(false);
 
-  const wasReachableRef =
+  const hadNetworkFailureRef =
     useRef(false);
 
-  const reconnectEventFiredRef =
+  const initializedRef =
     useRef(false);
+
+  const startReconnect =
+    useCallback(() => {
+      if (reconnectingRef.current) {
+        return;
+      }
+
+      reconnectingRef.current = true;
+      setReconnecting(true);
+    }, []);
+
+  const finishReconnect =
+    useCallback(() => {
+      reconnectingRef.current = false;
+      setReconnecting(false);
+    }, []);
+
+  const reportNetworkError =
+    useCallback(
+      (message = 'Network unavailable') => {
+
+        if (!initializedRef.current) {
+          return;
+        }
+
+        hadNetworkFailureRef.current =
+          true;
+
+        window.dispatchEvent(
+          new CustomEvent(
+            'network-error',
+            {
+              detail: message,
+            }
+          )
+        );
+      },
+      []
+    );
 
   const updateConnection =
     useCallback(() => {
@@ -125,6 +168,13 @@ export function NetworkProvider({
 
       if (!connection) {
         setConnectionType('unknown');
+
+        if (
+          networkStatus === 'offline'
+        ) {
+          setNetworkStatus('good');
+        }
+
         return;
       }
 
@@ -155,22 +205,11 @@ export function NetworkProvider({
       if (isSlow) {
         setNetworkStatus('slow');
       }
-    }, []);
-
-  const startReconnect =
-    useCallback(() => {
-      reconnectingRef.current = true;
-      setReconnecting(true);
-    }, []);
-
-  const finishReconnect =
-    useCallback(() => {
-      reconnectingRef.current = false;
-      setReconnecting(false);
-    }, []);
+    }, [networkStatus]);
 
   const checkServer =
     useCallback(async () => {
+
       if (
         typeof navigator === 'undefined'
       ) {
@@ -178,13 +217,17 @@ export function NetworkProvider({
       }
 
       if (!navigator.onLine) {
+
         checkGenerationRef.current++;
 
         setIsOnline(false);
         setServerReachable(false);
         setNetworkStatus('offline');
 
-        wasReachableRef.current = false;
+        if (initializedRef.current) {
+          hadNetworkFailureRef.current =
+            true;
+        }
 
         return false;
       }
@@ -196,6 +239,7 @@ export function NetworkProvider({
         performance.now();
 
       try {
+
         const response =
           await apiRequest(
             'api/users/ping/'
@@ -209,12 +253,15 @@ export function NetworkProvider({
         }
 
         if (!navigator.onLine) {
+
           setIsOnline(false);
           setServerReachable(false);
           setNetworkStatus('offline');
 
-          wasReachableRef.current =
-            false;
+          if (initializedRef.current) {
+            hadNetworkFailureRef.current =
+              true;
+          }
 
           return false;
         }
@@ -235,56 +282,67 @@ export function NetworkProvider({
         const ok =
           response?.status === 'ok';
 
-        const wasReachable =
-          wasReachableRef.current;
-
         setIsOnline(true);
 
-        setLatency(
-          rounded
-        );
+        setLatency(rounded);
 
-        setNetworkStatus(
-          status
-        );
+        setNetworkStatus(status);
 
-        setServerReachable(
-          ok
-        );
+        setServerReachable(ok);
 
-        wasReachableRef.current =
-          ok;
+        if (!initializedRef.current) {
+
+          initializedRef.current =
+            true;
+
+          if (ok) {
+            finishReconnect();
+          }
+
+          return ok;
+        }
 
         if (
           ok &&
-          !wasReachable &&
-          !reconnectEventFiredRef.current
+          hadNetworkFailureRef.current
         ) {
-          reconnectEventFiredRef.current =
-            true;
+
+          hadNetworkFailureRef.current =
+            false;
 
           startReconnect();
 
           window.dispatchEvent(
-            new Event("network:available")
+            new Event(
+              'network:available'
+            )
           );
+
           window.dispatchEvent(
             new Event(
               'network-reconnected'
             )
           );
+
+          finishReconnect();
         }
 
         if (!ok) {
-          reconnectEventFiredRef.current =
-            false;
-          wasReachableRef.current =
-            false;
+
+          if (initializedRef.current) {
+            hadNetworkFailureRef.current =
+              true;
+          }
+
+          finishReconnect();
+
+          return false;
         }
 
-        return ok;
+        return true;
 
       } catch (error) {
+
         if (
           generation !==
           checkGenerationRef.current
@@ -292,88 +350,95 @@ export function NetworkProvider({
           return false;
         }
 
-        wasReachableRef.current =
-          false;
-        reconnectEventFiredRef.current =
-          false;
-
-        setServerReachable(
-          false
-        );
+        setServerReachable(false);
 
         if (
           !navigator.onLine
         ) {
+
           setIsOnline(false);
+
           setNetworkStatus(
             'offline'
           );
+
         } else {
+
           setIsOnline(true);
+
           setNetworkStatus(
             'poor'
           );
         }
 
+        if (initializedRef.current) {
+          hadNetworkFailureRef.current =
+            true;
+        }
+
+        finishReconnect();
+
         return false;
       }
     }, [
+      finishReconnect,
       startReconnect,
     ]);
 
   const handleOffline =
     useCallback(() => {
+
       checkGenerationRef.current++;
-      wasReachableRef.current =
-        false;
-      reconnectEventFiredRef.current =
-        false;
-      reconnectingRef.current =
-        false;
+
+      if (initializedRef.current) {
+        hadNetworkFailureRef.current =
+          true;
+      }
+
       setIsOnline(false);
       setServerReachable(false);
       setReconnecting(false);
 
-      setNetworkStatus(
-        'offline'
-      );
+      reconnectingRef.current =
+        false;
+
+      setNetworkStatus('offline');
 
       window.dispatchEvent(
         new Event(
           'network-offline'
         )
       );
+
     }, []);
 
   const handleOnline =
     useCallback(async () => {
+  
       updateConnection();
       setIsOnline(true);
       setServerReachable(false);
-
-      const ok =
-        await checkServer();
-
-      if (!ok) {
-        return;
-      }
+      await checkServer();
 
     }, [
       updateConnection,
       checkServer,
     ]);
-  
-  useEffect(() => {
-    setMounted(true);
 
+  useEffect(() => {
+
+    setMounted(true);
     updateConnection();
 
-    if (
-      navigator.onLine
-    ) {
+    if (navigator.onLine) {
       checkServer();
     } else {
-      handleOffline();
+      setIsOnline(false);
+      setServerReachable(false);
+      setNetworkStatus('offline');
+
+      initializedRef.current =
+        true;
     }
 
     window.addEventListener(
@@ -397,6 +462,7 @@ export function NetworkProvider({
     );
 
     return () => {
+
       window.removeEventListener(
         'online',
         handleOnline
@@ -412,6 +478,7 @@ export function NetworkProvider({
         updateConnection
       );
     };
+
   }, [
     updateConnection,
     checkServer,
@@ -420,28 +487,31 @@ export function NetworkProvider({
   ]);
 
   useEffect(() => {
+
     if (!mounted) {
       return;
     }
 
     const interval =
       setInterval(() => {
-        if (
-          navigator.onLine
-        ) {
+
+        if (navigator.onLine) {
           checkServer();
         }
+
       }, 60000);
 
     return () => {
       clearInterval(interval);
     };
+
   }, [
     mounted,
     checkServer,
   ]);
 
   useEffect(() => {
+
     const handleSocketConnected =
       () => {
         setSocketConnected(true);
@@ -463,6 +533,7 @@ export function NetworkProvider({
     );
 
     return () => {
+
       window.removeEventListener(
         'socket-connected',
         handleSocketConnected
@@ -473,6 +544,7 @@ export function NetworkProvider({
         handleSocketDisconnected
       );
     };
+
   }, []);
 
   const canCommunicate =
@@ -493,6 +565,7 @@ export function NetworkProvider({
         connectionType,
         startReconnect,
         finishReconnect,
+        reportNetworkError,
       }),
       [
         isOnline,
@@ -505,6 +578,7 @@ export function NetworkProvider({
         connectionType,
         startReconnect,
         finishReconnect,
+        reportNetworkError,
       ]
     );
 
