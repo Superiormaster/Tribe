@@ -2,7 +2,7 @@ from celery import shared_task
 
 from .models import Post
 from ai.topics import extract_topics
-
+import os
 
 @shared_task(
     bind=True,
@@ -10,6 +10,12 @@ from ai.topics import extract_topics
     default_retry_delay=10,
 )
 def extract_post_topics_task(self, post_id):
+
+    print(
+        "OPENAI KEY PRESENT:",
+        bool(os.getenv("OPENAI_API_KEY")),
+        flush=True,
+    )
 
     try:
         post = Post.objects.get(

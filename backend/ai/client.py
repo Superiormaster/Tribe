@@ -1,14 +1,7 @@
 import os
 import requests
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
 API_URL = "https://api.openai.com/v1/chat/completions"
-
-HEADERS = {
-    "Authorization": f"Bearer {OPENAI_API_KEY}",
-    "Content-Type": "application/json",
-}
 
 
 def openai_chat(
@@ -17,12 +10,19 @@ def openai_chat(
     model="gpt-4.1-mini",
     temperature=0.2,
 ):
-    if not OPENAI_API_KEY:
+    api_key = os.getenv("OPENAI_API_KEY")
+
+    if not api_key:
         print(
             "OPENAI ERROR: OPENAI_API_KEY is missing",
             flush=True,
         )
         return None
+
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
 
     payload = {
         "model": model,
@@ -40,24 +40,30 @@ def openai_chat(
     }
 
     try:
-
-        r = requests.post(
+        response = requests.post(
             API_URL,
-            headers=HEADERS,
+            headers=headers,
             json=payload,
             timeout=30,
         )
 
-        r.raise_for_status()
+        response.raise_for_status()
 
-        return r.json()["choices"][0]["message"]["content"]
+        return response.json()["choices"][0]["message"]["content"]
+
+    except requests.HTTPError as exc:
+        print(
+            "OPENAI HTTP ERROR:",
+            response.status_code,
+            response.text[:1000],
+            flush=True,
+        )
+        return None
 
     except Exception as exc:
-
         print(
             "OPENAI ERROR:",
             repr(exc),
             flush=True,
         )
-
         return None

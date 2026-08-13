@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { uploadMediaResumable } from "@/utils/mediaUpload/uploadMediaResumable";
 
+import { UploadNetworkError } from "@/utils/mediaUpload/errors";
 import {
   buildUploadedMedia,
   type UploadedMedia,
@@ -66,45 +67,84 @@ export function useMediaUpload({
   const uploadPromiseRef =
     useRef<Promise<UploadedMedia[]> | null>(null);
 
-  async function getVideoDimensions(file: File) {
-    return new Promise<{
-      width: number;
-      height: number;
-    }>((resolve, reject) => {
-
-      const videoElement =
-        document.createElement("video");
-
-      videoElement.preload = "metadata";
-
-      const objectUrl =
-        URL.createObjectURL(file);
-
-      videoElement.onloadedmetadata = () => {
-
-        URL.revokeObjectURL(objectUrl);
-
-        resolve({
-          width: videoElement.videoWidth,
-          height: videoElement.videoHeight,
-        });
-      };
-
-      videoElement.onerror = () => {
-
-        URL.revokeObjectURL(objectUrl);
-
-        reject(
-          new Error(
-            "Could not read video dimensions."
-          )
-        );
-      };
-
-      videoElement.src = objectUrl;
-    });
-  }
-
+  const resumeUpload = async (): Promise<UploadedMedia[]> => {
+    const files: File[] = [];
+  
+    if (video instanceof File) {
+      files.push(video);
+    } else {
+      files.push(
+        ...imageFiles.filter(
+          (item): item is File =>
+            item instanceof File
+        )
+      );
+    }
+  
+    if (!files.length) {
+      return uploadedMedia;
+    }
+  
+    const contentType =
+      video instanceof File
+        ? isReel
+          ? "short_video"
+          : "long_video"
+        : "image";
+  
+    setUploadStatus("uploading");
+    setUploadError(null);
+  
+    const promise = uploadSelectedMedia(
+      files,
+      contentType
+    );
+  
+    uploadPromiseRef.current = promise;
+  
+    try {
+      const media = await promise;
+  
+      setUploadedMedia(media);
+      setUploadStatus("success");
+      setUploadError(null);
+  
+      return media;
+  
+    } catch (error) {
+  
+      if (
+        error instanceof UploadNetworkError ||
+        (
+          error instanceof Error &&
+          error.name === "UploadNetworkError"
+        )
+      ) {
+        setUploadStatus("paused");
+        setUploadError(null);
+        throw error;
+      }
+  
+      setUploadStatus("failed");
+  
+      setUploadError(
+        error instanceof Error
+          ? error
+          : new Error("Media upload failed.")
+      );
+  
+      throw error;
+  
+    } finally {
+  
+      if (
+        uploadPromiseRef.current === promise
+      ) {
+        uploadPromiseRef.current = null;
+      }
+    }
+  };
+  
   const uploadSelectedMedia = async (
     files: File[],
     contentType: string
@@ -125,22 +165,6 @@ export function useMediaUpload({
       const results =
         await Promise.all(
           files.map(async (file) => {
-
-            let isPortrait = false;
-
-            if (
-              file.type.startsWith("video/")
-            ) {
-
-              const {
-                width,
-                height,
-              } =
-                await getVideoDimensions(file);
-
-              isPortrait =
-                height > width;
-            }
 
             const controller =
               new AbortController();
@@ -216,7 +240,6 @@ export function useMediaUpload({
       }
 
       setUploadStatus("success");
-
       return results;
 
     } catch (error) {
@@ -227,7 +250,6 @@ export function useMediaUpload({
       ) {
 
         setUploadStatus("paused");
-
         throw error;
       }
 
@@ -243,7 +265,6 @@ export function useMediaUpload({
       );
 
       setUploadStatus("failed");
-
       throw normalizedError;
     }
   };
@@ -251,7 +272,6 @@ export function useMediaUpload({
   useEffect(() => {
 
     if (!(video instanceof File)) {
-
       if (
         !imageFiles.some(
           (file) => file instanceof File
@@ -274,7 +294,6 @@ export function useMediaUpload({
 
     const videoFile =
       video;
-
     let cancelled =
       false;
 
@@ -513,6 +532,7 @@ export function useMediaUpload({
     setUploadedMedia,
     setFileProgress,
     setUploadError,
+    resumeUpload,
     setUploadStatus,
   };
 }

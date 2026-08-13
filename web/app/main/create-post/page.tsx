@@ -10,6 +10,9 @@ import { useEditPost } from "@/hooks/createPost/useEditPost";
 import { usePostMedia } from "@/hooks/createPost/usePostMedia";
 import { usePostDraft } from "@/hooks/createPost/usePostDraft";
 import { useMediaUpload, getFileKey } from "@/hooks/createPost/useMediaUpload";
+import {
+  type UploadedMedia,
+} from "@/utils/media";
 import { uploadDebug } from "@/utils/mediaUpload/uploadDebug";
 import { UploadNetworkError } from "@/utils/mediaUpload/errors";
 import { useNetwork } from "@/components/networkConnection/NetworkContext";
@@ -34,6 +37,10 @@ export default function CreatePostPage() {
   const { isOnline } = useNetwork();
   const [loading, setLoading] = useState(false);
   const clientPostIdRef = useRef<string | null>(null);
+  const [waitingForConnection, setWaitingForConnection] =
+    useState(false);
+  const pendingPostRef =
+    useRef(false);
   const { push } = useNavigation()
   const isEdit = searchParams.get('edit') === 'true';
   const postId = searchParams.get('postId');
@@ -112,6 +119,7 @@ export default function CreatePostPage() {
     setUploadedMedia,
     setFileProgress,
     uploadStatus,
+    resumeUpload,
   } = useMediaUpload({
     content,
     imageFiles,
@@ -183,6 +191,63 @@ export default function CreatePostPage() {
     toast.success("Draft saved");
   };
   
+  useEffect(() => {
+    const handleNetworkAvailable = async () => {
+      if (isOnline) {
+        return;
+      }
+  
+      if (!uploadPromiseRef.current &&
+          uploadedMedia.length === 0) {
+        return;
+      }
+    };
+  
+    window.addEventListener(
+      "network:available",
+      handleNetworkAvailable
+    );
+  
+    return () => {
+      window.removeEventListener(
+        "network:available",
+        handleNetworkAvailable
+      );
+    };
+  }, [
+    isOnline,
+    uploadedMedia.length,
+  ]);
+  
+  const waitForUpload = async (): Promise<UploadedMedia[]> => {
+
+    if (
+      uploadStatus === "success" &&
+      uploadedMedia.length > 0
+    ) {
+      return uploadedMedia;
+    }
+  
+    if (uploadPromiseRef.current) {
+      return await uploadPromiseRef.current;
+    }
+  
+    if (uploadStatus === "paused") {
+      throw new UploadNetworkError(
+        "Upload is waiting for network connection."
+      );
+    }
+  
+    if (uploadStatus === "failed") {
+      throw (
+        uploadError ||
+        new Error("Media upload failed.")
+      );
+    }
+  
+    return uploadedMedia;
+  };
+  
   const handleUploadFailure = async () => {
     try {
       prepareForManualDraft();
@@ -201,6 +266,223 @@ export default function CreatePostPage() {
     }
   };
   
+  const createPostWithMedia = async (
+    media: UploadedMedia[]
+  ) => {
+  
+    const contentType =
+      video
+        ? isReel
+          ? "short_video"
+          : "long_video"
+        : media.length > 0
+          ? "image"
+          : "text";
+  
+    const media_files =
+      media.map(toPostMediaPayload);
+  
+    const payload = {
+      caption: content,
+      content_type: contentType,
+      media_files,
+      community: selectedCommunity,
+      client_post_id: getClientPostId(),
+    };
+  
+    const newPost =
+      await apiRequest("api/post/", {
+        method: "POST",
+        data: payload,
+      });
+  
+    // ONLY HERE do we clear the draft.
+  
+    clientPostIdRef.current = null;
+  
+    setContent("");
+    setImageUrls([]);
+    setImageFiles([]);
+    setVideo(null);
+    setFileProgress({});
+    setUploadedMedia([]);
+  
+    await deletePostDraft(
+      selectedCommunity
+        ? `auto-community-${selectedCommunity}`
+        : "auto-global"
+    );
+  
+    if (draftId) {
+      await deletePostDraft(draftId);
+    }
+  
+    toast.success("Post created!");
+  
+    pendingPostRef.current = false;
+    setWaitingForConnection(false);
+  
+    if (newPost.content_type === "short_video") {
+      sessionStorage.setItem(
+        "clicked_reel_id",
+        String(newPost.id)
+      );
+  
+      push(`/main/reels/${newPost.id}`);
+      return;
+    }
+  
+    sessionStorage.setItem(
+      "new_post",
+      JSON.stringify({
+        ...newPost,
+        feed_type: "post",
+        is_starred_by_user: false,
+      })
+    );
+  
+    push("/main/home");
+  };
+  
+  const updateExistingPost = async (
+    media: UploadedMedia[]
+  ) => {
+    if (!postId) {
+      throw new Error("Missing post ID.");
+    }
+  
+    if (!isOnline) {
+      throw new UploadNetworkError(
+        "Connection lost while editing post."
+      );
+    }
+  
+    const contentType =
+      video
+        ? isReel
+          ? "short_video"
+          : "long_video"
+        : media.length > 0
+          ? "image"
+          : "text";
+  
+    const media_files = media.map(toPostMediaPayload);
+  
+    const payload = {
+      caption: content.trim(),
+      content_type: contentType,
+      media_files,
+      community: selectedCommunity,
+    };
+  
+    const updatedPost = await apiRequest(
+      `api/post/${postId}/`,
+      {
+        method: "PUT",
+        data: payload,
+      }
+    );
+  
+    const numericPostId = Number(postId);
+  
+    if (!Number.isFinite(numericPostId)) {
+      throw new Error("Invalid post ID.");
+    }
+  
+    await updateFeedPost(numericPostId, {
+      ...updatedPost,
+      caption: updatedPost.caption,
+      media_files: updatedPost.media_files,
+      updated_at: updatedPost.updated_at,
+      is_edited: true,
+    });
+  
+    toast.success("Post updated!");
+  
+    push("/main/home");
+  };
+  
+  useEffect(() => {
+    if (!isOnline) {
+      return;
+    }
+  
+    if (!waitingForConnection) {
+      return;
+    }
+  
+    if (!pendingPostRef.current) {
+      return;
+    }
+  
+    let cancelled = false;
+  
+    async function resumePendingPost() {
+      try {
+        setLoading(true);
+  
+        setWaitingForConnection(false);
+  
+        toast.loading(
+          "Connection restored. Resuming upload..."
+        );
+  
+        const media =
+          await resumeUpload();
+  
+        if (cancelled) {
+          return;
+        }
+  
+        if (!media.length) {
+          throw new Error(
+            "Upload resumed but no media was returned."
+          );
+        }
+  
+        // Now create the actual post.
+        await createPostWithMedia(media);
+  
+      } catch (error) {
+  
+        if (cancelled) {
+          return;
+        }
+  
+        if (
+          error instanceof UploadNetworkError
+        ) {
+          setWaitingForConnection(true);
+          return;
+        }
+  
+        console.error(
+          "Failed to resume post:",
+          error
+        );
+  
+        toast.error(
+          "Could not finish your post."
+        );
+  
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+  
+    resumePendingPost();
+  
+    return () => {
+      cancelled = true;
+    };
+  
+  }, [
+    isOnline,
+    waitingForConnection,
+  ]);
+  
   const handleOfflinePost = async () => {
     try {
       prepareForManualDraft();
@@ -210,7 +492,6 @@ export default function CreatePostPage() {
       setContent("");
       clearMedia();
       setUploadedMedia([]);
-      setFileProgress({});
   
       toast.success("You're offline. Post saved to Drafts.");
   
@@ -225,309 +506,252 @@ export default function CreatePostPage() {
   };
   
   const handlePost = async () => {
+    if (isEdit) {
+      if (!isOnline) {
+        toast.error(
+          "You're offline. Reconnect to update this post."
+        );
+        return;
+      }
+  
+      if (!postId) {
+        toast.error("Post ID is missing.");
+        return;
+      }
+  
+      const hasText = content.trim().length > 0;
+  
+      const hasImages =
+        imageFiles.length > 0 ||
+        imageUrls.length > 0;
+  
+      const hasVideo = !!video;
+  
+      const hasUploadedMedia =
+        uploadedMedia.length > 0;
+  
+      if (
+        !hasText &&
+        !hasImages &&
+        !hasVideo &&
+        !hasUploadedMedia
+      ) {
+        toast.error(
+          "Write something or attach media."
+        );
+        return;
+      }
+  
+      if (
+        (mode === "community" || mode === "reel") &&
+        !selectedCommunity
+      ) {
+        toast.error(
+          "Please select a community."
+        );
+        return;
+      }
+  
+      setLoading(true);
+  
+      try {
+        let media = uploadedMedia;
+  
+        if (uploadPromiseRef.current) {
+          const toastId = toast.loading(
+            "Finishing media upload..."
+          );
+  
+          try {
+            media = await uploadPromiseRef.current;
+            uploadPromiseRef.current = null;
+            toast.dismiss(toastId);
+          } catch (error) {
+            toast.dismiss(toastId);
+            console.error(
+              "Edit media upload failed:",
+              error
+            );
+  
+            if (
+              error instanceof UploadNetworkError ||
+              (
+                error instanceof Error &&
+                error.name === "UploadNetworkError"
+              )
+            ) {
+              setWaitingForConnection(true);
+              toast(
+                "Upload paused. Waiting for connection..."
+              );
+              return;
+            }
+  
+            toast.error(
+              "Media upload failed."
+            );
+            return;
+          }
+        }
+  
+        if (!isOnline) {
+          setWaitingForConnection(true);
+  
+          toast(
+            "Connection lost. Waiting for connection..."
+          );
+  
+          return;
+        }
+  
+        await updateExistingPost(media);
+  
+        return;
+  
+      } catch (error) {
+        console.error(
+          "EDIT POST ERROR:",
+          error
+        );
+  
+        if (
+          error instanceof UploadNetworkError ||
+          (
+            error instanceof Error &&
+            error.name === "UploadNetworkError"
+          )
+        ) {
+          setWaitingForConnection(true);
+  
+          toast(
+            "Update paused. Waiting for connection..."
+          );
+  
+          return;
+        }
+  
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Failed to update post."
+        );
+  
+      } finally {
+        setLoading(false);
+      }
+    }
+  
     if (!isOnline) {
       await handleOfflinePost();
       return;
     }
   
-    const hasText = content.trim().length > 0;
-
-    const hasImages =
-        imageFiles.length > 0 ||
-        imageUrls.length > 0;
+    const hasText =
+      content.trim().length > 0;
   
-    const hasVideo = !!video;
+    const hasImages =
+      imageFiles.length > 0 ||
+      imageUrls.length > 0;
+  
+    const hasVideo =
+      !!video;
   
     const hasUploadedMedia =
-        uploadedMedia.length > 0;
+      uploadedMedia.length > 0;
   
     if (
-        !hasText &&
-        !hasImages &&
-        !hasVideo &&
-        !hasUploadedMedia
+      !hasText &&
+      !hasImages &&
+      !hasVideo &&
+      !hasUploadedMedia
     ) {
-        toast.error("Write something or attach media.");
-        return;
-    }
-
-    if ((mode === "community" || mode === "reel") && !selectedCommunity) {
-      alert("Please select a community");
+      toast.error(
+        "Write something or attach media."
+      );
       return;
     }
-
+  
+    if (
+      (mode === "community" || mode === "reel") &&
+      !selectedCommunity
+    ) {
+      toast.error(
+        "Please select a community."
+      );
+      return;
+    }
+  
     setLoading(true);
-    setFileProgress({});
+  
+    pendingPostRef.current = true;
   
     try {
-      if (uploadError) {
-        const saved = await handleUploadFailure();
-      
-        if (saved) {
-          return;
-        }
-      
-        return;
-      }
-    
       let media = uploadedMedia;
-
-      if (uploading && uploadPromiseRef.current) {
-        const toastId = toast.loading("Finishing upload...");
-      
-        try {
-          media = await uploadPromiseRef.current;
-      
-          uploadPromiseRef.current = null;
-      
-          toast.dismiss(toastId);
-        } catch (uploadError) {
-          console.error("Media upload failed:", uploadError);
-      
-          toast.dismiss(toastId);
-      
-          // Save as MANUAL draft
-          const saved = await handleUploadFailure();
-      
-          if (saved) {
-            return;
-          }
-      
-          return;
-        }
-      
-        // Upload finished but user went offline
-        if (!isOnline) {
-          const saved = await handleOfflinePost();
-      
-          if (saved) {
-            return;
-          }
-      
-          return;
-        }
-      }
   
-      if (uploadError) {
-        const saved =
-          await handleUploadFailure();
-      
-        if (saved) {
-          return;
-        }
-      
-        return;
-      }
-    
-      const hasText = content.trim().length > 0;
-      const hasMedia = media.length > 0;
-      
-      if (!hasText && !hasMedia) {
-        await handleUploadFailure();
-        return;
-      }
+      try {
+        media = await waitForUpload();
   
-      let contentType = "text";
-
-      if (video) {
-        if (isReel) {
-          contentType = "short_video";
-        } else {
-          contentType = "long_video";
-        }
-      } else if (
-        imageFiles.length > 0 ||
-        imageUrls.length > 0
-      ) {
-        contentType = "image";
-      }
-      
-      contentType = String(contentType);
-
-      const media_files = media.map(
-        toPostMediaPayload
-      );
+      } catch (error) {
+        if (
+          error instanceof UploadNetworkError ||
+          (
+            error instanceof Error &&
+            error.name === "UploadNetworkError"
+          )
+        ) {
+          setWaitingForConnection(true);
   
-      const payload = {
-        caption: content,
-        content_type: contentType,
-        media_files,
-        community: selectedCommunity,
-        client_post_id: getClientPostId(),
-      };
-  
-      const editPayload = {
-        caption: content,
-        content_type: contentType,
-        media_files,
-        community: selectedCommunity,
-      };
-  
-      let newPost = null;
-
-      if (isEdit) {
-        if (!isOnline) {
-          await handleOfflinePost();
+          toast(
+            "Upload paused. Waiting for connection..."
+          );
           return;
         }
   
-        const updatedPost = await apiRequest(`api/post/${postId}/`, {
-            method: "PUT",
-            data: editPayload,
-        });
-  
-        if (!postId) {
-          console.error("Missing postId");
-          return;
-        }
-  
-        const numericPostId = Number(postId);
-  
-        if (!Number.isFinite(numericPostId)) {
-          console.error("Invalid postId:", postId);
-          return;
-        }
-
-        await updateFeedPost(numericPostId, {
-          caption: updatedPost.caption,
-          media_files: updatedPost.media_files,
-          updated_at: updatedPost.updated_at,
-          is_edited: true,
-        });
-    
-        toast.success("Post updated!");
-        push("/main/home");
-        return;
-      }
-
-      if (
-          payload.caption.trim() === "" &&
-          payload.media_files.length === 0
-      ) {
-          toast.error("Cannot create an empty post.");
-          return;
+        throw error;
       }
   
       if (!isOnline) {
-        await handleOfflinePost();
-        return;
-      }
+        setWaitingForConnection(true);
   
-      await uploadDebug({
-        event: "POST_CREATE_START",
-        level: "info",
-        data: {
-          text_length: content.length,
-          media_count: media.length,
-          media_ids: media.map(
-            item => item.mediaId
-          ),
-          has_text: Boolean(content.trim()),
-        },
-      });
-
-      newPost = await apiRequest(`api/post/`, {
-        method: "POST",
-        data: payload,
-      });
-  
-      await uploadDebug({
-        event: "POST_CREATE_RESPONSE",
-        level: "info",
-        data: {
-          success: true,
-          post_id: newPost?.id,
-          media_count: newPost?.media_files?.length ?? 0,
-        },
-      });
-  
-      clientPostIdRef.current = null;
-  
-      setContent('');
-      setImageUrls([]);
-      setImageFiles([]);
-      setVideo(null);
-      setFileProgress({});
-      await deletePostDraft(
-          selectedCommunity
-              ? `auto-community-${selectedCommunity}`
-              : "auto-global"
-      );
-      
-      if (draftId) {
-          await deletePostDraft(draftId);
-      }
-      
-      if (!newPost?.is_approved) {
-        toast.success("Post submitted for approval.");
-        push("/main/home");
-        return;
-      }
-
-      toast.success("Post created!");
-
-      if (newPost.content_type === "short_video") {
-        sessionStorage.setItem(
-            "clicked_reel_id",
-            String(newPost.id)
+        toast(
+          "Connection lost. Waiting for connection..."
         );
-    
-        push(`/main/reels/${newPost.id}`);
+  
         return;
       }
-      
-      const feedPost = {
-          ...newPost,
-          feed_type: "post",
-          is_starred_by_user: false,
-      };
-      
-      sessionStorage.setItem(
-          "new_post",
-          JSON.stringify(feedPost)
+  
+      await createPostWithMedia(media);
+  
+    } catch (error) {
+      console.error(
+        "POST ERROR:",
+        error
       );
-      
-      push("/main/home");
-      return;
-    } catch (err: any) {
-      console.log("FULL ERROR:", err.data || err);
-      console.error(err);
-    
-      await uploadDebug({
-        event: "POST_CREATE_ERROR",
-        level: "error",
-        data: {
-          message:
-            err instanceof Error
-              ? err.message
-              : String(err),
-        },
-      });
-
-      const isUploadNetworkError =
-        err?.isNetworkError === true ||
-        err?.name === "UploadNetworkError" ||
-        err?.message?.toLowerCase().includes("network error");
-    
-      if (!isOnline || isUploadNetworkError) {
-        const saved = await handleOfflinePost();
-    
-        if (saved) {
-          toast.error(
-            "Connection lost. Your post was saved to Drafts and can be resumed when you're back online."
-          );
-        }
-    
+  
+      if (
+        error instanceof UploadNetworkError ||
+        (
+          error instanceof Error &&
+          error.name === "UploadNetworkError"
+        )
+      ) {
+        setWaitingForConnection(true);
         return;
       }
-    
+  
+      const saved =
+        await handleUploadFailure();
+  
+      if (saved) {
+        return;
+      }
+  
       toast.error(
-        err?.data?.media ||
-        err?.data?.detail ||
-        "Failed to create post."
+        error instanceof Error
+          ? error.message
+          : "Failed to create post."
       );
-    
-      setFileProgress({});
+  
     } finally {
       setLoading(false);
     }
@@ -625,9 +849,10 @@ export default function CreatePostPage() {
           Drafts • {draftCount}
         </AppLink>
   
-        {!isOnline && (
+        {(!isOnline || waitingForConnection) && (
           <div className="relative overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-r mt-3 from-amber-50 to-orange-50 p-4 shadow-sm dark:border-amber-900/50 dark:from-amber-950/40 dark:to-orange-950/30">
             <div className="flex items-start gap-3">
+        
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-900/50 dark:text-amber-400">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
@@ -646,20 +871,29 @@ export default function CreatePostPage() {
         
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
+        
                   <h3 className="font-semibold text-amber-900 dark:text-amber-200">
-                    You're offline
+                    {waitingForConnection
+                      ? "Waiting for connection"
+                      : "You're offline"}
                   </h3>
         
                   <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:bg-amber-900/60 dark:text-amber-300">
-                    Draft mode
+                    {waitingForConnection
+                      ? "Upload paused"
+                      : "Draft mode"}
                   </span>
+        
                 </div>
         
                 <p className="mt-1 text-sm leading-5 text-amber-800/80 dark:text-amber-300/80">
-                  Don't worry — your post is safe. It will be saved to Drafts
-                  until your connection comes back.
+                  {waitingForConnection
+                    ? "Your upload is saved. Tribe will continue automatically when your connection returns."
+                    : "Don't worry — your post is safe. It will be saved to Drafts until your connection comes back."
+                  }
                 </p>
               </div>
+        
             </div>
           </div>
         )}

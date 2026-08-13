@@ -201,9 +201,6 @@ export function NetworkProvider({
             'api/users/ping/'
           );
 
-        /*
-         * Ignore stale request results.
-         */
         if (
           generation !==
           checkGenerationRef.current
@@ -211,10 +208,6 @@ export function NetworkProvider({
           return false;
         }
 
-        /*
-         * Internet may have disappeared
-         * while the request was running.
-         */
         if (!navigator.onLine) {
           setIsOnline(false);
           setServerReachable(false);
@@ -262,9 +255,6 @@ export function NetworkProvider({
         wasReachableRef.current =
           ok;
 
-        /*
-         * Backend has just become reachable.
-         */
         if (
           ok &&
           !wasReachable &&
@@ -276,20 +266,18 @@ export function NetworkProvider({
           startReconnect();
 
           window.dispatchEvent(
+            new Event("network:available")
+          );
+          window.dispatchEvent(
             new Event(
               'network-reconnected'
             )
           );
         }
 
-        /*
-         * Backend became unreachable again.
-         * Allow another reconnect event later.
-         */
         if (!ok) {
           reconnectEventFiredRef.current =
             false;
-
           wasReachableRef.current =
             false;
         }
@@ -306,7 +294,6 @@ export function NetworkProvider({
 
         wasReachableRef.current =
           false;
-
         reconnectEventFiredRef.current =
           false;
 
@@ -322,11 +309,6 @@ export function NetworkProvider({
             'offline'
           );
         } else {
-          /*
-           * Browser says online,
-           * but backend/API could not
-           * be reached.
-           */
           setIsOnline(true);
           setNetworkStatus(
             'poor'
@@ -342,20 +324,14 @@ export function NetworkProvider({
   const handleOffline =
     useCallback(() => {
       checkGenerationRef.current++;
-
       wasReachableRef.current =
         false;
-
       reconnectEventFiredRef.current =
         false;
-
       reconnectingRef.current =
         false;
-
       setIsOnline(false);
-
       setServerReachable(false);
-
       setReconnecting(false);
 
       setNetworkStatus(
@@ -371,21 +347,8 @@ export function NetworkProvider({
 
   const handleOnline =
     useCallback(async () => {
-      /*
-       * IMPORTANT:
-       *
-       * Do NOT immediately assume that
-       * the backend is reachable.
-       */
       updateConnection();
-
-      /*
-       * Browser says internet exists,
-       * but serverReachable remains false
-       * until checkServer confirms it.
-       */
       setIsOnline(true);
-
       setServerReachable(false);
 
       const ok =
@@ -395,18 +358,11 @@ export function NetworkProvider({
         return;
       }
 
-      /*
-       * checkServer() already fires
-       * network-reconnected when appropriate.
-       */
     }, [
       updateConnection,
       checkServer,
     ]);
-
-  /*
-   * Initial browser/network listeners.
-   */
+  
   useEffect(() => {
     setMounted(true);
 
@@ -463,9 +419,6 @@ export function NetworkProvider({
     handleOffline,
   ]);
 
-  /*
-   * Periodically verify backend reachability.
-   */
   useEffect(() => {
     if (!mounted) {
       return;
@@ -488,13 +441,6 @@ export function NetworkProvider({
     checkServer,
   ]);
 
-  /*
-   * Socket state.
-   *
-   * IMPORTANT:
-   * Socket connectivity does NOT automatically
-   * mean HTTP/API connectivity.
-   */
   useEffect(() => {
     const handleSocketConnected =
       () => {
@@ -529,14 +475,6 @@ export function NetworkProvider({
     };
   }, []);
 
-  /*
-   * HTTP/API communication.
-   *
-   * Do NOT require socketConnected here.
-   *
-   * Uploads, posts, drafts, API requests etc.
-   * can work without the socket.
-   */
   const canCommunicate =
     mounted &&
     isOnline &&
@@ -546,23 +484,14 @@ export function NetworkProvider({
     useMemo(
       () => ({
         isOnline,
-
         serverReachable,
-
         socketConnected,
-
         canCommunicate,
-
         reconnecting,
-
         latency,
-
         networkStatus,
-
         connectionType,
-
         startReconnect,
-
         finishReconnect,
       }),
       [
