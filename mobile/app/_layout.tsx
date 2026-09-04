@@ -1,42 +1,39 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
-import { GestureHandlerRootView } from "react-native-gesture-handler";
+import React from "react";
+import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import "./global.css";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { UserProvider } from "@/components/loading/UserContext";
-import { NetworkProvider } from "@/components/network/NetworkContext";
-import NetworkBannerWrapper from "@/components/network/NetworkBannerWrapper";
-import { useColorScheme } from '@/hooks/use-color-scheme';
-
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
+import GlobalError from "@/components/GlobalError";
+import { NetworkProvider } from "@/components/networkConnection/NetworkContext";
+import NetworkBannerWrapper from "@/components/networkConnection/NetworkBannerWrapper";
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <SafeAreaProvider>
+      <SafeAreaProvider>
+        <GlobalError>
           <UserProvider>
             <NetworkProvider>
+              <StatusBar
+                style="auto"
+                translucent
+              />
+  
               <NetworkBannerWrapper />
   
               <Stack
                 screenOptions={{
                   headerShown: false,
+                  animation: "fade",
                 }}
               />
-              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-              <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-              <StatusBar style="auto" />
             </NetworkProvider>
           </UserProvider>
-        </SafeAreaProvider>
-      </ThemeProvider>
+        </GlobalError>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

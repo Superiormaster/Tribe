@@ -4,13 +4,14 @@ import hashlib
 from django.db.models import *
 from django.utils import timezone
 from datetime import timedelta
-from .models import Post, Repost, Like
+from .models import Post, Repost, Share, Like
 from users.models import BlockedUser
 from .weights import get_user_weights
 from .cache import *
 from django.db.models.functions import Least, Cast
 import random
-from users.utils import redis_client, get_interest_map
+from users.utils import redis_client
+from notifications.recommendations.interests import get_interest_map
 from django.db.models import Avg, Count, Sum, Case, When, Value, FloatField, ExpressionWrapper, IntegerField, F, Q, Exists, OuterRef
 from users.models import BlockedUser, Star
 from django.db.models.functions import Coalesce, Least, NullIf
@@ -54,9 +55,24 @@ def build_base_queryset(user):
       "media_files__asset"
     ).annotate(
         likes_count=Count("likes", distinct=True),
-        comments_count=Count("comments", distinct=True),
-        shares_count=Count("shares", distinct=True),
-        repost_count=Count("reposts", distinct=True),
+        comments_count=Count(
+            "comments",
+            filter=Q(comments__is_deleted=False),
+            distinct=True,
+        ),
+        shares_count=Count(
+            "shares",
+            filter=Q(
+                shares__is_deleted=False,
+                shares__status="approved",
+            ),
+            distinct=True,
+        ),
+        repost_count=Count(
+            "reposts",
+            filter=Q(reposts__is_deleted=False),
+            distinct=True
+        ),
         is_liked=Exists(
             Like.objects.filter(
                 post=OuterRef("pk"),
@@ -64,6 +80,78 @@ def build_base_queryset(user):
             )
         )
     )
+
+def build_share_queryset(
+    user,
+    muted_ids,
+    blocked_ids,
+    blocked_me_ids,
+    tribe_id=None,
+):
+    shares = Share.objects.filter(
+        is_deleted=False,
+        status="approved",
+        post__is_deleted=False,
+        post__is_approved=True,
+        post__is_rejected=False,
+    ).exclude(
+        user_id__in=muted_ids
+    ).exclude(
+        user_id__in=blocked_ids
+    ).exclude(
+        user_id__in=blocked_me_ids
+    ).select_related(
+        "user",
+        "post",
+        "post__user",
+        "post__community",
+        "community",
+    ).prefetch_related(
+        "post__media_files__asset",
+    ).annotate(
+        likes_count=Count(
+            "post__likes",
+            distinct=True,
+        ),
+        comments_count=Count(
+            "post__comments",
+            filter=Q(
+                post__comments__is_deleted=False
+            ),
+            distinct=True,
+        ),
+        shares_count=Count(
+            "post__shares",
+            filter=Q(
+                post__shares__is_deleted=False,
+                post__shares__status="approved",
+            ),
+            distinct=True,
+        ),
+        repost_count=Count(
+            "post__reposts",
+            filter=Q(
+                post__reposts__is_deleted=False
+            ),
+            distinct=True,
+        ),
+        is_liked=Exists(
+            Like.objects.filter(
+                post=OuterRef("post_id"),
+                user=user,
+            )
+        ),
+        views_count=F("post__views_count"),
+        skipped_views=F("post__skipped_views"),
+    )
+
+    if tribe_id:
+        shares = shares.filter(
+            community__isnull=False,
+            community__tribe_id=tribe_id,
+        )
+
+    return shares
 
 def build_global_feed(
     user,
@@ -92,88 +180,213 @@ def build_global_feed(
     weights = get_user_weights(user)
     interest_map = get_interest_map(user)
   
-    cached = get_cached_feed(redis_client, user.id, tribe_id)
-
-    if cached:
-        post_ids = [
-            item["id"]
-            for item in cached
-            if item["type"] == "post"
-        ]
+    cached = get_cached_feed(
+        redis_client,
+        user.id,
+        tribe_id
+    ) or []
     
-        repost_ids = [
-            item["id"]
-            for item in cached
-            if item["type"] == "repost"
-        ]
+    post_ids = []
+    repost_ids = []
+    share_ids = []
     
-        post_map = {
-          p.id: p
-          for p in compute_main_feed_score(
-              annotate_features(
-                  build_base_queryset(user).filter(id__in=post_ids),
-                  user,
-                  joined_communities,
-                  starred_ids,
-                  two_weeks_ago,
-              ),
-              weights,
-          )
-        }
+    print(
+        "🔥 FEED BUILD:",
+        {
+            "user": user.id,
+            "tribe_id": tribe_id,
+            "cache_length": len(cached),
+            "cache_hit": bool(cached),
+        },
+        flush=True,
+    )
     
-        repost_map = {
-            r.id: r
-            for r in 
-              compute_main_feed_score(
-                annotate_repost_features(
-                  Repost.objects.filter(
-                      id__in=repost_ids,
-                      is_deleted=False,
-                      post__is_approved=True,
-                      post__is_deleted=False,
-                  ).exclude(
-                      post__user_id__in=muted_ids
-                  ).exclude(
-                      post__user_id__in=blocked_ids
-                  ).exclude(
-                      post__user_id__in=blocked_me_ids
-                  )
-                  .select_related(
-                      "user",
-                      "post",
-                      "post__user",
-                      "post__community",
-                  )
-                  .annotate(
-                      likes_count=Count("post__likes", distinct=True),
-                      comments_count=Count("post__comments", distinct=True),
-                      shares_count=Count("post__shares", distinct=True),
-                      repost_count=Count("post__reposts", distinct=True),
-                      is_liked=Exists(
-                          Like.objects.filter(
-                              post=OuterRef("post_id"),
-                              user=user
-                          )
-                      ),
-                      views_count=F("post__views_count"),
-                      skipped_views=F("post__skipped_views"),
-                  ),
-                  user,
-                  joined_communities,
-                  starred_ids,
-                  two_weeks_ago,
+    # -------------------------
+    # READ CACHE IDS
+    # -------------------------
+    
+    for item in cached:
+    
+        if item["type"] == "post":
+            post_ids.append(item["id"])
+    
+        elif item["type"] == "repost":
+            repost_ids.append(item["id"])
+    
+        elif item["type"] == "share":
+            share_ids.append(item["id"])
+    
+    
+    # -------------------------
+    # BUILD DATABASE MAPS
+    # -------------------------
+    
+    post_map = {
+        p.id: p
+        for p in compute_main_feed_score(
+            annotate_features(
+                build_base_queryset(user).filter(
+                    id__in=post_ids
                 ),
-                weights,
-              )
-        }
+                user,
+                joined_communities,
+                starred_ids,
+                two_weeks_ago,
+            ),
+            weights,
+        )
+    }
+  
+    share_map = {
+        s.id: s
+        for s in compute_main_feed_score(
+            annotate_share_features(
+                Share.objects.filter(
+                    id__in=share_ids,
+                    is_deleted=False,
+                    status="approved",
+                    post__is_deleted=False,
+                    post__is_approved=True,
+                    post__is_rejected=False,
+                )
+                .select_related(
+                    "user",
+                    "post",
+                    "post__user",
+                    "post__community",
+                    "community",
+                )
+                .prefetch_related(
+                    "post__media_files__asset",
+                )
+                .annotate(
+                    likes_count=Count(
+                        "post__likes",
+                        distinct=True,
+                    ),
+                    comments_count=Count(
+                        "post__comments",
+                        filter=Q(
+                            post__comments__is_deleted=False
+                        ),
+                        distinct=True,
+                    ),
+                    shares_count=Count(
+                        "post__shares",
+                        filter=Q(
+                            post__shares__is_deleted=False,
+                            post__shares__status="approved",
+                        ),
+                        distinct=True,
+                    ),
+                    repost_count=Count(
+                        "post__reposts",
+                        filter=Q(
+                            post__reposts__is_deleted=False
+                        ),
+                        distinct=True,
+                    ),
+                    is_liked=Exists(
+                        Like.objects.filter(
+                            post=OuterRef("post_id"),
+                            user=user,
+                        )
+                    ),
+                    views_count=F("post__views_count"),
+                    skipped_views=F("post__skipped_views"),
+                ),
+                user,
+                joined_communities,
+                starred_ids,
+                two_weeks_ago,
+            ),
+            weights,
+        )
+    }
+
+    repost_map = {
+        r.id: r
+        for r in compute_main_feed_score(
+            annotate_repost_features(
+                Repost.objects.filter(
+                    id__in=repost_ids,
+                    is_deleted=False,
+                    post__is_approved=True,
+                    post__is_deleted=False,
+                )
+                .exclude(
+                    post__user_id__in=muted_ids
+                )
+                .exclude(
+                    post__user_id__in=blocked_ids
+                )
+                .exclude(
+                    post__user_id__in=blocked_me_ids
+                )
+                .select_related(
+                    "user",
+                    "post",
+                    "post__user",
+                    "post__community",
+                )
+                .annotate(
+                    likes_count=Count(
+                        "post__likes",
+                        distinct=True
+                    ),
+                    comments_count=Count(
+                        "post__comments",
+                        filter=Q(
+                            post__comments__is_deleted=False
+                        ),
+                        distinct=True
+                    ),
+                    shares_count=Count(
+                        "post__shares",
+                        filter=Q(
+                            post__shares__is_deleted=False,
+                            post__shares__status="approved",
+                        ),
+                        distinct=True,
+                    ),
+                    repost_count=Count(
+                        "post__reposts",
+                        filter=Q(
+                            post__reposts__is_deleted=False
+                        ),
+                        distinct=True
+                    ),
+                    is_liked=Exists(
+                        Like.objects.filter(
+                            post=OuterRef("post_id"),
+                            user=user
+                        )
+                    ),
+                    views_count=F("post__views_count"),
+                    skipped_views=F("post__skipped_views"),
+                ),
+                user,
+                joined_communities,
+                starred_ids,
+                two_weeks_ago,
+            ),
+            weights,
+        )
+    }
+  
+    # -------------------------
+    # REBUILD FEED FROM CACHE
+    # -------------------------
+    
+    if cached:
     
         items = []
     
-        for item in cached:
+        for cached_item in cached:
     
-            if item["type"] == "post":
+            if cached_item["type"] == "post":
     
-                obj = post_map.get(item["id"])
+                obj = post_map.get(cached_item["id"])
     
                 if obj:
                     items.append({
@@ -183,9 +396,9 @@ def build_global_feed(
                         "created_at": obj.created_at,
                     })
     
-            else:
+            elif cached_item["type"] == "repost":
     
-                obj = repost_map.get(item["id"])
+                obj = repost_map.get(cached_item["id"])
     
                 if obj:
                     items.append({
@@ -195,25 +408,67 @@ def build_global_feed(
                         "created_at": obj.created_at,
                     })
     
+            elif cached_item["type"] == "share":
+    
+                obj = share_map.get(cached_item["id"])
+    
+                if obj:
+                    items.append({
+                        "type": "share",
+                        "data": obj,
+                        "score": obj.final_score,
+                        "created_at": obj.created_at,
+                    })
+    
+        # --------------------------------
+        # APPLY INTEREST BONUS
+        # --------------------------------
+    
         for item in items:
-            topics = (
-                item["data"].topics
-                if item["type"] == "post"
-                else item["data"].post.topics
-            )
+    
+            if item["type"] == "post":
+                topics = item["data"].topics
+            else:
+                topics = item["data"].post.topics
     
             bonus = sum(
-                interest_map.get(str(topic).lower(), 0)
+                interest_map.get(
+                    str(topic).lower(),
+                    0
+                )
                 for topic in (topics or [])
             )
-        
-            item["final_score"] = getattr(item["data"], "final_score", 0) + bonus
+    
+            item["final_score"] = (
+                item["data"].final_score +
+                bonus
+            )
+    
+        # --------------------------------
+        # SORT + FINALIZE
+        # --------------------------------
     
         items.sort(
             key=lambda x: x["final_score"],
             reverse=True,
         )
-        items = finalize_feed(items, user)
+    
+        items = finalize_feed(
+            items,
+            user
+        )
+    
+        print(
+            "🔥 CACHED FEED REBUILT:",
+            {
+                "cached_items": len(cached),
+                "rebuilt_items": len(items),
+                "post_map": len(post_map),
+                "share_map": len(share_map),
+                "repost_map": len(repost_map),
+            },
+            flush=True,
+        )
     
         return items
 
@@ -238,6 +493,30 @@ def build_global_feed(
       .order_by("-final_score")[:500]
     )
 
+    shares = build_share_queryset(
+        user,
+        muted_ids,
+        blocked_ids,
+        blocked_me_ids,
+        tribe_id,
+    )
+  
+    shares = annotate_share_features(
+        shares,
+        user,
+        joined_communities,
+        starred_ids,
+        two_weeks_ago,
+    )
+  
+    shares = (
+        compute_main_feed_score(
+            shares,
+            weights
+        )
+        .order_by("-final_score")[:500]
+    )
+
     reposts = Repost.objects.filter(
         is_deleted=False,
         post__is_deleted=False,
@@ -254,14 +533,20 @@ def build_global_feed(
         ),
         comments_count=Count(
             "post__comments",
+            filter=Q(post__comments__is_deleted=False),
             distinct=True
         ),
         shares_count=Count(
             "post__shares",
-            distinct=True
+            filter=Q(
+                post__shares__is_deleted=False,
+                post__shares__status="approved",
+            ),
+            distinct=True,
         ),
         repost_count=Count(
             "post__reposts",
+            filter=Q(post__reposts__is_deleted=False),
             distinct=True
         ),
         is_liked=Exists(
@@ -322,6 +607,14 @@ def build_global_feed(
             "score": r.final_score,
             "created_at": r.created_at,
         })
+  
+    for s in shares:
+      items.append({
+          "type": "share",
+          "data": s,
+          "score": s.final_score,
+          "created_at": s.created_at,
+      })
 
     items = finalize_feed(
         items,
@@ -355,16 +648,20 @@ def build_global_feed(
     for item in items:
     
         if item["type"] == "post":
-    
             cache_data.append({
                 "type": "post",
                 "id": item["data"].id,
             })
     
-        else:
-    
+        elif item["type"] == "repost":
             cache_data.append({
                 "type": "repost",
+                "id": item["data"].id,
+            })
+    
+        elif item["type"] == "share":
+            cache_data.append({
+                "type": "share",
                 "id": item["data"].id,
             })
   
@@ -374,6 +671,17 @@ def build_global_feed(
         cache_data,
         ttl=300,
         tribe_id=tribe_id,
+    )
+
+    print(
+        "🔥 NEW FEED BUILT:",
+        {
+            "posts": len(posts),
+            "reposts": len(reposts),
+            "shares": len(shares),
+            "final_items": len(items),
+        },
+        flush=True,
     )
 
     return items
@@ -427,6 +735,138 @@ def annotate_features(qs, user, joined_communities, starred_ids, two_weeks_ago):
             default=Value(0.0),
             output_field=FloatField()
         )
+    )
+
+def annotate_share_features(
+    qs,
+    user,
+    joined_communities,
+    starred_ids,
+    two_weeks_ago
+):
+    return qs.annotate(
+        total_views=F("views_count"),
+        total_skipped=F("skipped_views"),
+
+        skip_rate=Case(
+            When(
+                total_views=0,
+                then=Value(0.0)
+            ),
+            default=ExpressionWrapper(
+                F("total_skipped") * 1.0 /
+                F("total_views"),
+                output_field=FloatField()
+            ),
+            output_field=FloatField()
+        ),
+
+        is_joined_community=Case(
+            When(
+                community_id__in=joined_communities,
+                then=Value(1.0)
+            ),
+            default=Value(0.0),
+            output_field=FloatField(),
+        ),
+
+        is_recent=Case(
+            When(
+                created_at__gte=two_weeks_ago,
+                then=Value(1.0)
+            ),
+            default=Value(0.0),
+            output_field=FloatField()
+        ),
+
+        is_popular=Case(
+            When(
+                likes_count__gte=10,
+                comments_count__gte=3,
+                then=Value(1.0)
+            ),
+            default=Value(0.0),
+            output_field=FloatField()
+        ),
+
+        is_repost=Value(
+            0.0,
+            output_field=FloatField()
+        ),
+
+        is_starred_by_user=Case(
+            When(
+                user_id__in=starred_ids,
+                then=Value(1.0)
+            ),
+            default=Value(0.0),
+            output_field=FloatField()
+        )
+    )
+
+def annotate_share_features(
+    qs,
+    user,
+    joined_communities,
+    starred_ids,
+    two_weeks_ago,
+):
+    return qs.annotate(
+        total_skipped=F("skipped_views"),
+
+        skip_rate=Coalesce(
+            ExpressionWrapper(
+                F("total_skipped") * 1.0 /
+                NullIf(
+                    F("views_count"),
+                    Value(0)
+                ),
+                output_field=FloatField(),
+            ),
+            Value(0.0),
+        ),
+
+        is_joined_community=Case(
+            When(
+                community_id__in=joined_communities,
+                then=Value(1.0),
+            ),
+            default=Value(0.0),
+            output_field=FloatField(),
+        ),
+
+        is_recent=Case(
+            When(
+                post__created_at__gte=two_weeks_ago,
+                then=Value(1.0),
+            ),
+            default=Value(0.0),
+            output_field=FloatField(),
+        ),
+
+        is_popular=Case(
+            When(
+                likes_count__gte=10,
+                comments_count__gte=3,
+                then=Value(1.0),
+            ),
+            default=Value(0.0),
+            output_field=FloatField(),
+        ),
+
+        is_repost=Value(
+            0.0,
+            output_field=FloatField(),
+        ),
+
+        is_starred_by_user=Case(
+            When(
+                post__user_id__in=starred_ids,
+                then=Value(1.0),
+            ),
+            default=Value(0.0),
+            output_field=FloatField(),
+        ),
     )
 
 def annotate_repost_features(
@@ -488,46 +928,13 @@ def annotate_repost_features(
         )
     )
 
-# -----------------------------
-# FINAL SCORE ENGINE
-# -----------------------------
-def compute_feed_scores(items, weights):
-    scored = []
-
-    for item in items:
-        if item["type"] == "post":
-            obj = item["obj"]
-
-            score = (
-                obj.likes_count * weights["like"] +
-                obj.comments_count * weights["comment"] +
-                obj.views_count * weights["view"] +
-                obj.repost_count * weights["repost"]
-            )
-
-        else:
-            r = item["obj"]
-            post = r.post
-
-            # REPOST inherits post score + repost bonus
-            score = (
-                r.likes_count * weights["like"] +
-                r.comments_count * weights["comment"] +
-                r.views_count * weights["view"] +
-                r.repost_count * weights["repost"]
-            )
-
-        item["data"].final_score = score
-        scored.append(item)
-
-    return scored
-
 def compute_main_feed_score(qs, weights):
 
     return qs.annotate(
         final_score=ExpressionWrapper(
             F("likes_count") * Value(weights["like"]) +
             F("comments_count") * Value(weights["comment"]) +
+            F("shares_count") * Value(weights["share"]) +
             F("views_count") * Value(weights["view"]) +
 
             F("is_starred_by_user") * Value(weights["star"]) +
@@ -545,41 +952,42 @@ def finalize_feed(items, user):
     seed = session_seed(user)
 
     for item in items:
-        if item["type"] == "post":
-            post_id = item["data"].id
-        else:
-            post_id = item["data"].post_id
-        
-        base_penalty = (
-            -2.5
-            if post_id in seen_ids
-            else 0
-        )
-
-        if item["type"] == "post":
-            content_id = item["data"].id
-        else:
-            content_id = item["data"].post_id
-
-        digest = hashlib.md5(
-            f"{content_id}:{seed}".encode()
-        ).hexdigest()
+      if item["type"] == "post":
+          post_id = item["data"].id
+          content_id = item["data"].id
+          created_at = item["data"].created_at
   
-        shuffle = ((int(digest[:8], 16) % 1000) / 1000 - 0.5) * 40
-
-        if item["type"] == "post":
-            created_at = item["data"].created_at
-        else:
-            created_at = item["data"].created_at
-        
-        decay = time_decay(created_at)
-
-        item["final_score"] = (
-            item["score"]
-            + decay * 3
-            + shuffle * 0.05
-            + base_penalty
-        )
+      elif item["type"] == "repost":
+          post_id = item["data"].post_id
+          content_id = item["data"].post_id
+          created_at = item["data"].created_at
+  
+      elif item["type"] == "share":
+          post_id = item["data"].post_id
+          content_id = item["data"].post_id
+          created_at = item["data"].created_at
+  
+      else:
+          continue
+  
+      base_penalty = (
+          -2.5
+          if post_id in seen_ids
+          else 0
+      )
+  
+      shuffle = (
+          content_id + seed
+      ) % 13
+  
+      decay = time_decay(created_at)
+  
+      item["final_score"] = (
+          item["score"]
+          + decay * 3
+          + shuffle * 0.05
+          + base_penalty
+      )
   
     items.sort(key=lambda x: x["final_score"], reverse=True)
 
@@ -635,8 +1043,19 @@ def build_reels_queryset(user):
         )
         .annotate(
             likes_count=Count("likes", distinct=True),
-            comments_count=Count("comments", distinct=True),
-            shares_count=Count("shares", distinct=True),
+            comments_count=Count(
+                "comments",
+                filter=Q(comments__is_deleted=False),
+                distinct=True,
+            ),
+            shares_count=Count(
+                "shares",
+                filter=Q(
+                    shares__is_deleted=False,
+                    shares__status="approved",
+                ),
+                distinct=True,
+            ),
             is_liked=Exists(
                 Like.objects.filter(
                     post=OuterRef("pk"),

@@ -52,6 +52,7 @@ class Message(models.Model):
             ('forward', 'Forward'),
         ],
         null=True,
+        default=None,
         blank=True
     )
     edited_at = models.DateTimeField(
@@ -65,8 +66,17 @@ class Message(models.Model):
       blank=True,
       db_index=True,
     )
+    client_created_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+    )
   
     waveform = models.JSONField(default=list, blank=True)
+    external_media_urls = models.JSONField(
+        default=list,
+        blank=True,
+    )
 
     # FEATURES
     is_pinned = models.BooleanField(default=False)
@@ -91,11 +101,7 @@ class Message(models.Model):
         blank=True,
         on_delete=models.SET_NULL
     )
-    mentions = models.ManyToManyField(
-        User,
-        blank=True,
-        related_name="mentioned_messages"
-    )
+    mention_all = models.BooleanField(default=False)
     # REPLY SYSTEM
     reply_to = models.ForeignKey(
         "self",
@@ -110,7 +116,10 @@ class Message(models.Model):
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
-    deleted_at = models.DateTimeField(auto_now=True)
+    deleted_at = models.DateTimeField(
+        null=True,
+        blank=True
+    )
 
     class Meta:
       indexes = [
@@ -198,3 +207,26 @@ class MessageEdit(models.Model):
     edited_at = models.DateTimeField(
         auto_now_add=True
     )
+
+class MessageMention(models.Model):
+    message = models.ForeignKey(
+        Message,
+        on_delete=models.CASCADE,
+        related_name="mentions",
+    )
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="message_mentions",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["message", "user"],
+                name="unique_message_user_mention",
+            )
+        ]

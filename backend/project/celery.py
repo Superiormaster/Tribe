@@ -19,16 +19,3 @@ app.config_from_object(
 app.autodiscover_tasks(
     lambda: settings.INSTALLED_APPS
 )
-
-print(
-    "CELERY_BROKER_URL:",
-    (
-        settings.CELERY_BROKER_URL[:20] + "..."
-        if settings.CELERY_BROKER_URL
-        else None
-    )
-)
-
-print("=== CELERY CONFIG ===")
-print("CELERY_BROKER_URL:", settings.CELERY_BROKER_URL)
-print("CELERY_RESULT_BACKEND:", settings.CELERY_RESULT_BACKEND)

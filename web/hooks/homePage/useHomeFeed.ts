@@ -42,6 +42,7 @@ export function useHomeFeed({
   const [posts, setPosts] = useState<any[]>([]);
   const [reels, setReels] = useState<any[]>([]);
   const [feedResponse, setFeedResponse] = useState<any>(null);
+  const protectedPostIdsRef = useRef<Set<number>>(new Set());
 
   const [starredUsers, setStarredUsers] =
     useState<Set<number>>(new Set());
@@ -433,20 +434,26 @@ export function useHomeFeed({
 
             // Backend items take priority.
             firstPage.forEach(post => {
-              if (post?.reactKey) {
-                const old =
-                  map.get(
-                    post.reactKey
-                  );
-
-                map.set(
-                  post.reactKey,
-                  {
-                    ...old,
-                    ...post,
-                  }
-                );
+              if (!post?.reactKey) {
+                return;
               }
+            
+              const postId =
+                Number(post.id);
+           
+              if (
+                postId &&
+                protectedPostIdsRef.current.has(
+                  postId
+                )
+              ) {
+                return;
+              }
+            
+              map.set(
+                post.reactKey,
+                post
+              );
             });
 
             return [...map.values()];
@@ -466,12 +473,26 @@ export function useHomeFeed({
             });
 
             newItems.forEach((post: any) => {
-              if (post?.reactKey) {
-                map.set(
-                  post.reactKey,
-                  post
-                );
+              if (!post?.reactKey) {
+                return;
               }
+            
+              const postId =
+                Number(post.id);
+            
+              if (
+                postId &&
+                protectedPostIdsRef.current.has(
+                  postId
+                )
+              ) {
+                return;
+              }
+            
+              map.set(
+                post.reactKey,
+                post
+              );
             });
 
             return [...map.values()];
@@ -566,27 +587,36 @@ export function useHomeFeed({
     async (post: any) => {
       const normalizedPost = {
         ...post,
-
+  
         reactKey:
           post.reactKey ??
           `post-${post.id}`,
-
+  
         feed_type:
           post.feed_type ?? "post",
-
+  
         is_starred_by_user:
           starredUsers.has(
             post.user?.id
           ),
       };
-
+  
+      const postId =
+        Number(normalizedPost.id);
+  
+      if (postId) {
+        protectedPostIdsRef.current.add(
+          postId
+        );
+      }
+  
       // Save to IndexedDB.
       await insertFeedPost(
         filter,
         selectedTribe,
         normalizedPost
       );
-
+  
       // Save temporary session copy.
       if (
         typeof window !== "undefined"
@@ -598,20 +628,20 @@ export function useHomeFeed({
           )
         );
       }
-
+  
       // Put immediately at top of UI.
       setPosts(prev => {
         const exists =
           prev.some(
             item =>
               Number(item.id) ===
-              Number(normalizedPost.id)
+              postId
           );
-
+  
         if (exists) {
           return prev;
         }
-
+  
         return [
           normalizedPost,
           ...prev,
@@ -719,6 +749,7 @@ export function useHomeFeed({
       // Invalidate previous requests.
       postsRequestIdRef.current++;
       reelsRequestIdRef.current++;
+      protectedPostIdsRef.current.clear();
 
       hasCacheRef.current =
         false;

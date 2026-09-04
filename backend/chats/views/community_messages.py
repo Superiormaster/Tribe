@@ -41,12 +41,25 @@ def community_message_after(
         if newer else False
     )
 
+    serialized = CommunityMessageSerializer(
+        newer,
+        many=True,
+        context={"request": request},
+    ).data
+    
+    print(
+        "AFTER SERIALIZED REACTIONS:",
+        [
+            {
+                "id": message["id"],
+                "reactions": message.get("reactions"),
+            }
+            for message in serialized
+        ]
+    )
+    
     return Response({
-        "messages": CommunityMessageSerializer(
-            newer,
-            many=True,
-            context={"request": request},
-        ).data,
+        "messages": serialized,
         "hasNewer": has_newer,
     })
 
@@ -59,8 +72,15 @@ def community_message_window(
 
     anchor = request.GET.get("anchor")
 
-    before = int(request.GET.get("before", 25))
-    after = int(request.GET.get("after", 25))
+    before = min(
+        int(request.GET.get("before", 25)),
+        25,
+    )
+    
+    after = min(
+        int(request.GET.get("after", 25)),
+        25,
+    )
 
     base = get_community_messages(
         community_id,
@@ -76,12 +96,14 @@ def community_message_window(
 
         latest.reverse()
 
+        serialized = CommunityMessageSerializer(
+            latest,
+            many=True,
+            context={"request": request},
+        ).data
+        
         return Response({
-            "messages": CommunityMessageSerializer(
-                latest,
-                many=True,
-                context={"request": request},
-            ).data,
+            "messages": serialized,
             "hasOlder": (
                 base.filter(id__lt=latest[0].id).exists()
                 if latest else False
@@ -169,12 +191,25 @@ def community_message_before(
         base.filter(id__lt=older[0].id).exists()
         if older else False
     )
-
+    
+    serialized = CommunityMessageSerializer(
+        older,
+        many=True,
+        context={"request": request},
+    ).data
+    
+    print(
+        "BEFORE SERIALIZED REACTIONS:",
+        [
+            {
+                "id": message["id"],
+                "reactions": message.get("reactions"),
+            }
+            for message in serialized
+        ]
+    )
+    
     return Response({
-        "messages": CommunityMessageSerializer(
-            older,
-            many=True,
-            context={"request": request},
-        ).data,
+        "messages": serialized,
         "hasOlder": has_older,
     })

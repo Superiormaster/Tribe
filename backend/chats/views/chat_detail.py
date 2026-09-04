@@ -1,6 +1,7 @@
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from users.utils import get_user_avatar
 
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -152,11 +153,7 @@ def chat_detail(request, chat_id):
         "other_user": {
             "id": other_user.id,
             "username": other_user.username,
-            "avatar": (
-                request.build_absolute_uri(other_user.avatar)
-                if other_user and other_user.avatar
-                else None
-            ),
+            "avatar": get_user_avatar(other_user),
             "fcm_token": other_user.fcm_token,
         } if other_user else None,
         "is_message_blocked":
@@ -183,6 +180,7 @@ def chat_detail(request, chat_id):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def community_detail(request, community_id):
+    print("🔥 COMMUNITY DETAIL CALLED:", community_id)
     community = get_object_or_404(
         Community,
         id=community_id

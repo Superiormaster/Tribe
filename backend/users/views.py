@@ -10,10 +10,9 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from django.core.cache import cache
 import logging
-from post.models import Post, Repost
 from itertools import chain
 from operator import attrgetter
-from notifications.services import create_notification
+from notifications.createNotification import create_notification
 from notifications.serializers import NotificationSerializer
 from django.core.cache import cache
 from django.contrib.auth import get_user_model
@@ -37,7 +36,7 @@ from django.contrib.auth import login
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
 import requests, uuid
-from post.models import Post, Like
+from post.models import Post, Repost, Like, Share
 from feedback.models import Report
 from post.serializers import PostSerializer
 from django.utils.encoding import force_bytes
@@ -47,13 +46,16 @@ from sib_api_v3_sdk import ApiClient, Configuration
 from sib_api_v3_sdk.api import transactional_emails_api
 from sib_api_v3_sdk.models import SendSmtpEmail
 from users.email_service import *
-from .models import Star, ConnectionRequest, UserDevice, SavedLoginDevice, PrivacySettings, BlockedUser, MutedUser
+from .models import Star, ConnectionRequest, UserDevice, SavedLoginDevice, PrivacySettings, BlockedUser, MutedUser, ProfileView as ProfileViewModel
 from .utils import redis_client
 from django.db.models import Count, Exists, OuterRef, F
 from django.conf import settings
 from math import radians, sin, cos, sqrt, atan2
 
 from .serializers import RegisterSerializer, ProfileSerializer, GoogleAuthSerializer, CustomTokenObtainPairSerializer, PublicProfileSerializer, MiniUserSerializer, PrivacySettingsSerializer, MutedUserSerializer, BlockedUserSerializer, ChangePasswordSerializer
+from notifications.models import (
+    DevicePushToken,
+)
 from communities.models import Tribe, CommunityMembership, Community, CommunityJoinRequest, CommunityBan
 from communities.serializers import TribeDetailSerializer
 
@@ -612,6 +614,22 @@ def profile_view(request, username):
             status=404
         )
 
+    if request.user.id != user.id:
+
+      cooldown = timezone.now() - timedelta(minutes=30)
+  
+      already_viewed = ProfileViewModel.objects.filter(
+          profile=user,
+          viewer=request.user,
+          created_at__gte=cooldown,
+      ).exists()
+  
+      if not already_viewed:
+          ProfileViewModel.objects.create(
+              profile=user,
+              viewer=request.user,
+          )
+
     cache_key = (
         f"profile:{username}:stats:"
         f"{request.user.id}"
@@ -674,73 +692,137 @@ def profile_view(request, username):
 def profile_posts(request, username):
 
     page = int(request.query_params.get("page", 1))
+
     cache_key = (
         f"profile:{username}:feed:"
         f"{request.user.id}:{page}"
     )
 
     cached = redis_client.get(cache_key)
+
     if cached:
         return Response(json.loads(cached))
 
     try:
         user = User.objects.get(username=username)
     except User.DoesNotExist:
-        return Response({"error": "User not found"}, status=404)
-
-    muted_ids, blocked_ids, blocked_me_ids = get_block_filters(request.user)
-
-    if user.id in blocked_ids:
         return Response(
             {"error": "User not found"},
             status=404
         )
-  
-    if user.id in blocked_me_ids:
+
+    muted_ids, blocked_ids, blocked_me_ids = get_block_filters(
+        request.user
+    )
+
+    if user.id in blocked_ids or user.id in blocked_me_ids:
         return Response(
             {"error": "User not found"},
             status=404
         )
-  
+
     privacy_response = enforce_profile_visibility(
         request.user,
         user
     )
-    
+
     if privacy_response:
         return privacy_response
 
-    posts_qs = Post.objects.filter(
-        user=user,
-        is_deleted=False,
-        is_approved=True
-    ).annotate(
-        likes_count=Count("likes", distinct=True),
-        comments_count=Count("comments", distinct=True),
-        is_liked=Exists(
-            Like.objects.filter(
-                post=OuterRef("pk"),
-                user=request.user
-            )
-        ),
-        is_pinned=F("profile_pinned"),
-        pin_order=F("profile_pin_order")
-    ).select_related("user", "community").prefetch_related("likes", "comments", "shares", "media_files").order_by("-profile_pinned", "profile_pin_order", "-created_at")
+    posts_qs = (
+        Post.objects.filter(
+            user=user,
+            is_deleted=False,
+            is_approved=True
+        )
+        .annotate(
+            likes_count=Count(
+                "likes",
+                distinct=True
+            ),
 
-    reposts = Repost.objects.filter(
-        user=user,
-        is_deleted=False,
-        post__is_deleted=False,
-        post__is_approved=True,
-    ).select_related("user", "post", "post__user", "post__community").prefetch_related("post__media_files")
+            comments_count=Count(
+                "comments",
+                filter=Q(
+                    comments__is_deleted=False
+                ),
+                distinct=True
+            ),
+
+            shares_count=Count(
+                "shares",
+                filter=Q(
+                    shares__is_deleted=False,
+                    shares__status="approved"
+                ),
+                distinct=True
+            ),
+
+            repost_count=Count(
+                "reposts",
+                filter=Q(
+                    reposts__is_deleted=False
+                ),
+                distinct=True
+            ),
+
+            is_liked=Exists(
+                Like.objects.filter(
+                    post=OuterRef("pk"),
+                    user=request.user
+                )
+            ),
+
+            is_pinned=F("profile_pinned"),
+            pin_order=F("profile_pin_order")
+        )
+        .select_related(
+            "user",
+            "community"
+        )
+        .prefetch_related(
+            "media_files__asset"
+        )
+        .order_by(
+            "-profile_pinned",
+            "profile_pin_order",
+            "-created_at"
+        )
+    )
+
+    reposts = (
+        Repost.objects.filter(
+            user=user,
+            is_deleted=False,
+            post__is_deleted=False,
+            post__is_approved=True,
+        )
+        .select_related(
+            "user",
+            "post",
+            "post__user",
+            "post__community"
+        )
+        .prefetch_related(
+            "post__media_files__asset"
+        )
+    )
 
     post_items = [
-        {"type": "post", "created_at": p.created_at, "data": p}
+        {
+            "type": "post",
+            "created_at": p.created_at,
+            "data": p
+        }
         for p in posts_qs
     ]
 
     repost_items = [
-        {"type": "repost", "created_at": r.created_at, "data": r}
+        {
+            "type": "repost",
+            "created_at": r.created_at,
+            "data": r
+        }
         for r in reposts
     ]
 
@@ -751,6 +833,7 @@ def profile_posts(request, username):
     )
 
     PAGE_SIZE = 20
+
     start = (page - 1) * PAGE_SIZE
     end = start + PAGE_SIZE
 
@@ -761,53 +844,123 @@ def profile_posts(request, username):
     for item in paged:
 
         if item["type"] == "post":
+
             results.append({
                 "type": "post",
+
                 "data": PostSerializer(
                     item["data"],
-                    context={"request": request}
+                    context={
+                        "request": request
+                    }
                 ).data
             })
 
-        else:
+        elif item["type"] == "repost":
+
             r = item["data"]
 
-            post_obj = Post.objects.filter(id=r.post.id, is_deleted=False, is_approved=True)\
-            .select_related("user", "community")\
-            .annotate(
-                likes_count=Count("likes", distinct=True),
-                comments_count=Count("comments", distinct=True),
-                shares_count=Count("shares", distinct=True),
-                is_liked=Exists(
-                    Like.objects.filter(
-                        post=OuterRef("pk"),
-                        user=request.user
+            post_obj = (
+                Post.objects.filter(
+                    id=r.post_id,
+                    is_deleted=False,
+                    is_approved=True
+                )
+                .select_related(
+                    "user",
+                    "community"
+                )
+                .annotate(
+                    likes_count=Count(
+                        "likes",
+                        distinct=True
+                    ),
+
+                    comments_count=Count(
+                        "comments",
+                        filter=Q(
+                            comments__is_deleted=False
+                        ),
+                        distinct=True
+                    ),
+
+                    shares_count=Count(
+                        "shares",
+                        filter=Q(
+                            shares__is_deleted=False,
+                            shares__status="approved"
+                        ),
+                        distinct=True
+                    ),
+
+                    repost_count=Count(
+                        "reposts",
+                        filter=Q(
+                            reposts__is_deleted=False
+                        ),
+                        distinct=True
+                    ),
+
+                    is_liked=Exists(
+                        Like.objects.filter(
+                            post=OuterRef("pk"),
+                            user=request.user
+                        )
                     )
                 )
-            ).first()
+                .first()
+            )
 
-            results.append({
-                "type": "repost",
-                "data": {
-                    "id": r.id,
-                    "created_at": r.created_at,
-                    "repost_type": r.repost_type,
-                    "quote_text": r.quote_text,
-                    "user": MiniUserSerializer(r.user, context={"request": request}).data,
-                    "post": PostSerializer(post_obj, context={"request": request}).data
-                }
-            })
+            if post_obj:
+
+                results.append({
+                    "type": "repost",
+
+                    "data": {
+                        "id": r.id,
+                        "created_at": r.created_at,
+                        "repost_type": r.repost_type,
+                        "quote_text": r.quote_text,
+
+                        "user": MiniUserSerializer(
+                            r.user,
+                            context={
+                                "request": request
+                            }
+                        ).data,
+
+                        "post": PostSerializer(
+                            post_obj,
+                            context={
+                                "request": request
+                            }
+                        ).data
+                    }
+                })
 
     response = {
         "results": results,
-        "next": f"?page={page + 1}" if len(combined) > end else None,
-        "previous": page - 1 if page > 1 else None
+
+        "next": (
+            f"?page={page + 1}"
+            if len(combined) > end
+            else None
+        ),
+
+        "previous": (
+            page - 1
+            if page > 1
+            else None
+        )
     }
 
     redis_client.setex(
         cache_key,
         60,
-        json.dumps(response, default=str)
+        json.dumps(
+            response,
+            default=str
+        )
     )
 
     return Response(response)
@@ -1996,6 +2149,35 @@ def ping(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def save_fcm_token(request):
-    request.user.fcm_token = request.data.get("token")
-    request.user.save(update_fields=["fcm_token"])
-    return Response({"success": True})
+
+    token = request.data.get("token")
+    platform = request.data.get(
+        "platform",
+        "web",
+    )
+    browser = request.data.get(
+        "browser",
+        "",
+    )
+
+    if not token:
+        return Response(
+            {"detail": "Token is required"},
+            status=400
+        )
+
+    device, created = DevicePushToken.objects.update_or_create(
+        token=token,
+        defaults={
+            "user": request.user,
+            "platform": platform,
+            "browser": browser,
+            "last_seen_at": timezone.now(),
+            "is_active": True,
+        }
+    )
+
+    return Response({
+        "success": True,
+        "created": created,
+    })

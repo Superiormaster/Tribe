@@ -56,14 +56,6 @@ class Chat(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    class Meta:
-      constraints = [
-          models.UniqueConstraint(
-              fields=["chat_key"],
-              name="unique_private_chat"
-          )
-      ]
-
     def clean(self):
       if (
         self.chat_type == "private"

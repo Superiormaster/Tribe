@@ -10,8 +10,11 @@ from chats.models import (
     ChatParticipant,
     Message,
 )
+MAX_PINNED_COMMUNITY_MESSAGES = 5
 
-from communities.models import CommunityMembership
+from communities.models import CommunityMembership, Community
+from communities.views import is_moderator
+from chats.serializers import CommunityMessageSerializer
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
@@ -137,9 +140,16 @@ def pin_community_chat(request, chat_id):
         ).count(),
     })
 
+def serialize_pinned_message(message, request):
+    return CommunityMessageSerializer(
+        message,
+        context={"request": request},
+    ).data
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def pin_community_message(request, message_id):
+
     message = get_object_or_404(
         Message,
         id=message_id,
@@ -148,13 +158,52 @@ def pin_community_message(request, message_id):
 
     community = message.community
 
-    if not can_moderate(
+    if not is_moderator(
         request.user,
         community,
     ):
         return Response(
-            {"error": "Only moderators can pin messages."},
+            {
+                "detail": (
+                    "Only the community owner, admins and "
+                    "moderators can pin messages."
+                )
+            },
             status=403,
+        )
+
+    # Already pinned
+    if message.is_pinned:
+        return Response({
+            "success": True,
+            "is_pinned": True,
+            "message": serialize_pinned_message(message, request),
+            "pinned_count": Message.objects.filter(
+                community=community,
+                is_pinned=True,
+            ).count(),
+        })
+
+    # Maximum pinned messages
+    pinned_count = Message.objects.filter(
+        community=community,
+        is_pinned=True,
+    ).count()
+
+    if pinned_count >= MAX_PINNED_COMMUNITY_MESSAGES:
+        return Response(
+            {
+                "success": False,
+                "error": (
+                    f"You can only pin up to "
+                    f"{MAX_PINNED_COMMUNITY_MESSAGES} messages "
+                    f"in this community."
+                ),
+                "code": "PIN_LIMIT_REACHED",
+                "max_pinned": MAX_PINNED_COMMUNITY_MESSAGES,
+                "pinned_count": pinned_count,
+            },
+            status=400,
         )
 
     message.is_pinned = True
@@ -169,14 +218,20 @@ def pin_community_message(request, message_id):
         ]
     )
 
+    pinned_count += 1
+
     return Response({
         "success": True,
         "is_pinned": True,
+        "message": serialize_pinned_message(message, request),
+        "pinned_count": pinned_count,
+        "max_pinned": MAX_PINNED_COMMUNITY_MESSAGES,
     })
 
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def unpin_community_message(request, message_id):
+
     message = get_object_or_404(
         Message,
         id=message_id,
@@ -185,12 +240,17 @@ def unpin_community_message(request, message_id):
 
     community = message.community
 
-    if not can_moderate(
+    if not is_moderator(
         request.user,
         community,
     ):
         return Response(
-            {"error": "Only moderators can unpin messages."},
+            {
+                "detail": (
+                    "Only the community owner, admins and "
+                    "moderators can unpin messages."
+                )
+            },
             status=403,
         )
 
@@ -206,7 +266,54 @@ def unpin_community_message(request, message_id):
         ]
     )
 
+    pinned_count = Message.objects.filter(
+        community=community,
+        is_pinned=True,
+    ).count()
+
     return Response({
         "success": True,
         "is_pinned": False,
+        "message_id": message.id,
+        "pinned_count": pinned_count,
+        "max_pinned": MAX_PINNED_COMMUNITY_MESSAGES,
+    })
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def community_pinned_messages(request, community_id):
+
+    community = get_object_or_404(
+        Community,
+        id=community_id,
+    )
+
+    if not CommunityMembership.objects.filter(
+        community=community,
+        user=request.user,
+    ).exists():
+        return Response(
+            {"detail": "You are not a member of this community."},
+            status=403,
+        )
+
+    messages = Message.objects.filter(
+        community=community,
+        is_pinned=True,
+    ).select_related(
+        "sender",
+        "pinned_by",
+    ).order_by(
+        "-pinned_at"
+    )
+
+    serializer = CommunityMessageSerializer(
+        messages,
+        many=True,
+        context={"request": request},
+    )
+
+    return Response({
+        "results": serializer.data,
+        "count": messages.count(),
     })

@@ -10,6 +10,7 @@ from ..services.r2 import (
     abort_multipart_upload,
     list_multipart_parts,
     media_response,
+    resume_multipart_media_upload,
 )
 
 def get_user_media_asset(request, media_id):
@@ -465,29 +466,43 @@ class ResumeMultipartUploadView(APIView):
             return Response(
                 media_response(
                     asset,
-
                     completed=True,
                 )
+            )
+
+        if asset.status == "cancelled":
+
+            return Response(
+                {
+                    "success": False,
+                    "completed": False,
+                    "media_id": asset.media_id,
+                    "status": "cancelled",
+                    "detail":
+                        "Media upload was cancelled.",
+                },
+                status=400,
             )
 
         if not asset.multipart_upload_id:
 
             return Response(
                 {
+                    "success": False,
+                    "completed": False,
+                    "media_id": asset.media_id,
+                    "status": asset.status,
                     "detail":
-                        "Multipart upload session "
-                        "does not exist."
+                        "Multipart upload session does not exist.",
                 },
                 status=400,
             )
 
         try:
-            uploaded_parts = (
-                get_uploaded_parts(
-                    object_key=
-                        asset.object_key,
-                    upload_id=
-                        asset.multipart_upload_id,
+
+            resume_data = (
+                resume_multipart_media_upload(
+                    asset=asset,
                 )
             )
 
@@ -495,47 +510,105 @@ class ResumeMultipartUploadView(APIView):
 
             return Response(
                 {
+                    "success": False,
+                    "completed": False,
+                    "media_id": asset.media_id,
+                    "status": asset.status,
                     "detail":
-                        "Could not inspect "
-                        "multipart upload.",
+                        "Could not inspect multipart upload.",
                     "error":
                         str(exc),
                 },
                 status=500,
             )
 
+        uploaded_parts = (
+            resume_data.get(
+                "uploaded_parts",
+                []
+            )
+        )
+
+        remaining_parts = (
+            resume_data.get(
+                "remaining_parts",
+                []
+            )
+        )
+
         uploaded_bytes = sum(
-            part["size"]
+            int(
+                part.get(
+                    "size",
+                    0
+                )
+            )
             for part in uploaded_parts
         )
 
-        return Response({
-            "success": True,
-            "completed":
-                False,
-            "media_id":
-                asset.media_id,
-            "object_key":
-                asset.object_key,
-            "upload_id":
-                asset.multipart_upload_id,
-            "original_url":
-                asset.original_url,
-            "thumbnail_url":
-                asset.thumbnail_url,
-            "media_type":
-                asset.media_type,
-            "content_type":
-                asset.content_type,
-            "size":
-                asset.size,
-            "status":
-                asset.status,
-            "uploaded_bytes":
-                uploaded_bytes,
-            "uploaded_parts":
-                uploaded_parts,
-        })
+        remaining_bytes = max(
+            0,
+            asset.size - uploaded_bytes,
+        )
+
+        return Response(
+            {
+                "success": True,
+                "completed": False,
+                "media_id":
+                    asset.media_id,
+                "object_key":
+                    asset.object_key,
+                "upload_id":
+                    asset.multipart_upload_id,
+                "original_url":
+                    (
+                        asset.original_url[0]
+                        if isinstance(
+                            asset.original_url,
+                            list
+                        ) and asset.original_url
+                        else asset.original_url
+                    ),
+                "thumbnail_url":
+                    (
+                        asset.thumbnail_url[0]
+                        if isinstance(
+                            asset.thumbnail_url,
+                            list
+                        ) and asset.thumbnail_url
+                        else asset.thumbnail_url
+                    ),
+                "media_type":
+                    asset.media_type,
+                "content_type":
+                    asset.content_type,
+                "size":
+                    asset.size,
+                "status":
+                    asset.status,
+                "part_size":
+                    resume_data[
+                        "part_size"
+                    ],
+                "part_count":
+                    resume_data[
+                        "part_count"
+                    ],
+                # Already uploaded to R2
+                "uploaded_bytes":
+                    uploaded_bytes,
+                "uploaded_parts":
+                    uploaded_parts,
+                # Still needs uploading
+                "remaining_bytes":
+                    remaining_bytes,
+                "remaining_part_count":
+                    len(remaining_parts),
+                "remaining_parts":
+                    remaining_parts,
+            }
+        )
 
 class MediaUploadDebugView(APIView):
     permission_classes = [IsAuthenticated]

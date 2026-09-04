@@ -1,7 +1,7 @@
 import { openDB } from "idb";
 import type { DBSchema, IDBPDatabase } from "idb";
 
-const DB_VERSION = 18;
+const DB_VERSION = 19;
 const DB_NAME = "tribe-chat-db";
 
 export const MESSAGE_STORE = "messages";

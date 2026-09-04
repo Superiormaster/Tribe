@@ -285,18 +285,23 @@ class UserDevice(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
 
-class UserInterest(models.Model):
-    user = models.ForeignKey(
+class ProfileView(models.Model):
+    profile = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name="interests",
+        related_name="profile_views"
     )
 
-    topic = models.CharField(max_length=50)
+    viewer = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="profiles_viewed"
+    )
 
-    score = models.FloatField(default=0)
-
-    updated_at = models.DateTimeField(auto_now=True)
+    created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ("user", "topic")
+        indexes = [
+            models.Index(fields=["profile", "created_at"]),
+            models.Index(fields=["viewer", "created_at"]),
+        ]

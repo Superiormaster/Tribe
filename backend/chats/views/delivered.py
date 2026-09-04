@@ -291,8 +291,19 @@ def mark_community_delivered(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def mark_community_seen(request):
+    print("REQUEST DATA:", request.data)
+    print("REQUEST CONTENT TYPE:", request.content_type)
+
     community_id = request.data.get("communityId")
     user = request.user
+
+    print(
+        "MARK COMMUNITY SEEN:",
+        "community_id=",
+        community_id,
+        "user=",
+        user.id,
+    )
 
     try:
         chat = Chat.objects.get(
@@ -330,9 +341,11 @@ def mark_community_seen(request):
     previous_id = (
         state.last_seen_message_id or 0
     )
-
+    
     if latest.id > previous_id:
+    
         state.last_seen_message = latest
+    
         state.save(
             update_fields=[
                 "last_seen_message",

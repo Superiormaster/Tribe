@@ -1,8 +1,9 @@
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-
+from users.utils import get_user_avatar
 from django.contrib.auth import get_user_model
+from django.db import transaction, IntegrityError
 
 from chats.models import (
     Chat,
@@ -14,7 +15,7 @@ from django.shortcuts import get_object_or_404
 
 from chats.serializers import ChatSerializer
 
-from communities.models import CommunityMembership
+from communities.models import CommunityMembership, Community
 from chats.utils.chat_key import generate_chat_key
 
 User = get_user_model()
@@ -92,11 +93,7 @@ def get_or_create_chat(request):
         "other_user": {
             "id": user2.id,
             "username": user2.username,
-            "avatar": getattr(  
-                user2,  
-                "avatar",  
-                None  
-            ),
+            "avatar": get_user_avatar(user2),
         },
     
         "is_message_blocked": is_message_blocked,
@@ -154,3 +151,104 @@ def retrieve_community_chat(request, chat_id):
             "chat": serializer.data,
         }
     )
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def get_or_create_community_chat(request):
+    community_id = request.data.get("community_id")
+
+    if not community_id:
+        return Response(
+            {"detail": "community_id is required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    community = get_object_or_404(
+        Community,
+        id=community_id,
+    )
+
+    membership = CommunityMembership.objects.filter(
+        community=community,
+        user=request.user,
+    ).first()
+
+    if not membership:
+        return Response(
+            {
+                "detail": "You are not a member of this community."
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    chat_key = f"community_{community.id}"
+
+    try:
+        with transaction.atomic():
+
+            chat, created = Chat.objects.get_or_create(
+                chat_key=chat_key,
+                defaults={
+                    "chat_type": "community",
+                    "community": community,
+                    "created_by": community.owner,
+                },
+            )
+
+            # Safety check in case an old/bad record already exists
+            if chat.chat_type != "community":
+                return Response(
+                    {
+                        "detail": "Invalid chat type for community."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            participant, _ = ChatParticipant.objects.get_or_create(
+                chat=chat,
+                user=request.user,
+            )
+
+            if participant.deleted:
+                participant.deleted = False
+                participant.deleted_at = None
+                participant.save(
+                    update_fields=[
+                        "deleted",
+                        "deleted_at",
+                    ]
+                )
+
+    except IntegrityError:
+        # Another request may have created the same community
+        # chat concurrently.
+        chat = Chat.objects.get(
+            chat_key=chat_key
+        )
+
+        participant, _ = ChatParticipant.objects.get_or_create(
+            chat=chat,
+            user=request.user,
+        )
+
+        if participant.deleted:
+            participant.deleted = False
+            participant.deleted_at = None
+            participant.save(
+                update_fields=[
+                    "deleted",
+                    "deleted_at",
+                ]
+            )
+
+        created = False
+
+    return Response({
+        "created": created,
+        "chat": {
+            "id": chat.id,
+            "chat_key": chat.chat_key,
+            "type": chat.chat_type,
+            "community_id": community.id,
+        },
+    })

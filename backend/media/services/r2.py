@@ -5,6 +5,7 @@ import uuid
 import math
 
 import boto3
+
 from botocore.config import Config
 from django.core.exceptions import ValidationError
 
@@ -133,6 +134,13 @@ def detect_media_type(content_type: str, media_type_hint=None):
 
 
 def get_extension(content_type: str):
+
+    content_type = (
+        content_type
+        .split(";", 1)[0]
+        .strip()
+        .lower()
+    )
 
     mapping = {
         "image/jpeg": "jpg",
@@ -370,8 +378,19 @@ def initialize_media_upload(
     user,
     content_type: str,
     size: int = 0,
+    duration=None,
+    upload_mode: str,
     media_type_hint: str = None,
 ):
+
+    if upload_mode not in {
+        "direct",
+        "multipart",
+    }:
+        raise ValidationError(
+            "upload_mode must be direct or multipart."
+        )
+
     media_type = detect_media_type(
         content_type,
         media_type_hint,
@@ -382,19 +401,21 @@ def initialize_media_upload(
         media_type,
         content_type,
     )
-  
-    if size > 0:
 
-        part_count = calculate_part_count(
-            size
-        )
+    original_url = get_public_url(
+        object_key
+    )
 
-        upload_id = create_multipart_upload(
+    # ========================================================
+    # DIRECT UPLOAD
+    # ========================================================
+
+    if upload_mode == "direct":
+
+        upload_url = create_presigned_upload_url(
             object_key=object_key,
             content_type=content_type,
         )
-  
-        original_url = get_public_url(object_key)
 
         asset = MediaAsset.objects.create(
             user=user,
@@ -404,37 +425,49 @@ def initialize_media_upload(
             media_type=media_type,
             content_type=content_type,
             size=size or 0,
-            multipart_upload_id=upload_id,
-            multipart_part_size=PART_SIZE,
+            duration=duration,
             status="pending",
         )
 
-        part_urls = create_presigned_part_urls(
-            object_key=object_key,
-            upload_id=upload_id,
-            part_count=part_count,
-        )
-
         return {
-            "media_id": asset.media_id,
-            "object_key": asset.object_key,
-            "original_url": original_url,
-            "media_type": asset.media_type,
-            "content_type": asset.content_type,
-            "status": asset.status,
-            "multipart": True,
-            "upload_id": upload_id,
-            "part_size": PART_SIZE,
-            "part_count": part_count,
-            "parts": part_urls,
+            "media_id":
+                asset.media_id,
+            "upload_url":
+                upload_url,
+            "object_key":
+                asset.object_key,
+            "original_url":
+                original_url,
+            "media_type":
+                asset.media_type,
+            "content_type":
+                asset.content_type,
+            "status":
+                asset.status,
+            "multipart":
+                False,
+            "duration": asset.duration,
+            "upload_mode":
+                "direct",
         }
 
-    upload_url = create_presigned_upload_url(
+    # ========================================================
+    # MULTIPART UPLOAD
+    # ========================================================
+
+    if size <= 0:
+        raise ValidationError(
+            "File size is required for multipart upload."
+        )
+
+    part_count = calculate_part_count(
+        size
+    )
+
+    upload_id = create_multipart_upload(
         object_key=object_key,
         content_type=content_type,
     )
-
-    original_url = get_public_url(object_key)
 
     asset = MediaAsset.objects.create(
         user=user,
@@ -443,18 +476,45 @@ def initialize_media_upload(
         original_url=[original_url],
         media_type=media_type,
         content_type=content_type,
-        size=size or 0,
-        status="uploaded",
+        duration=duration,
+        size=size,
+        multipart_upload_id=upload_id,
+        multipart_part_size=PART_SIZE,
+        status="pending",
+    )
+
+    part_urls = create_presigned_part_urls(
+        object_key=object_key,
+        upload_id=upload_id,
+        part_count=part_count,
     )
 
     return {
-        "media_id": asset.media_id,
-        "upload_url": upload_url,
-        "object_key": asset.object_key,
-        "original_url": asset.original_url,
-        "media_type": asset.media_type,
-        "content_type": asset.content_type,
-        "status": asset.status,
+        "media_id":
+            asset.media_id,
+        "object_key":
+            asset.object_key,
+        "original_url":
+            original_url,
+        "media_type":
+            asset.media_type,
+        "content_type":
+            asset.content_type,
+        "duration": asset.duration,
+        "status":
+            asset.status,
+        "multipart":
+            True,
+        "upload_mode":
+            "multipart",
+        "upload_id":
+            upload_id,
+        "part_size":
+            PART_SIZE,
+        "part_count":
+            part_count,
+        "parts":
+            part_urls,
     }
 
 def resume_multipart_media_upload(
@@ -465,6 +525,16 @@ def resume_multipart_media_upload(
     if not asset.multipart_upload_id:
         raise ValidationError(
             "This media does not have a multipart upload."
+        )
+
+    if not asset.multipart_part_size:
+        raise ValidationError(
+            "Multipart part size is missing."
+        )
+
+    if not asset.size:
+        raise ValidationError(
+            "Media file size is missing."
         )
 
     uploaded_parts = list_multipart_parts(
@@ -478,7 +548,8 @@ def resume_multipart_media_upload(
     }
 
     part_count = math.ceil(
-        asset.size / asset.multipart_part_size
+        asset.size /
+        asset.multipart_part_size
     )
 
     remaining_parts = []
@@ -492,23 +563,35 @@ def resume_multipart_media_upload(
             continue
 
         remaining_parts.append({
-          "part_number": part_number,
-          "upload_url": create_presigned_part_url(
-              object_key=asset.object_key,
-              upload_id=asset.multipart_upload_id,
-              part_number=part_number,
-          ),
+            "part_number": part_number,
+            "upload_url":
+                create_presigned_part_url(
+                    object_key=
+                        asset.object_key,
+                    upload_id=
+                        asset.multipart_upload_id,
+                    part_number=
+                        part_number,
+                ),
         })
 
     return {
-        "media_id": asset.media_id,
-        "object_key": asset.object_key,
-        "upload_id": asset.multipart_upload_id,
-        "part_size": asset.multipart_part_size,
-        "part_count": part_count,
-        "uploaded_parts": uploaded_parts,
-        "remaining_parts": remaining_parts,
-        "status": asset.status,
+        "media_id":
+            asset.media_id,
+        "object_key":
+            asset.object_key,
+        "upload_id":
+            asset.multipart_upload_id,
+        "part_size":
+            asset.multipart_part_size,
+        "part_count":
+            part_count,
+        "uploaded_parts":
+            uploaded_parts,
+        "remaining_parts":
+            remaining_parts,
+        "status":
+            asset.status,
     }
 
 def first_url(value):

@@ -1,40 +1,34 @@
 from celery import shared_task
+from django.db import transaction
 
-from .models import Post
+from post.models import Post
+
 from ai.topics import extract_topics
-import os
+from notifications.recommendations.interests import update_interests
+
 
 @shared_task(
     bind=True,
     max_retries=3,
     default_retry_delay=10,
 )
-def extract_post_topics_task(self, post_id):
-
-    print(
-        "OPENAI KEY PRESENT:",
-        bool(os.getenv("OPENAI_API_KEY")),
-        flush=True,
-    )
+def extract_post_topics_task(
+    self,
+    post_id,
+):
 
     try:
-        post = Post.objects.get(
-            id=post_id
+        post = (
+            Post.objects
+            .select_related("user")
+            .get(id=post_id)
         )
 
     except Post.DoesNotExist:
-        return {
-            "success": False,
-            "error": "Post not found.",
-        }
-
-    print(
-        "=== TOPIC TASK STARTED ===",
-        post_id,
-        flush=True,
-    )
+        return
 
     try:
+
         text = " ".join(
             filter(
                 None,
@@ -45,53 +39,44 @@ def extract_post_topics_task(self, post_id):
         )
 
         if not text.strip():
+
             post.topics = []
 
             post.save(
-                update_fields=[
-                    "topics",
-                ]
+                update_fields=["topics"]
             )
 
-            return {
-                "success": True,
-                "topics": [],
-            }
+            return
 
-        topics = extract_topics(text)
+        topics = extract_topics(
+            text
+        )
 
         post.topics = topics
 
         post.save(
-            update_fields=[
-                "topics",
-            ]
-        )
-  
-        print(
-            "=== TOPIC TASK COMPLETED ===",
-            {
-                "post_id": post_id,
-                "topics": topics,
-            },
-            flush=True,
+            update_fields=["topics"]
         )
 
-        return {
-            "success": True,
-            "post_id": post.id,
-            "topics": topics,
-        }
+        # Author's own interests should also learn
+        # from what they publish.
+        if topics:
+
+            update_interests(
+                user=post.user,
+                topics=topics,
+                weight=2,
+            )
+
+        # Generate/update recommendations
+        transaction.on_commit(
+            lambda: generate_user_recommendations.delay(
+                post.user_id
+            )
+        )
 
     except Exception as exc:
 
-        print(
-            "=== TOPIC EXTRACTION TASK FAILED ===",
-            repr(exc),
-            flush=True,
-        )
-
         raise self.retry(
             exc=exc,
-            countdown=10,
         )

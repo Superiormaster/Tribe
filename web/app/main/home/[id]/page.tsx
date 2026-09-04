@@ -445,7 +445,7 @@ export default function PostPage() {
   
         <button
           onClick={handleBookmark}
-          className={`flex text-xs items-center gap-1 font-medium transition ${
+          className={`flex text-xs items-center gap-1 text-gray-500 font-medium transition ${
             bookmarked
               ? "text-blue-600"
               : ""

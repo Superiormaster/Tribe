@@ -20,7 +20,7 @@ urlpatterns = [
     ),
 
     path(
-        "joined-communities/",
+        "communities/joined-communities/",
         joined_communities,
         name="joined-communities",
     ),

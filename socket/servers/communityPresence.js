@@ -1,37 +1,69 @@
-// servers/communityPresence.js
-
-const communityUsers = new Map();
-// communityId -> Set(userId)
+const communities = new Map();
 
 function joinCommunity(communityId, userId) {
-  if (!communityUsers.has(communityId)) {
-    communityUsers.set(communityId, new Set());
+  if (!communities.has(communityId)) {
+    communities.set(
+      communityId,
+      new Set()
+    );
   }
 
-  communityUsers.get(communityId).add(userId);
+  communities
+    .get(communityId)
+    .add(userId);
 }
 
 function leaveCommunity(communityId, userId) {
-  if (!communityUsers.has(communityId)) return;
+  const users =
+    communities.get(communityId);
 
-  communityUsers.get(communityId).delete(userId);
+  if (!users) return;
 
-  if (communityUsers.get(communityId).size === 0) {
-    communityUsers.delete(communityId);
+  users.delete(userId);
+
+  if (!users.size) {
+    communities.delete(communityId);
   }
 }
 
-function getCommunityCount(communityId) {
-  return communityUsers.get(communityId)?.size || 0;
+function getCommunityCount(
+  communityId,
+  excludeUserId = null
+) {
+  const users =
+    communities.get(communityId);
+
+  if (!users) {
+    return 0;
+  }
+
+  if (!excludeUserId) {
+    return users.size;
+  }
+
+  let count = 0;
+
+  for (const userId of users) {
+    if (
+      Number(userId) !==
+      Number(excludeUserId)
+    ) {
+      count++;
+    }
+  }
+
+  return count;
 }
 
-function getAll() {
-  return communityUsers;
+function getCommunityUsers(communityId) {
+  return Array.from(
+    communities.get(communityId) || []
+  );
 }
 
 module.exports = {
   joinCommunity,
   leaveCommunity,
   getCommunityCount,
-  getAll,
+  getCommunityUsers,
 };

@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Image,
   Modal,
-  StyleSheet,
   Text,
   View,
 } from "react-native";
@@ -26,23 +25,26 @@ export default function AuthLoading({
       animationType="fade"
       statusBarTranslucent
     >
-      <View style={styles.overlay}>
-        <View style={styles.container}>
-          <View style={styles.logoContainer}>
+      <View className="flex-1 items-center justify-center bg-black/60">
+        <View className="items-center">
+          {/* Tribe Logo */}
+          <View className="h-16 w-16 overflow-hidden rounded-full border border-indigo-600">
             <Image
               source={tribe2}
-              style={styles.logo}
               resizeMode="cover"
+              className="h-full w-full"
             />
           </View>
 
+          {/* Loading */}
           <ActivityIndicator
             size="large"
             color="#FFFFFF"
-            style={styles.loader}
+            className="mt-6"
           />
 
-          <Text style={styles.text}>
+          {/* Text */}
+          <Text className="mt-5 text-lg font-medium text-white">
             {text}
           </Text>
         </View>
@@ -50,41 +52,3 @@ export default function AuthLoading({
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  container: {
-    alignItems: "center",
-  },
-
-  logoContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "#4F46E5",
-  },
-
-  logo: {
-    width: "100%",
-    height: "100%",
-  },
-
-  loader: {
-    marginTop: 24,
-  },
-
-  text: {
-    marginTop: 20,
-    color: "#FFFFFF",
-    fontSize: 18,
-    fontWeight: "500",
-  },
-});

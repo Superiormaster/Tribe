@@ -1,7 +1,7 @@
 # notifications/urls.py
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import NotificationListView, MarkReadView, MarkAllReadView, NotificationSettingsMeView
+from .views import NotificationListView, MarkReadView, MarkAllReadView, NotificationPreferenceView, NotificationUnreadCountView, FlushPushDeliveriesView
 
 router = DefaultRouter()
 
@@ -10,8 +10,18 @@ urlpatterns = [
     path("<int:pk>/read/", MarkReadView.as_view()),
     path("read-all/", MarkAllReadView.as_view()),
     path(
-        "settings/me/",
-        NotificationSettingsMeView.as_view()
+        "unread-count/",
+        NotificationUnreadCountView.as_view(),
+        name="notification-unread-count",
+    ),
+    path(
+        "push/flush/",
+        FlushPushDeliveriesView.as_view(),
+    ),
+    path(
+        "preferences/",
+        NotificationPreferenceView.as_view(),
+        name="notification-preferences",
     ),
 
     path("", include(router.urls)),

@@ -135,7 +135,6 @@ class PostMedia(models.Model):
     def __str__(self):
         return f"{self.media_type} for post {self.post.id}"
 
-
 class Like(models.Model):
     post = models.ForeignKey(Post, related_name='likes', on_delete=models.CASCADE)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
@@ -146,7 +145,6 @@ class Like(models.Model):
 
     def __str__(self):
         return f"{self.user.username} liked {self.post.id}"
-
 
 class Comment(models.Model):
     post = models.ForeignKey(Post, related_name='comments', on_delete=models.CASCADE)
@@ -179,7 +177,6 @@ class Comment(models.Model):
     def __str__(self):
         return f"{self.user.username} commented on {self.post.id}"
 
-
 class CommentLike(models.Model):
     comment = models.ForeignKey(
         "Comment",
@@ -194,14 +191,6 @@ class CommentLike(models.Model):
 
     def __str__(self):
         return f"{self.user.username} liked comment {self.comment.id}"
-
-
-class Share(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)
-    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="shares")
-    platform = models.CharField(max_length=50, default="unknown")
-    created_at = models.DateTimeField(auto_now_add=True)
-
 
 class Feed(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -240,3 +229,141 @@ class Repost(models.Model):
 
     class Meta:
         unique_together = ("user", "post", "repost_type")
+
+class Share(models.Model):
+    SHARE_STATUS = (
+        ("pending", "Pending Approval"),
+        ("approved", "Approved"),
+        ("rejected", "Rejected"),
+    )
+  
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="shares"
+    )
+
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE,
+        related_name="shares"
+    )
+
+    community = models.ForeignKey(
+        Community,
+        on_delete=models.CASCADE,
+        related_name="shares",
+        null=True,
+        blank=True
+    )
+  
+    platform = models.CharField(max_length=50, default="unknown")
+
+    status = models.CharField(
+        max_length=20,
+        choices=SHARE_STATUS,
+        default="approved"
+    )
+  
+    # Optional message added when sharing
+    share_text = models.TextField(
+        blank=True,
+        null=True
+    )
+
+    is_deleted = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+      constraints = [
+          models.UniqueConstraint(
+              fields=[
+                  "user",
+                  "post",
+                  "community",
+              ],
+              condition=models.Q(
+                  community__isnull=False,
+                  is_deleted=False,
+              ),
+              name="unique_active_community_share",
+          ),
+      ]
+  
+      ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user} shared Post {self.post_id} to {self.community}"
+
+class Bookmark(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="bookmarks"
+    )
+
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE,
+        related_name="bookmarks"
+    )
+
+    repost = models.ForeignKey(
+        Repost,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="bookmarks",
+    )
+
+    share = models.ForeignKey(
+        Share,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="bookmarks",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+      constraints = [
+          models.UniqueConstraint(
+              fields=["user", "post"],
+              condition=models.Q(
+                  repost__isnull=True,
+                  share__isnull=True,
+              ),
+              name="unique_user_post_bookmark",
+          ),
+          models.UniqueConstraint(
+              fields=["user", "repost"],
+              condition=models.Q(
+                  repost__isnull=False,
+              ),
+              name="unique_user_repost_bookmark",
+          ),
+          models.UniqueConstraint(
+              fields=["user", "share"],
+              condition=models.Q(
+                  share__isnull=False,
+              ),
+              name="unique_user_share_bookmark",
+          ),
+      ]
+  
+      indexes = [
+          models.Index(
+              fields=["post", "created_at"]
+          ),
+          models.Index(
+              fields=["user", "created_at"]
+          ),
+          models.Index(
+              fields=["repost", "created_at"]
+          ),
+          models.Index(
+              fields=["share", "created_at"]
+          ),
+      ]

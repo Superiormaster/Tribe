@@ -2,24 +2,11 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 from post.models import Like, Comment
 from users.models import Star, ConnectionRequest
-from .models import Notification, NotificationSettings
+from .models import Notification
 from django.contrib.auth import get_user_model
-from .services import create_notification
+from .createNotification import create_notification
 
 User = get_user_model()
-
-
-@receiver(post_save, sender=User)
-def create_notification_settings(
-    sender,
-    instance,
-    created,
-    **kwargs
-):
-    if created:
-        NotificationSettings.objects.create(
-            user=instance
-        )
 
 # --- LIKE SIGNAL ---
 @receiver(post_save, sender=Like)

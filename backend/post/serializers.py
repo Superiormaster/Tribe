@@ -1,16 +1,27 @@
 from rest_framework import serializers
 from users.models import User, Star
 from communities.models import Community, CommunityMembership, CommunityBan
-from .models import Post, PostMedia, Like, Comment, Feed, Repost
+from .models import Post, PostMedia, Like, Comment, Bookmark, Feed, Repost, Share
 from users.serializers import UserSerializer
-from django.db.models import Count, Exists, OuterRef
+from django.db.models import Count, Exists, OuterRef, Q
 from users.utils import get_user_avatar
 
 def get_annotated_post_queryset(user):
     return Post.objects.select_related("user", "community").annotate(
         likes_count=Count("likes", distinct=True),
-        comments_count=Count("comments", distinct=True),
-        shares_count=Count("shares", distinct=True),
+        comments_count=Count(
+            "comments",
+            filter=Q(comments__is_deleted=False),
+            distinct=True,
+        ),
+        shares_count=Count(
+            "shares",
+            filter=Q(
+                shares__is_deleted=False,
+                shares__status="approved",
+            ),
+            distinct=True,
+        ),
         is_liked=Exists(
             Like.objects.filter(post=OuterRef("pk"), user=user)
         )
@@ -68,6 +79,7 @@ class PostSerializer(serializers.ModelSerializer):
     likes_count = serializers.IntegerField(read_only=True)
     comments_count = serializers.IntegerField(read_only=True)
     is_liked = serializers.BooleanField(read_only=True)
+    is_bookmarked = serializers.SerializerMethodField()
     is_edited = serializers.BooleanField(read_only=True)
     profile_pinned = serializers.BooleanField(read_only=True)
     profile_pin_order = serializers.IntegerField(read_only=True)
@@ -112,6 +124,7 @@ class PostSerializer(serializers.ModelSerializer):
             "community_pinned",
             "community_pin_order",
             "is_approved",
+            "is_bookmarked",
         ]
         read_only_fields = ['id', 'user', 'created_at', 'updated_at', 'media_files']
 
@@ -147,6 +160,43 @@ class PostSerializer(serializers.ModelSerializer):
             is_deleted=False,
         ).exists()
   
+    def get_is_bookmarked(self, obj):
+      request = self.context.get("request")
+  
+      if not request or not request.user.is_authenticated:
+          return False
+  
+      if "bookmark_target" in self.context:
+          target = self.context["bookmark_target"]
+  
+          if target["type"] == "repost":
+              return Bookmark.objects.filter(
+                  user=request.user,
+                  repost_id=target["id"],
+              ).exists()
+  
+          if target["type"] == "share":
+              return Bookmark.objects.filter(
+                  user=request.user,
+                  share_id=target["id"],
+              ).exists()
+  
+          if target["type"] == "post":
+              return Bookmark.objects.filter(
+                  user=request.user,
+                  post_id=obj.id,
+                  repost__isnull=True,
+                  share__isnull=True,
+              ).exists()
+  
+      # Normal standalone post
+      return Bookmark.objects.filter(
+          user=request.user,
+          post_id=obj.id,
+          repost__isnull=True,
+          share__isnull=True,
+      ).exists()
+
     def get_is_starred_by_user(self, obj):
       user = self.context["request"].user
   
@@ -290,9 +340,129 @@ class RepostSerializer(serializers.ModelSerializer):
         )
         return PostSerializer(
             annotated_post,
-            context=self.context
+            context={
+                **self.context,
+                "bookmark_target": {
+                    "type": "repost",
+                    "id": obj.id,
+                },
+            }
         ).data
 
     def get_is_starred_by_user(self, obj):
         starred_ids = self.context.get("starred_ids", set())
         return obj.user.id in starred_ids
+
+class ShareSerializer(serializers.ModelSerializer):
+
+    user = UserSerializer(read_only=True)
+    post = serializers.SerializerMethodField()
+    is_starred_by_user = serializers.SerializerMethodField()
+    type = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Share
+        fields = [
+            "id",
+            "type",
+            "user",
+            "post",
+            "community",
+            "share_text",
+            "status",
+            "created_at",
+            "is_starred_by_user",
+        ]
+
+    def get_type(self, obj):
+        return "share"
+
+    def get_post(self, obj):
+        annotated_post = (
+            get_annotated_post_queryset(self.context["request"].user)
+            .filter(id=obj.post_id)
+            .first()
+        )
+        return PostSerializer(
+            annotated_post,
+            context={
+                **self.context,
+                "bookmark_target": {
+                    "type": "share",
+                    "id": obj.id,
+                },
+            }
+        ).data
+
+    def get_is_starred_by_user(self, obj):
+        starred_ids = self.context.get("starred_ids", set())
+        return obj.user.id in starred_ids
+
+class BookmarkSerializer(serializers.ModelSerializer):
+    type = serializers.SerializerMethodField()
+    post = serializers.SerializerMethodField()
+    repost = serializers.SerializerMethodField()
+    share = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Bookmark
+        fields = [
+            "id",
+            "type",
+            "post",
+            "repost",
+            "share",
+            "created_at",
+        ]
+        read_only_fields = [
+            "id",
+            "created_at",
+        ]
+
+    def get_type(self, obj):
+      if obj.share_id:
+          return "share"
+  
+      if obj.repost_id:
+          return "repost"
+  
+      if obj.post_id:
+          if obj.post.content_type == "short_video":
+              return "reel"
+  
+          return "post"
+  
+      return "post"
+
+    def get_post(self, obj):
+        """
+        Always return the underlying original post.
+
+        This is used by PostCard/ReelCard and is also
+        embedded inside repost/share serializers.
+        """
+        if not obj.post:
+            return None
+
+        return PostSerializer(
+            obj.post,
+            context=self.context,
+        ).data
+
+    def get_repost(self, obj):
+        if not obj.repost:
+            return None
+
+        return RepostSerializer(
+            obj.repost,
+            context=self.context,
+        ).data
+
+    def get_share(self, obj):
+        if not obj.share:
+            return None
+
+        return ShareSerializer(
+            obj.share,
+            context=self.context,
+        ).data

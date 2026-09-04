@@ -193,6 +193,7 @@ class CommunitySerializer(serializers.ModelSerializer):
             'id',
             'name',
             'description',
+            'rules',
             "cover_image_url",
             "intro_video_url",
 

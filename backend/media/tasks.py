@@ -8,7 +8,6 @@ from .services.thumbnail import (
     generate_video_thumbnail,
 )
 
-
 @shared_task(
     bind=True,
     max_retries=3,
@@ -27,14 +26,12 @@ def generate_media_thumbnail(self, asset_id):
             "error": "Media asset not found.",
         }
 
-    # Don't process cancelled/invalid uploads
     if asset.status != "ready":
         return {
             "success": False,
             "error": "Media is not ready.",
         }
 
-    # Already generated
     if asset.thumbnail_url:
         return {
             "success": True,
@@ -42,6 +39,15 @@ def generate_media_thumbnail(self, asset_id):
         }
 
     try:
+
+        asset.thumbnail_status = "processing"
+
+        asset.save(
+            update_fields=[
+                "thumbnail_status",
+                "updated_at",
+            ]
+        )
 
         if asset.media_type in {
             "image",
@@ -61,6 +67,15 @@ def generate_media_thumbnail(self, asset_id):
 
         else:
 
+            asset.thumbnail_status = "none"
+
+            asset.save(
+                update_fields=[
+                    "thumbnail_status",
+                    "updated_at",
+                ]
+            )
+
             return {
                 "success": True,
                 "thumbnail_url": None,
@@ -71,15 +86,16 @@ def generate_media_thumbnail(self, asset_id):
                 "Thumbnail generator returned no URL."
             )
 
-        # IMPORTANT:
-        # Use the same data type your MediaAsset model expects.
         asset.thumbnail_url = [
             thumbnail_url
         ]
 
+        asset.thumbnail_status = "ready"
+
         asset.save(
             update_fields=[
                 "thumbnail_url",
+                "thumbnail_status",
                 "updated_at",
             ]
         )
@@ -92,6 +108,28 @@ def generate_media_thumbnail(self, asset_id):
         }
 
     except Exception as exc:
+
+        if self.request.retries >= self.max_retries:
+
+            asset.thumbnail_status = "failed"
+
+            asset.save(
+                update_fields=[
+                    "thumbnail_status",
+                    "updated_at",
+                ]
+            )
+
+        else:
+
+            asset.thumbnail_status = "processing"
+
+            asset.save(
+                update_fields=[
+                    "thumbnail_status",
+                    "updated_at",
+                ]
+            )
 
         raise self.retry(
             exc=exc,

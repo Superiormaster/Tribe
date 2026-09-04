@@ -4,6 +4,7 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from random import shuffle
 from rest_framework.views import APIView
+from users.utils import get_user_avatar
 from media.services.media import get_owned_ready_asset
 from users.utils import redis_client
 from .services import build_community_feed, serialize_community_feed
@@ -13,16 +14,16 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.pagination import PageNumberPagination
 from itertools import chain
 from operator import attrgetter
-from post.models import Repost, Post
+from post.models import Repost, Share, Post
 from feedback.models import Report
-from post.serializers import RepostSerializer, PostSerializer
+from post.serializers import RepostSerializer, PostSerializer, ShareSerializer
 from .permissions import IsSuperUser
 from .models import Community, Tribe, CommunityMembership, CommunityInvite, CommunityJoinRequest, CommunityMute, CommunityBan, TribeRequest
 from .serializers import TribeRequestSerializer, CommunitySerializer, CommunityMuteSerializer, CommunityBanSerializer, InviteUserSerializer, CommunityInviteSerializer, TribeDetailSerializer, TribeSerializer, JoinedCommunitySerializer
 from users.models import Star
 from rest_framework.pagination import PageNumberPagination
 from django.shortcuts import get_object_or_404
-from notifications.services import create_notification
+from notifications.createNotification import create_notification
 from users.models import User
 from django.db.models import Q, Case, When, Value, IntegerField, Count, F
 from django.utils.timezone import now
@@ -378,7 +379,7 @@ class CommunityViewSet(viewsets.ModelViewSet):
             data.append({
                 "id": community.owner.id,
                 "username": community.owner.username,
-                "avatar": getattr(community.owner, "avatar", None),
+                "avatar": get_user_avatar(community.owner),
                 "role": "owner",
             })
     
@@ -391,7 +392,7 @@ class CommunityViewSet(viewsets.ModelViewSet):
             data.append({
                 "id": m.user.id,
                 "username": m.user.username,
-                "avatar": getattr(m.user, "avatar", None),
+                "avatar": get_user_avatar(m.user),
                 "role": m.role,
                 "muted": m.user_id in muted_ids,
                 "banned": m.user_id in banned_ids,
@@ -559,17 +560,114 @@ class CommunityViewSet(viewsets.ModelViewSet):
                 "user": {
                     "id": r.user.id,
                     "username": r.user.username,
-                    "avatar": (
-                        r.user.avatar.url
-                        if hasattr(r.user.avatar, "url")
-                        else r.user.avatar
-                    )
+                    "avatar": get_user_avatar(r.user)
                 }
             }
             for r in result
         ]
     
         return paginator.get_paginated_response(data)
+
+    @action(detail=True, methods=["get"])
+    def info(self, request, pk=None):
+        community = self.get_object()
+    
+        staff = (
+            CommunityMembership.objects
+            .filter(
+                community=community,
+                role__in=["admin", "moderator"],
+            )
+            .select_related("user")
+        )
+    
+        admins = []
+        moderators = []
+    
+        for membership in staff:
+            person = {
+                "id": membership.user.id,
+                "username": membership.user.username,
+                "avatar": get_user_avatar(membership.user),
+            }
+    
+            if membership.role == "admin":
+                admins.append(person)
+    
+            elif membership.role == "moderator":
+                moderators.append(person)
+    
+        return Response({
+            "id": community.id,
+            "name": community.name,
+            "description": community.description,
+            "rules": community.rules or "",
+            "website": community.website,
+    
+            "cover_image_url": (
+                community.cover_image_asset.original_url
+                if community.cover_image_asset
+                else community.cover_image
+            ),
+    
+            "intro_video_url": (
+                community.intro_video_asset.original_url
+                if community.intro_video_asset
+                else community.intro_video
+            ),
+    
+            "owner": {
+                "id": community.owner.id,
+                "username": community.owner.username,
+                "avatar": get_user_avatar(community.owner),
+            },
+    
+            "admins": admins,
+    
+            "moderators": moderators,
+    
+            "members_count": (
+                CommunityMembership.objects
+                .filter(community=community)
+                .exclude(
+                    user_id__in=CommunityBan.objects.filter(
+                        community=community
+                    ).values_list("user_id", flat=True)
+                )
+                .count()
+            ),
+    
+            "my_role": get_user_role(
+                request.user,
+                community
+            ),
+    
+            "joined": CommunityMembership.objects.filter(
+                community=community,
+                user=request.user,
+            ).exclude(
+                user_id__in=CommunityBan.objects.filter(
+                    community=community
+                ).values_list("user_id", flat=True)
+            ).exists(),
+    
+            "permissions": {
+                "allow_reels": (
+                    community.tribe.allow_reels
+                    if community.tribe and not community.override_reels
+                    else False
+                ),
+    
+                "allow_videos": (
+                    community.allow_videos
+                    if community.override_reels
+                    else not (
+                        community.tribe
+                        and community.tribe.allow_reels
+                    )
+                ),
+            },
+        })
 
     @action(detail=True, methods=["get", "patch"], url_path="settings")
     def community_settings(self, request, pk=None):
@@ -593,6 +691,7 @@ class CommunityViewSet(viewsets.ModelViewSet):
                 "name": community.name,
                 "description": community.description,
                 "website": community.website,
+                "rules": community.rules or "",
             
                 # New MediaAsset system
                 "cover_image_url": (
@@ -686,6 +785,8 @@ class CommunityViewSet(viewsets.ModelViewSet):
                 "status": "updated",
         
                 "id": community.id,
+                "rules": community.rules or "",
+                "website": community.website or "",
         
                 "cover_image_url": (
                     community.cover_image_asset.original_url
@@ -764,124 +865,394 @@ class CommunityViewSet(viewsets.ModelViewSet):
 
     @action(
         detail=True,
-        methods=["post"]
+        methods=["post"],
+        url_path="refresh-feed"
     )
     def refresh_feed(self, request, pk=None):
     
+        community = self.get_object()
         user = request.user
-    
+  
         key = f"feed_seed:{user.id}"
     
         redis_client.delete(key)
+  
+        seed = session_seed(user)
+  
+        joined_communities = (
+            CommunityMembership.objects
+            .filter(user=user)
+            .values_list(
+                "community_id",
+                flat=True
+            )
+        )
     
-        return Response({
-            "success": True
-        })
+        starred_ids = set(
+            Star.objects
+            .filter(star=user)
+            .values_list(
+                "starred_user_id",
+                flat=True
+            )
+        )
+    
+        two_weeks_ago = (
+            timezone.now() -
+            timedelta(days=14)
+        )
+    
+        items = build_community_feed(
+            community=community,
+            user=user,
+            joined_communities=joined_communities,
+            starred_ids=starred_ids,
+            two_weeks_ago=two_weeks_ago,
+        )
+  
+        data = serialize_community_feed(
+            items,
+            request,
+            starred_ids
+        )
+  
+        paginator = FeedPagination()
+    
+        result_page = paginator.paginate_queryset(
+            data,
+            request
+        )
+    
+        response = paginator.get_paginated_response(
+            result_page
+        )
+    
+        response.data["refreshed"] = True
+        response.data["seed"] = seed
+    
+        return response
 
     @action(detail=True, methods=["get"])
     def pending_posts(self, request, pk=None):
-        community = self.get_object()
     
-        if is_moderator(request.user, community):
+        community = self.get_object()
+        user = request.user
+    
+        is_mod = is_moderator(user, community)
+  
+        if is_mod:
             posts = Post.objects.filter(
                 community=community,
                 is_approved=False,
-                is_rejected=False
-            ).order_by("-created_at")
+                is_rejected=False,
+                is_deleted=False,
+            ).select_related(
+                "user",
+                "community",
+            ).prefetch_related(
+                "media_files__asset"
+            )
         else:
             posts = Post.objects.filter(
                 community=community,
-                user=request.user,
+                user=user,
                 is_approved=False,
-                is_rejected=False
-            ).order_by("-created_at")
+                is_rejected=False,
+                is_deleted=False,
+            ).select_related(
+                "user",
+                "community",
+            ).prefetch_related(
+                "media_files__asset"
+            )
     
+        if is_mod:
+            shares = Share.objects.filter(
+                community=community,
+                is_deleted=False,
+                status="pending",
+                post__is_deleted=False,
+            ).select_related(
+                "user",
+                "community",
+                "post",
+                "post__user",
+            ).prefetch_related(
+                "post__media_files__asset"
+            )
+        else:
+            shares = Share.objects.filter(
+                community=community,
+                user=user,
+                is_deleted=False,
+                status="pending",
+                post__is_deleted=False,
+            ).select_related(
+                "user",
+                "community",
+                "post",
+                "post__user",
+            ).prefetch_related(
+                "post__media_files__asset"
+            )
+  
+        items = []
+    
+        for post in posts:
+            items.append({
+                "type": "post",
+                "data": post,
+                "created_at": post.created_at,
+            })
+    
+        for share in shares:
+            items.append({
+                "type": "share",
+                "data": share,
+                "created_at": share.created_at,
+            })
+  
+        items.sort(
+            key=lambda item: (
+                item["created_at"].timestamp()
+                if item["created_at"]
+                else 0
+            ),
+            reverse=True,
+        )
+  
         paginator = FeedPagination()
+    
         result_page = paginator.paginate_queryset(
-            posts,
+            items,
             request
         )
   
-        serializer = PostSerializer(
-            result_page,
-            many=True,
-            context={"request": request}
-        )
+        serialized = []
+    
+        for item in result_page:
+    
+            if item["type"] == "post":
+    
+                data = PostSerializer(
+                    item["data"],
+                    context={
+                        "request": request
+                    }
+                ).data
+    
+                data["type"] = "post"
+    
+                serialized.append(data)
+    
+            elif item["type"] == "share":
+    
+                data = ShareSerializer(
+                    item["data"],
+                    context={
+                        "request": request
+                    }
+                ).data
+    
+                data["type"] = "share"
+    
+                serialized.append(data)
     
         return paginator.get_paginated_response(
-            serializer.data
+            serialized
         )
-
+ 
     @action(detail=True, methods=["get"])
     def approved_posts(self, request, pk=None):
+    
         community = self.get_object()
     
         if is_moderator(request.user, community):
-            posts = Post.objects.filter(
-                community=community,
-                is_approved=True
+    
+            posts = (
+                Post.objects
+                .filter(
+                    community=community,
+                    is_approved=True,
+                    is_deleted=False,
+                )
+                .select_related(
+                    "user",
+                    "community",
+                )
             )
-  
-            reposts = Repost.objects.filter(
-                community=community
+    
+            reposts = (
+                Repost.objects
+                .filter(
+                    community=community,
+                    post__is_deleted=False,
+                    post__is_approved=True,
+                )
+                .select_related(
+                    "user",
+                    "community",
+                    "post",
+                    "post__user",
+                )
             )
+    
+            shares = (
+                Share.objects
+                .filter(
+                    community=community,
+                    is_deleted=False,
+                    status="approved",
+                    post__is_deleted=False,
+                )
+                .select_related(
+                    "user",
+                    "community",
+                    "post",
+                    "post__user",
+                )
+            )
+    
         else:
-            posts = Post.objects.filter(
-                community=community,
-                user=request.user,
-                is_approved=True
+    
+            posts = (
+                Post.objects
+                .filter(
+                    community=community,
+                    user=request.user,
+                    is_approved=True,
+                    is_deleted=False,
+                )
+                .select_related(
+                    "user",
+                    "community",
+                )
             )
-  
-  
-            reposts = Repost.objects.filter(
-                community=community,
-                user=request.user
+    
+            reposts = (
+                Repost.objects
+                .filter(
+                    community=community,
+                    user=request.user,
+                    post__is_deleted=False,
+                    post__is_approved=True,
+                )
+                .select_related(
+                    "user",
+                    "community",
+                    "post",
+                    "post__user",
+                )
             )
-  
+    
+            shares = (
+                Share.objects
+                .filter(
+                    community=community,
+                    user=request.user,
+                    is_deleted=False,
+                    status="approved",
+                    post__is_deleted=False,
+                )
+                .select_related(
+                    "user",
+                    "community",
+                    "post",
+                    "post__user",
+                )
+            )
+    
+        items = []
+    
         for post in posts:
-            post.type = "post"
+    
+            items.append({
+                "type": "post",
+                "data": post,
+                "created_at": post.created_at,
+            })
     
         for repost in reposts:
-            repost.type = "repost"
     
-        combined = list(chain(posts, reposts))
-  
-        combined.sort(
-            key=lambda x: (
-                getattr(x, "community_pinned", False),
-                -(getattr(x, "community_pin_order", 0) or 0),
-                x.created_at.timestamp() if x.created_at else 0,
+            items.append({
+                "type": "repost",
+                "data": repost,
+                "created_at": repost.created_at,
+            })
+    
+        for share in shares:
+    
+            items.append({
+                "type": "share",
+                "data": share,
+                "created_at": share.created_at,
+            })
+    
+        items.sort(
+            key=lambda item: (
+                getattr(
+                    item["data"],
+                    "community_pinned",
+                    False
+                ),
+    
+                -(
+                    getattr(
+                        item["data"],
+                        "community_pin_order",
+                        0
+                    ) or 0
+                ),
+    
+                item["created_at"].timestamp()
+                if item["created_at"]
+                else 0,
             ),
             reverse=True
         )
-
+    
         paginator = FeedPagination()
+    
         result_page = paginator.paginate_queryset(
-            combined,
+            items,
             request
         )
-
+    
         serialized_data = []
-
+    
         for item in result_page:
-
-          if item.type == "post":
-  
-              serialized_data.append(
-                  PostSerializer(
-                      item,
-                      context={"request": request}
-                  ).data
-              )
-  
-          else:
-  
-              serialized_data.append(
-                  RepostSerializer(
-                      item,
-                      context={"request": request}
-                  ).data
-              )
+    
+            obj = item["data"]
+            item_type = item["type"]
+    
+            if item_type == "post":
+    
+                data = PostSerializer(
+                    obj,
+                    context={"request": request}
+                ).data
+    
+            elif item_type == "repost":
+    
+                data = RepostSerializer(
+                    obj,
+                    context={"request": request}
+                ).data
+    
+            elif item_type == "share":
+    
+                data = ShareSerializer(
+                    obj,
+                    context={"request": request}
+                ).data
+    
+            else:
+                continue
+    
+            data["type"] = item_type
+            data["id"] = obj.id
+    
+            serialized_data.append(data)
     
         return paginator.get_paginated_response(
             serialized_data
@@ -892,31 +1263,130 @@ class CommunityViewSet(viewsets.ModelViewSet):
         community = self.get_object()
     
         if is_moderator(request.user, community):
-            posts = Post.objects.filter(
-                community=community,
-                is_rejected=True
-            ).order_by("-created_at")
+    
+            posts = (
+                Post.objects
+                .filter(
+                    community=community,
+                    is_rejected=True,
+                    is_deleted=False,
+                )
+                .select_related(
+                    "user",
+                    "community",
+                )
+            )
+    
+            shares = (
+                Share.objects
+                .filter(
+                    community=community,
+                    is_deleted=False,
+                    status="rejected",
+                    post__is_deleted=False,
+                )
+                .select_related(
+                    "user",
+                    "community",
+                    "post",
+                    "post__user",
+                )
+            )
+    
         else:
-            posts = Post.objects.filter(
-                community=community,
-                user=request.user,
-                is_rejected=True
-            ).order_by("-created_at")
+    
+            posts = (
+                Post.objects
+                .filter(
+                    community=community,
+                    user=request.user,
+                    is_rejected=True,
+                    is_deleted=False,
+                )
+                .select_related(
+                    "user",
+                    "community",
+                )
+            )
+    
+            shares = (
+                Share.objects
+                .filter(
+                    community=community,
+                    user=request.user,
+                    is_deleted=False,
+                    status="rejected",
+                    post__is_deleted=False,
+                )
+                .select_related(
+                    "user",
+                    "community",
+                    "post",
+                    "post__user",
+                )
+            )
+    
+        items = []
+    
+        for post in posts:
+            items.append({
+                "type": "post",
+                "data": post,
+                "created_at": post.created_at,
+            })
+    
+        for share in shares:
+            items.append({
+                "type": "share",
+                "data": share,
+                "created_at": share.created_at,
+            })
+    
+        items.sort(
+            key=lambda item: (
+                item["created_at"].timestamp()
+                if item["created_at"]
+                else 0
+            ),
+            reverse=True,
+        )
     
         paginator = FeedPagination()
+    
         result_page = paginator.paginate_queryset(
-            posts,
+            items,
             request
         )
-
-        serializer = PostSerializer(
-            result_page,
-            many=True,
-            context={"request": request}
-        )
+   
+        serialized_data = []
+    
+        for item in result_page:
+    
+            if item["type"] == "post":
+    
+                data = PostSerializer(
+                    item["data"],
+                    context={"request": request}
+                ).data
+    
+            elif item["type"] == "share":
+    
+                data = ShareSerializer(
+                    item["data"],
+                    context={"request": request}
+                ).data
+    
+            else:
+                continue
+    
+            # Important for frontend
+            data["type"] = item["type"]
+            data["id"] = item["data"].id
+    
+            serialized_data.append(data)
     
         return paginator.get_paginated_response(
-            serializer.data
+            serialized_data
         )
 
     @action(detail=True, methods=["post"])
@@ -1028,63 +1498,365 @@ class CommunityViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"])
     def bulk_delete(self, request):
-        ids = request.data.get("ids", [])
+        items = request.data.get("items", [])
+        community_id = request.data.get("community_id")
     
-        if not isinstance(ids, list):
-            return Response({"error": "Invalid"}, status=400)
+        if not isinstance(items, list):
+            return Response(
+                {"error": "Invalid items"},
+                status=400
+            )
     
-        Post.objects.filter(id__in=ids, user=request.user).update(is_deleted=True)
+        if not community_id:
+            return Response(
+                {"error": "community_id is required"},
+                status=400
+            )
     
-        return Response({"status": "deleted"})
-  
-    @action(detail=False, methods=["post"])
-    def moderate(self, request):
-        post_ids = request.data.get("post_ids", [])
-        action = request.data.get("action")
+        community = Community.objects.filter(
+            id=community_id
+        ).first()
     
-        if not post_ids or not action:
-            return Response({"error": "Invalid request"}, status=400)
+        if not community:
+            return Response(
+                {"error": "Community not found"},
+                status=404
+            )
     
-        posts = Post.objects.filter(id__in=post_ids)
+        user = request.user
     
-        updated_posts = []
+        # Must be owner/admin/moderator to bulk-delete
+        if not can_manage_posts(user, community):
+            return Response(
+                {"error": "You do not have permission to delete content"},
+                status=403
+            )
     
-        for post in posts:
-            community = post.community
+        deleted_posts = []
+        deleted_shares = []
+        deleted_reposts = []
     
-            if not can_manage_posts(request.user, community):
-              continue
+        for item in items:
+            item_type = item.get("type")
+            item_id = item.get("id")
     
-            if action == "approve":
-                post.is_approved = True
-                post.is_rejected = False
+            if not item_type or not item_id:
+                continue
     
-                create_notification(
-                    type="post_approved",
-                    recipient=post.user,
-                    actors=[request.user],
+            # -------------------------
+            # POST
+            # -------------------------
+            if item_type == "post":
+    
+                post = Post.objects.filter(
+                    id=item_id,
                     community=community,
-                    post=post
+                    is_deleted=False,
+                ).select_related("user").first()
+    
+                if not post:
+                    continue
+    
+                # Owner of the post can delete it.
+                # Admin/moderator can also delete it.
+                if (
+                    post.user != user
+                    and not can_manage_posts(user, community)
+                ):
+                    continue
+    
+                post.is_deleted = True
+                post.save(update_fields=["is_deleted"])
+    
+                deleted_posts.append(post.id)
+    
+                # Notify when someone other than the author deletes it
+                if post.user_id != user.id:
+    
+                    create_notification(
+                        type="post_deleted_by_admin",
+                        recipient=post.user,
+                        actors=[user],
+                        community=community,
+                        post=post,
+                    )
+    
+            # -------------------------
+            # SHARE
+            # -------------------------
+            elif item_type == "share":
+    
+                share = Share.objects.filter(
+                    id=item_id,
+                    community=community,
+                    is_deleted=False,
+                ).select_related(
+                    "user",
+                    "post",
+                ).first()
+    
+                if not share:
+                    continue
+    
+                if (
+                    share.user != user
+                    and not can_manage_posts(user, community)
+                ):
+                    continue
+    
+                share.is_deleted = True
+                share.save(
+                    update_fields=["is_deleted"]
                 )
     
-            elif action == "reject":
-                post.is_rejected = True
-                post.is_approved = False
+                deleted_shares.append(share.id)
     
-                create_notification(
-                    type="post_rejected",
-                    recipient=post.user,
-                    actors=[request.user],
+                if share.user_id != user.id:
+    
+                    create_notification(
+                        type="post_deleted_by_admin",
+                        recipient=share.user,
+                        actors=[user],
+                        community=community,
+                        post=share.post,
+                    )
+    
+            # -------------------------
+            # REPOST
+            # -------------------------
+            elif item_type == "repost":
+    
+                repost = Repost.objects.filter(
+                    id=item_id,
                     community=community,
-                    post=post
+                    is_deleted=False,
+                ).select_related(
+                    "user",
+                    "post",
+                ).first()
+    
+                if not repost:
+                    continue
+    
+                if (
+                    repost.user != user
+                    and not can_manage_posts(user, community)
+                ):
+                    continue
+    
+                repost.is_deleted = True
+                repost.save(
+                    update_fields=["is_deleted"]
                 )
     
-            post.save()
-            updated_posts.append(post.id)
+                deleted_reposts.append(repost.id)
+    
+                if repost.user_id != user.id:
+    
+                    create_notification(
+                        type="post_deleted_by_admin",
+                        recipient=repost.user,
+                        actors=[user],
+                        community=community,
+                        post=repost.post,
+                    )
     
         return Response({
-            "status": "done",
-            "updated": updated_posts
+            "success": True,
+            "deleted": {
+                "posts": deleted_posts,
+                "shares": deleted_shares,
+                "reposts": deleted_reposts,
+            }
+        })
+  
+    @action(
+        detail=False,
+        methods=["post"]
+    )
+    def moderate(self, request):
+    
+        user = request.user
+    
+        items = request.data.get("items", [])
+        action = request.data.get("action")
+    
+        if action not in ["approve", "reject"]:
+            return Response(
+                {
+                    "error": "Invalid moderation action"
+                },
+                status=400
+            )
+    
+        if not items:
+            return Response(
+                {
+                    "error": "No items supplied"
+                },
+                status=400
+            )
+    
+        approved_posts = []
+        rejected_posts = []
+    
+        approved_shares = []
+        rejected_shares = []
+    
+        for item in items:
+    
+            item_type = item.get("type")
+            item_id = item.get("id")
+    
+            if not item_type or not item_id:
+                continue
+   
+            if item_type == "post":
+    
+                post = (
+                    Post.objects
+                    .filter(
+                        id=item_id,
+                        is_deleted=False,
+                    )
+                    .select_related("community", "user")
+                    .first()
+                )
+    
+                if not post:
+                    continue
+    
+                if not can_manage_posts(
+                    user,
+                    post.community
+                ):
+                    continue
+    
+                if action == "approve":
+    
+                    post.is_approved = True
+                    post.is_rejected = False
+    
+                    post.save(
+                        update_fields=[
+                            "is_approved",
+                            "is_rejected",
+                        ]
+                    )
+    
+                    create_notification(
+                        type="post_approved",
+                        recipient=post.user,
+                        actors=[user],
+                        community=post.community,
+                        post=post
+                    )
+    
+                    approved_posts.append(post.id)
+    
+                else:
+    
+                    post.is_rejected = True
+                    post.is_approved = False
+    
+                    post.save(
+                        update_fields=[
+                            "is_rejected",
+                            "is_approved",
+                        ]
+                    )
+    
+                    create_notification(
+                        type="post_rejected",
+                        recipient=post.user,
+                        actors=[user],
+                        community=post.community,
+                        post=post
+                    )
+    
+                    rejected_posts.append(post.id)
+    
+            elif item_type == "share":
+    
+                share = (
+                    Share.objects
+                    .filter(
+                        id=item_id,
+                        is_deleted=False,
+                        status="pending",
+                    )
+                    .select_related(
+                        "community",
+                        "user",
+                        "post",
+                    )
+                    .first()
+                )
+    
+                if not share:
+                    continue
+    
+                if not can_manage_posts(
+                    user,
+                    share.community
+                ):
+                    continue
+    
+                if action == "approve":
+    
+                    share.status = "approved"
+    
+                    share.save(
+                        update_fields=[
+                            "status"
+                        ]
+                    )
+    
+                    create_notification(
+                        type="post_approved",
+                        recipient=share.user,
+                        actors=[user],
+                        community=share.community,
+                        post=share.post
+                    )
+    
+                    approved_shares.append(
+                        share.id
+                    )
+    
+                else:
+    
+                    share.status = "rejected"
+    
+                    share.save(
+                        update_fields=[
+                            "status"
+                        ]
+                    )
+    
+                    create_notification(
+                        type="post_rejected",
+                        recipient=share.user,
+                        actors=[user],
+                        community=share.community,
+                        post=share.post
+                    )
+    
+                    rejected_shares.append(
+                        share.id
+                    )
+    
+        return Response({
+            "success": True,
+            "action": action,
+            "approved": {
+                "posts": approved_posts,
+                "shares": approved_shares,
+            },
+            "rejected": {
+                "posts": rejected_posts,
+                "shares": rejected_shares,
+            },
         })
 
     def get_permissions(self):

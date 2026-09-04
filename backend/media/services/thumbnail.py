@@ -89,31 +89,59 @@ def generate_image_thumbnail(asset):
 
 def generate_video_thumbnail(asset):
     """
-    Use FFmpeg to extract a frame from the video.
+    Download the video directly from R2 using object_key,
+    extract a frame with FFmpeg, then upload the thumbnail
+    back to R2.
 
-    The video is read directly from its public R2 URL,
-    so Django does not need to download the entire video.
+    FFmpeg never needs to access the public media URL.
     """
 
-    video_url = (
-        asset.original_url[0]
-        if isinstance(asset.original_url, list)
-        else asset.original_url
-    )
-
-    if not video_url:
+    if not asset.object_key:
         raise ValueError(
-            "Media asset has no original URL."
+            "Media asset has no object key."
         )
 
-    with tempfile.NamedTemporaryFile(
-        suffix=".jpg",
-        delete=False,
-    ) as temp_file:
-
-        output_path = temp_file.name
+    input_path = None
+    output_path = None
 
     try:
+        with tempfile.NamedTemporaryFile(
+            suffix=".mp4",
+            delete=False,
+        ) as input_file:
+
+            input_path = input_file.name
+
+        response = r2_client.get_object(
+            Bucket=R2_BUCKET_NAME,
+            Key=asset.object_key,
+        )
+
+        try:
+            with open(
+                input_path,
+                "wb",
+            ) as video_file:
+
+                while True:
+                    chunk = response["Body"].read(
+                        1024 * 1024
+                    )
+
+                    if not chunk:
+                        break
+
+                    video_file.write(chunk)
+
+        finally:
+            response["Body"].close()
+
+        with tempfile.NamedTemporaryFile(
+            suffix=".jpg",
+            delete=False,
+        ) as thumbnail_file:
+
+            output_path = thumbnail_file.name
 
         command = [
             "ffmpeg",
@@ -124,9 +152,9 @@ def generate_video_thumbnail(asset):
             "-ss",
             "1",
 
-            # Input
+            # LOCAL INPUT
             "-i",
-            video_url,
+            input_path,
 
             # Extract one frame
             "-frames:v",
@@ -198,7 +226,14 @@ def generate_video_thumbnail(asset):
 
     finally:
 
-        try:
-            os.remove(output_path)
-        except OSError:
-            pass
+        if input_path:
+            try:
+                os.remove(input_path)
+            except OSError:
+                pass
+
+        if output_path:
+            try:
+                os.remove(output_path)
+            except OSError:
+                pass

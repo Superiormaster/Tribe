@@ -95,6 +95,10 @@ class Community(models.Model):
         on_delete=models.SET_NULL,
         related_name="community_intro_videos",
     )
+    rules = models.TextField(
+        blank=True,
+        default="",
+    )
     require_post_approval = models.BooleanField(default=False)
     join_approval_required = models.BooleanField(
         default=False

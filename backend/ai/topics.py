@@ -1,29 +1,41 @@
 import json
 
-from .client import openai_chat
+from ai.client import openai_chat
 
 
 def extract_topics(text):
 
-    prompt = f"""
-Extract up to five important topics from this post.
+    if not text:
+        return []
 
-Return ONLY JSON.
+    prompt = f"""
+Extract up to five important topics from this social media post.
+
+Rules:
+- Return short topics.
+- Use lowercase.
+- Avoid generic words like "post", "people", "social media".
+- Prefer specific subjects, entities, sports, entertainment,
+  technology, politics, lifestyle, etc.
+- Return ONLY JSON.
 
 {{
-    "topics":[]
+    "topics": []
 }}
 
 Text:
 
 \"\"\"
-{text}
+{text[:5000]}
 \"\"\"
 """
 
     result = openai_chat(
         prompt,
-        system="You extract topics from social media posts.",
+        system=(
+            "You extract useful topic labels from "
+            "social media posts."
+        ),
         model="gpt-4.1-mini",
     )
 
@@ -31,7 +43,6 @@ Text:
         return []
 
     try:
-
         start = result.find("{")
         end = result.rfind("}") + 1
 
@@ -44,16 +55,14 @@ Text:
             [],
         )
 
-        return [
-            t.lower().strip()
-            for t in topics
-            if t
-        ][:5]
+        return list(
+            dict.fromkeys(
+                topic.strip().lower()
+                for topic in topics
+                if isinstance(topic, str)
+                and topic.strip()
+            )
+        )[:5]
 
-    except Exception as e:
-
-        print(e)
-
-        print(result)
-
+    except Exception:
         return []

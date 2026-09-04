@@ -3,12 +3,9 @@
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 
-
 class CommentConsumer(AsyncWebsocketConsumer):
-
     async def connect(self):
 
-        # authenticated user from JWT middleware
         user = self.scope.get("user")
 
         # reject unauthenticated users

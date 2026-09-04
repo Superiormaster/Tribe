@@ -12,11 +12,17 @@ from .views import (
     react_message,
     retrieve_community_chat,
     livekit_token,
+    report_community,
     report,
     unmute_chat,
     mute_chat,
+    CommunityMessagePushView,
+    get_or_create_community_chat,
     delete_chats,
     delete_chat,
+    PrivateChatPushView,
+    unread_message_count,
+    CommunityMentionMembersView,
     delete_community_chat,
     delete_community_chats,
     archive_chat,
@@ -29,6 +35,7 @@ from .views import (
     pin_community_message,
     unpin_community_message,
     end_call,
+    community_pinned_messages,
     mark_community_delivered,
     VoiceRoomViewSet,
     CommunityEventViewSet,
@@ -39,17 +46,14 @@ from .views import (
     message_after,
     message_window,
     unblock_messages,
-    hide_community_messages,
-    delete_community_messages,
-    hide_all_community_messages,
     delete_messages,
     hide_messages,
-    hide_all_messages,
     CommunityMessageViewSet,
     community_message_after,
     community_message_before,
     community_message_window,
     community_detail,
+    report_chat,
 )
 
 router = DefaultRouter()
@@ -108,10 +112,6 @@ urlpatterns = [
         unblock_messages
     ),
     path(
-        "<int:chat_id>/hide-all/",
-        hide_all_messages
-    ),
-    path(
         "hide/",
         hide_messages
     ),
@@ -143,12 +143,22 @@ urlpatterns = [
         "<int:chat_id>/archive/",
         archive_chat
     ),
+    path(
+        "private-chat-push/",
+        PrivateChatPushView.as_view(),
+        name="private-chat-push",
+    ),
   
     # COMMUNITY CHAT
     path("chats/<int:community_id>/community-messages/", CommunityMessageViewSet.as_view({
         "get": "list",
         "post": "create"
     })),
+    path(
+        "<int:community_id>/mention-members/",
+        CommunityMentionMembersView.as_view(),
+        name="community-mention-members",
+    ),
     path(
         "<int:community_id>/community-messages/before/",
         community_message_before,
@@ -162,18 +172,6 @@ urlpatterns = [
         community_message_window,
     ),
     path("communities/<int:community_id>/community-detail/", community_detail),
-    path(
-        "<int:community_id>/community-hide-all/",
-        hide_all_community_messages
-    ),
-    path(
-        "community-hide/",
-        hide_community_messages
-    ),
-    path(
-        "community-delete-messages/",
-        delete_community_messages
-    ),
     path(
         "<int:chat_id>/community-chat-delete/",
         delete_community_chat
@@ -202,10 +200,29 @@ urlpatterns = [
         "<int:message_id>/community-message-pin/",
         pin_community_message
     ),
+    path(
+        "communities/<int:community_id>/pinned-messages/",
+        community_pinned_messages
+    ),
+    path(
+        "messages/<int:message_id>/community-push/",
+        CommunityMessagePushView.as_view(),
+        name="community-message-push",
+    ),
+    path(
+        "communities/<int:pk>/report/",
+        report_community,
+        name="report-community",
+    ),
   
     # BASE ROUTES
     path("mark-seen/", mark_seen),
-    path("communities/mark-community-seen/", mark_community_seen),
+    path("mark-community-seen/", mark_community_seen),
+    path(
+        "unread-count/",
+        unread_message_count,
+        name="unread-message-count",
+    ),
     path("mark-delivered/", mark_delivered),
     path("mark-all-delivered/", mark_all_delivered),
     path(
@@ -214,8 +231,14 @@ urlpatterns = [
     ),
     path("messages/<int:message_id>/react/", react_message),
     path("get-or-create/", get_or_create_chat),
+    path("community/get-or-create/", get_or_create_community_chat),
     path("<int:chat_id>/retrieve-community-chat/", retrieve_community_chat),
     path("messages/<int:pk>/report/", report, name="report-message"),
+    path(
+        "<int:pk>/report/",
+        report_chat,
+        name="report-chat",
+    ),
 
     # LIVEKIT
     path("livekit/token/", livekit_token),

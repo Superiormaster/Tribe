@@ -44,6 +44,7 @@ class Report(models.Model):
         ("post", "Post"),
         ("user", "User"),
         ("message", "Message"),
+        ("chat", "Chat"),
         ("community", "Community"),
         ("comment", "Comment"),
     )
@@ -97,6 +98,14 @@ class Report(models.Model):
         blank=True,
         on_delete=models.CASCADE,
         related_name="message_reports"
+    )
+
+    target_chat = models.ForeignKey(
+        'chats.Chat',
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="chat_reports"
     )
 
     target_community = models.ForeignKey(

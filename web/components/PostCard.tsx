@@ -1276,8 +1276,8 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
 
 interface MediaItemProps {
   media: {
-    file_url?: string | null;
-    thumbnail_url?: string | null;
+    file_url?: string | string[] | null;
+    thumbnail_url?: string | string[] | null;
     media_type: "image" | "video";
   };
   index: number;
@@ -1295,19 +1295,23 @@ const MediaItem = ({
 
   // URLs are strings, NOT functions.
   const fileUrl =
-    typeof media.file_url === "string"
-      ? media.file_url.trim()
-      : "";
-
+    Array.isArray(media.file_url)
+      ? media.file_url[0]?.trim() ?? ""
+      : typeof media.file_url === "string"
+        ? media.file_url.trim()
+        : "";
+  
   const thumbnailUrl =
-    typeof media.thumbnail_url === "string"
-      ? media.thumbnail_url.trim()
-      : "";
+    Array.isArray(media.thumbnail_url)
+      ? media.thumbnail_url[0]?.trim() ?? ""
+      : typeof media.thumbnail_url === "string"
+        ? media.thumbnail_url.trim()
+        : "";
 
   if (media.media_type === "image") {
  
     const imageUrl =
-      thumbnailUrl || fileUrl;
+      fileUrl || thumbnailUrl;
 
     return (
       <div

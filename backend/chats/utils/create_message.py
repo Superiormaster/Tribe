@@ -1,4 +1,10 @@
-from chats.models import Message
+from chats.models import (
+    Message,
+    MessageMention,
+)
+from django.core.exceptions import ValidationError
+from media.models import MediaAsset
+
 
 def build_message_kwargs(
     request,
@@ -9,27 +15,13 @@ def build_message_kwargs(
     encrypted_text = request.data.get("encrypted_text")
     caption = request.data.get("caption")
 
-    media_url = (
-        serializer.validated_data.get("media_url") or []
-    )
-
-    thumbnail = serializer.validated_data.get(
-        "thumbnail"
-    )
-
-    duration = serializer.validated_data.get(
-        "duration",
-        []
-    )
-
-    waveform = serializer.validated_data.get(
-        "waveform",
-        []
-    )
-
     media_type = serializer.validated_data.get(
         "media_type",
-        "text"
+        "text",
+    )
+ 
+    client_created_at = request.data.get(
+        "client_created_at"
     )
 
     media_source = serializer.validated_data.get(
@@ -42,33 +34,81 @@ def build_message_kwargs(
         "forwarded_from"
     )
 
-    mentions = serializer.validated_data.get(
-        "mentions",
+    mention_user_ids = serializer.validated_data.get(
+        "mention_user_ids",
         []
     )
 
-    reply_to_id = request.data.get("reply_to")
+    mention_all = serializer.validated_data.get(
+        "mention_all",
+        False
+    )
 
-    # Handle accidental object payload
-    if isinstance(reply_to_id, dict):
-        reply_to_id = reply_to_id.get("id")
+    waveform = serializer.validated_data.get(
+        "waveform",
+        []
+    )
 
-    try:
-        reply_to_id = (
-            int(reply_to_id)
-            if reply_to_id
-            else None
+    reply_to = serializer.validated_data.get("reply_to")
+
+    if reply_to and reply_to.chat_id != chat.id:
+        raise ValidationError({
+            "reply_to_id":
+                "Reply message must belong to the same chat."
+        })
+
+    media_asset_ids = serializer.validated_data.get(
+        "media_asset_ids",
+        []
+    )
+
+    media_url = serializer.validated_data.get(
+        "media_url",
+        []
+    )
+
+    media_asset_ids = [
+        str(x).strip()
+        for x in media_asset_ids
+        if str(x).strip()
+    ]
+
+    media_url = [
+        url.strip()
+        for url in media_url
+        if isinstance(url, str)
+        and url.strip()
+    ]
+
+    media_assets = MediaAsset.objects.none()
+
+    if media_source == "upload":
+
+        media_assets = MediaAsset.objects.filter(
+            media_id__in=media_asset_ids,
+            user=request.user,
+            status="ready",
         )
-    except (TypeError, ValueError):
-        reply_to_id = None
 
-    reply_to = None
+        requested_ids = set(
+            media_asset_ids
+        )
 
-    if reply_to_id:
-        reply_to = Message.objects.filter(
-            id=reply_to_id,
-            chat=chat
-        ).first()
+        found_ids = set(
+            media_assets.values_list(
+                "media_id",
+                flat=True,
+            )
+        )
+
+        missing_ids = (
+            requested_ids - found_ids
+        )
+
+        if missing_ids:
+            raise ValidationError(
+                "One or more media assets are unavailable."
+            )
 
     save_kwargs = {
         "sender": request.user,
@@ -78,15 +118,22 @@ def build_message_kwargs(
         "caption": caption,
         "media_type": media_type,
         "media_source": media_source,
-        "thumbnail": thumbnail,
-        "duration": duration,
         "waveform": waveform,
         "reply_to": reply_to,
+        "external_media_urls":
+            media_url
+            if media_source == "external"
+            else [],
         "forwarded_from": forwarded_from,
         "client_id": client_id,
+        "client_created_at": client_created_at,
+
+        # NEW
+        "mention_all": mention_all,
     }
 
-    if media_url is not None:
-        save_kwargs["media_url"] = media_url
-
-    return save_kwargs, mentions
+    return (
+        save_kwargs,
+        mention_user_ids,
+        media_assets,
+    )

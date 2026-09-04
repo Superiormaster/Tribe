@@ -11,8 +11,8 @@ from rest_framework.exceptions import NotFound
 from .models import SearchQuery
 from users.models import BlockedUser, User
 from communities.models import Community, Tribe
-from post.models import Post, Like, Repost
-from post.serializers import PostSerializer, RepostSerializer
+from post.models import Post, Like, Repost, Share
+from post.serializers import PostSerializer, RepostSerializer, ShareSerializer
 
 from .serializers import (
     UserSearchSerializer,
@@ -192,26 +192,52 @@ class GlobalSearchView(APIView):
                 .filter(
                     caption__icontains=q,
                     is_approved=True,
-                    is_deleted=False
+                    is_deleted=False,
                 )
                 .exclude(user_id__in=muted_ids)
                 .exclude(user_id__in=blocked_ids)
                 .exclude(user_id__in=blocked_me_ids)
                 .select_related(
                     "user",
-                    "community"
+                    "community",
                 )
                 .annotate(
-                    likes_count=Count("likes", distinct=True),
-                    comments_count=Count("comments", distinct=True),
-                    shares_count=Count("shares", distinct=True),
-                    repost_count=Count("reposts", distinct=True),
+                    likes_count=Count(
+                        "likes",
+                        distinct=True
+                    ),
+            
+                    comments_count=Count(
+                        "comments",
+                        filter=Q(
+                            comments__is_deleted=False
+                        ),
+                        distinct=True,
+                    ),
+            
+                    shares_count=Count(
+                        "shares",
+                        filter=Q(
+                            shares__is_deleted=False,
+                            shares__status="approved",
+                        ),
+                        distinct=True,
+                    ),
+            
+                    repost_count=Count(
+                        "reposts",
+                        filter=Q(
+                            reposts__is_deleted=False
+                        ),
+                        distinct=True,
+                    ),
+            
                     is_liked=Exists(
                         Like.objects.filter(
                             post=OuterRef("pk"),
-                            user=user
+                            user=user,
                         )
-                    )
+                    ),
                 )
                 .prefetch_related(
                     "media_files"
@@ -222,8 +248,12 @@ class GlobalSearchView(APIView):
             reposts_qs = (
                 Repost.objects
                 .filter(
-                    post__caption__icontains=q,
-                    is_deleted=False
+                    Q(post__caption__icontains=q) |
+                    Q(quote_text__icontains=q),
+            
+                    is_deleted=False,
+                    post__is_approved=True,
+                    post__is_deleted=False,
                 )
                 .exclude(post__user_id__in=muted_ids)
                 .exclude(post__user_id__in=blocked_ids)
@@ -232,34 +262,122 @@ class GlobalSearchView(APIView):
                     "user",
                     "post",
                     "post__user",
-                    "post__community"
+                    "post__community",
                 )
                 .annotate(
                     likes_count=Count(
                         "post__likes",
-                        distinct=True
+                        distinct=True,
                     ),
+            
                     comments_count=Count(
                         "post__comments",
-                        distinct=True
+                        filter=Q(
+                            post__comments__is_deleted=False
+                        ),
+                        distinct=True,
                     ),
+            
                     shares_count=Count(
                         "post__shares",
-                        distinct=True
+                        filter=Q(
+                            post__shares__is_deleted=False,
+                            post__shares__status="approved",
+                        ),
+                        distinct=True,
                     ),
+            
                     repost_count=Count(
                         "post__reposts",
-                        distinct=True
+                        filter=Q(
+                            post__reposts__is_deleted=False
+                        ),
+                        distinct=True,
                     ),
+            
                     is_liked=Exists(
                         Like.objects.filter(
                             post=OuterRef("post_id"),
-                            user=user
+                            user=user,
                         )
                     ),
+            
                     views_count=F(
                         "post__views_count"
                     ),
+            
+                    skipped_views=F(
+                        "post__skipped_views"
+                    ),
+                )
+                .prefetch_related(
+                    "post__media_files"
+                )
+                .order_by("-created_at")
+            )
+  
+            shares_qs = (
+                Share.objects
+                .filter(
+                    Q(post__caption__icontains=q) |
+                    Q(share_text__icontains=q),
+            
+                    is_deleted=False,
+                    post__is_approved=True,
+                    post__is_deleted=False,
+                )
+                .exclude(post__user_id__in=muted_ids)
+                .exclude(post__user_id__in=blocked_ids)
+                .exclude(post__user_id__in=blocked_me_ids)
+                .select_related(
+                    "user",
+                    "post",
+                    "post__user",
+                    "post__community",
+                    "community",
+                )
+                .annotate(
+                    likes_count=Count(
+                        "post__likes",
+                        distinct=True,
+                    ),
+            
+                    comments_count=Count(
+                        "post__comments",
+                        filter=Q(
+                            post__comments__is_deleted=False
+                        ),
+                        distinct=True,
+                    ),
+            
+                    shares_count=Count(
+                        "post__shares",
+                        filter=Q(
+                            post__shares__is_deleted=False,
+                            post__shares__status="approved",
+                        ),
+                        distinct=True,
+                    ),
+            
+                    repost_count=Count(
+                        "post__reposts",
+                        filter=Q(
+                            post__reposts__is_deleted=False
+                        ),
+                        distinct=True,
+                    ),
+            
+                    is_liked=Exists(
+                        Like.objects.filter(
+                            post=OuterRef("post_id"),
+                            user=user,
+                        )
+                    ),
+            
+                    views_count=F(
+                        "post__views_count"
+                    ),
+            
                     skipped_views=F(
                         "post__skipped_views"
                     ),
@@ -281,6 +399,12 @@ class GlobalSearchView(APIView):
               many=True,
               context={"request": request}
             ).data
+  
+            shares = ShareSerializer(
+              shares_qs,
+              many=True,
+              context={"request": request}
+            ).data
 
             # MARK TYPES
             for p in posts:
@@ -289,11 +413,14 @@ class GlobalSearchView(APIView):
             for r in reposts:
                 r["feed_type"] = "repost"
 
+            for s in shares:
+                s["feed_type"] = "share"
+
             # MERGE
             combined_posts = (
                 list(posts)
-                +
-                list(reposts)
+                + list(shares)
+                + list(reposts)
             )
 
             # SORT
@@ -317,9 +444,18 @@ class GlobalSearchView(APIView):
                     "previous": None,
                 })
 
-            return paginator.get_paginated_response(
-                paginated
-            )
+            return Response({
+              "users": [],
+              "communities": [],
+              "tribes": [],
+              "posts": paginated,
+              "next": (
+                  paginator.get_next_link()
+              ),
+              "previous": (
+                  paginator.get_previous_link()
+              ),
+            })
 
         # =========================================
         # DEFAULT "ALL"
@@ -357,38 +493,68 @@ class GlobalSearchView(APIView):
             .filter(
                 caption__icontains=q,
                 is_approved=True,
-                is_deleted=False
+                is_deleted=False,
             )
             .exclude(user_id__in=muted_ids)
             .exclude(user_id__in=blocked_ids)
             .exclude(user_id__in=blocked_me_ids)
             .select_related(
                 "user",
-                "community"
+                "community",
             )
             .annotate(
-                likes_count=Count("likes", distinct=True),
-                comments_count=Count("comments", distinct=True),
-                shares_count=Count("shares", distinct=True),
-                repost_count=Count("reposts", distinct=True),
+                likes_count=Count(
+                    "likes",
+                    distinct=True
+                ),
+        
+                comments_count=Count(
+                    "comments",
+                    filter=Q(
+                        comments__is_deleted=False
+                    ),
+                    distinct=True,
+                ),
+        
+                shares_count=Count(
+                    "shares",
+                    filter=Q(
+                        shares__is_deleted=False,
+                        shares__status="approved",
+                    ),
+                    distinct=True,
+                ),
+        
+                repost_count=Count(
+                    "reposts",
+                    filter=Q(
+                        reposts__is_deleted=False
+                    ),
+                    distinct=True,
+                ),
+        
                 is_liked=Exists(
                     Like.objects.filter(
                         post=OuterRef("pk"),
-                        user=user
+                        user=user,
                     )
-                )
+                ),
             )
             .prefetch_related(
                 "media_files"
             )
-            .order_by("-created_at")[:5]
+            .order_by("-created_at")
         )
 
         reposts_qs = (
             Repost.objects
             .filter(
-                post__caption__icontains=q,
-                is_deleted=False
+                Q(post__caption__icontains=q) |
+                Q(quote_text__icontains=q),
+        
+                is_deleted=False,
+                post__is_approved=True,
+                post__is_deleted=False,
             )
             .exclude(post__user_id__in=muted_ids)
             .exclude(post__user_id__in=blocked_ids)
@@ -397,34 +563,50 @@ class GlobalSearchView(APIView):
                 "user",
                 "post",
                 "post__user",
-                "post__community"
+                "post__community",
             )
             .annotate(
                 likes_count=Count(
                     "post__likes",
-                    distinct=True
+                    distinct=True,
                 ),
+        
                 comments_count=Count(
                     "post__comments",
-                    distinct=True
+                    filter=Q(
+                        post__comments__is_deleted=False
+                    ),
+                    distinct=True,
                 ),
+        
                 shares_count=Count(
                     "post__shares",
-                    distinct=True
+                    filter=Q(
+                        post__shares__is_deleted=False,
+                        post__shares__status="approved",
+                    ),
+                    distinct=True,
                 ),
+        
                 repost_count=Count(
                     "post__reposts",
-                    distinct=True
+                    filter=Q(
+                        post__reposts__is_deleted=False
+                    ),
+                    distinct=True,
                 ),
+        
                 is_liked=Exists(
                     Like.objects.filter(
                         post=OuterRef("post_id"),
-                        user=user
+                        user=user,
                     )
                 ),
+        
                 views_count=F(
                     "post__views_count"
                 ),
+        
                 skipped_views=F(
                     "post__skipped_views"
                 ),
@@ -432,7 +614,79 @@ class GlobalSearchView(APIView):
             .prefetch_related(
                 "post__media_files"
             )
-            .order_by("-created_at")[:5]
+            .order_by("-created_at")
+        )
+  
+        shares_qs = (
+            Share.objects
+            .filter(
+                Q(post__caption__icontains=q) |
+                Q(share_text__icontains=q),
+        
+                is_deleted=False,
+                post__is_approved=True,
+                post__is_deleted=False,
+            )
+            .exclude(post__user_id__in=muted_ids)
+            .exclude(post__user_id__in=blocked_ids)
+            .exclude(post__user_id__in=blocked_me_ids)
+            .select_related(
+                "user",
+                "post",
+                "post__user",
+                "post__community",
+                "community",
+            )
+            .annotate(
+                likes_count=Count(
+                    "post__likes",
+                    distinct=True,
+                ),
+        
+                comments_count=Count(
+                    "post__comments",
+                    filter=Q(
+                        post__comments__is_deleted=False
+                    ),
+                    distinct=True,
+                ),
+        
+                shares_count=Count(
+                    "post__shares",
+                    filter=Q(
+                        post__shares__is_deleted=False,
+                        post__shares__status="approved",
+                    ),
+                    distinct=True,
+                ),
+        
+                repost_count=Count(
+                    "post__reposts",
+                    filter=Q(
+                        post__reposts__is_deleted=False
+                    ),
+                    distinct=True,
+                ),
+        
+                is_liked=Exists(
+                    Like.objects.filter(
+                        post=OuterRef("post_id"),
+                        user=user,
+                    )
+                ),
+        
+                views_count=F(
+                    "post__views_count"
+                ),
+        
+                skipped_views=F(
+                    "post__skipped_views"
+                ),
+            )
+            .prefetch_related(
+                "post__media_files"
+            )
+            .order_by("-created_at")
         )
 
         posts = PostSerializer(
@@ -447,15 +701,24 @@ class GlobalSearchView(APIView):
           context={"request": request}
         ).data
 
+        shares = ShareSerializer(
+          shares_qs,
+          many=True,
+          context={"request": request}
+        ).data
+
         # MARK TYPES
         for p in posts:
             p["feed_type"] = "post"
 
         for r in reposts:
             r["feed_type"] = "repost"
+  
+        for s in shares:
+            s["feed_type"] = "share"
 
         # MERGE
-        combined_posts = posts + reposts
+        combined_posts = posts + shares + reposts
 
         # SORT
         combined_posts.sort(

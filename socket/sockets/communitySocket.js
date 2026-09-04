@@ -2,87 +2,304 @@ const {
   joinCommunity,
   leaveCommunity,
   getCommunityCount,
+  getCommunityUsers,
 } = require('../servers/communityPresence');
+const {
+  getUserState,
+} = require("../servers/presence");
+
+const {
+  USER_ROOM,
+} = require('../servers/rooms');
+
+function emitCommunityPresence(
+  io,
+  communityId
+) {
+  const room =
+    `community_${communityId}`;
+
+  const onlineUserIds =
+    getCommunityUsers(
+      communityId
+    );
+
+  io.to(room).emit(
+    "community_presence_update",
+    {
+      communityId,
+      onlineUserIds,
+    }
+  );
+}
+
+async function ensureCommunityPermissions(socket, communityId) {
+  socket.communityPermissions =
+    socket.communityPermissions || {};
+
+  const existing =
+    socket.communityPermissions[communityId];
+
+  if (existing) {
+    return existing;
+  }
+
+  console.log(
+    "🔄 Loading community permissions:",
+    {
+      socketId: socket.id,
+      userId: socket.user.id,
+      communityId,
+    }
+  );
+
+  const res = await socket.api.get(
+    `chats/communities/${communityId}/community-detail/`
+  );
+
+  const detail = res.data;
+
+  if (detail.is_banned) {
+    throw new Error(
+      "You are banned from this community."
+    );
+  }
+
+  const socketUserId =
+    Number(socket.user.id);
+
+  const ownerId =
+    Number(detail.owner_id);
+
+  let role =
+    String(detail.role || "")
+      .trim()
+      .toLowerCase();
+
+  if (socketUserId === ownerId) {
+    role = "owner";
+  }
+
+  const permissions = {
+    muted: Boolean(detail.is_muted),
+    role,
+    ownerId,
+
+    require_post_approval:
+      Boolean(detail.require_post_approval),
+
+    join_approval_required:
+      Boolean(detail.join_approval_required),
+  };
+
+  socket.communityPermissions[communityId] =
+    permissions;
+
+  console.log(
+    "🔐 COMMUNITY PERMISSIONS LOADED:",
+    {
+      socketId: socket.id,
+      communityId,
+      userId: socketUserId,
+      permissions,
+    }
+  );
+
+  return permissions;
+}
 
 module.exports = function communitySocket(io, socket) {
-  const joinedCommunities = new Set();
+  
+  console.log(
+    "🔥 COMMUNITY SOCKET HANDLER ATTACHED:",
+    socket.id,
+    socket.user?.id
+  );
+  
+  socket.onAny((event, ...args) => {
+    console.log(
+      "🔥🔥 SERVER RECEIVED:",
+      event,
+      JSON.stringify(
+        args,
+        (key, value) =>
+          typeof value === "function"
+            ? "[FUNCTION]"
+            : value
+      )
+    );
+  });
 
+  const joinedCommunities = new Set();
+  
   // =========================
   // JOIN COMMUNITY (FIXED SINGLE SOURCE OF TRUTH)
   // =========================
-  socket.on("join_community", async ({ communityId }) => {
-    try {
-      const res = await socket.api.get(
-        `chats/communities/${communityId}/community-detail/`
+  socket.on(
+    "join_community",
+    async ({ communityId }, callback) => {
+  
+      console.log(
+        "🔥🔥 JOIN HANDLER ENTERED",
+        {
+          socketId: socket.id,
+          userId: socket.user?.id,
+          communityId,
+          callbackType: typeof callback,
+        }
       );
   
-      const detail = res.data;
+      const normalizedCommunityId =
+        Number(communityId);
   
-      if (detail.is_banned) {
-        socket.emit(
-          "error",
-          "You are banned from this community."
+      if (!normalizedCommunityId) {
+        console.log(
+          "❌ INVALID COMMUNITY ID"
         );
+  
+        callback?.({
+          ok: false,
+          error: "Invalid communityId",
+        });
+  
         return;
       }
   
-      socket.communityPermissions =
-        socket.communityPermissions || {};
+      const room =
+        `community_${normalizedCommunityId}`;
   
-      socket.communityPermissions[communityId] = {
-        muted: detail.is_muted,
-        role: detail.role,
-        require_post_approval:
-          detail.require_post_approval,
-        join_approval_required:
-          detail.join_approval_required,
-      };
+      try {
   
-      const room = `community_${communityId}`;
+        console.log(
+          "1️⃣ BEFORE PERMISSIONS"
+        );
   
-      socket.join(room);
-      joinedCommunities.add(communityId);
+        const permissions =
+          await ensureCommunityPermissions(
+            socket,
+            normalizedCommunityId
+          );
   
-      joinCommunity(communityId, socket.user.id);
+        console.log(
+          "2️⃣ AFTER PERMISSIONS",
+          permissions
+        );
   
-      const count =
-        getCommunityCount(communityId);
+        console.log(
+          "3️⃣ BEFORE SOCKET.JOIN",
+          room
+        );
   
-      io.to(room).emit(
-        "community_presence_update",
-        {
-          communityId,
-          onlineCount: count,
-        }
-      );
-      
-      const deliveredRes =
-        await socket.api.post(
-          "chats/communities/mark-community-delivered/",
+        await socket.join(room);
+  
+        console.log(
+          "4️⃣ AFTER SOCKET.JOIN",
           {
-            communityId,
+            room,
+            rooms: Array.from(socket.rooms),
           }
         );
-      
-      io.to(room).emit(
-        "community_delivered",
-        {
-          communityId,
-          messageIds:
-            deliveredRes.data.messageIds,
-          lastDeliveredMessageId:
-            deliveredRes.data.lastDeliveredMessageId,
-          userId: socket.user.id,
-        }
-      );
   
-    } catch (err) {
-      console.error(
-        "community join failed:",
-        err.response?.data || err.message
-      );
+        joinedCommunities.add(
+          normalizedCommunityId
+        );
+  
+        console.log(
+          "5️⃣ BEFORE PRESENCE"
+        );
+  
+        joinCommunity(
+          normalizedCommunityId,
+          socket.user.id
+        );
+  
+        emitCommunityPresence(
+          io,
+          normalizedCommunityId
+        );
+  
+        console.log(
+          "6️⃣ ABOUT TO ACK"
+        );
+  
+        callback?.({
+          ok: true,
+          communityId:
+            normalizedCommunityId,
+          role:
+            permissions.role,
+        });
+  
+        console.log(
+          "7️⃣ ACK CALLED"
+        );
+  
+        // IMPORTANT:
+        // Nothing else should be awaited
+        // before the ACK.
+  
+        try {
+  
+          const deliveredRes =
+            await socket.api.post(
+              "chats/communities/mark-community-delivered/",
+              {
+                communityId:
+                  normalizedCommunityId,
+              }
+            );
+  
+          io.to(room).emit(
+            "community_delivered",
+            {
+              communityId:
+                normalizedCommunityId,
+  
+              messageIds:
+                deliveredRes.data.messageIds,
+  
+              lastDeliveredMessageId:
+                deliveredRes.data.lastDeliveredMessageId,
+  
+              userId:
+                socket.user.id,
+            }
+          );
+  
+        } catch (err) {
+  
+          console.error(
+            "community delivered failed:",
+            err.response?.data ||
+            err.message
+          );
+        }
+  
+      } catch (err) {
+  
+        console.error(
+          "❌ COMMUNITY JOIN ERROR",
+          {
+            socketId: socket.id,
+            communityId:
+              normalizedCommunityId,
+            error:
+              err.response?.data ||
+              err.message ||
+              err,
+          }
+        );
+  
+        callback?.({
+          ok: false,
+          error:
+            err.response?.data ||
+            err.message ||
+            "Failed to join community",
+        });
+      }
     }
-  });
+  );
 
   // =========================
   // MESSAGE
@@ -96,44 +313,256 @@ module.exports = function communitySocket(io, socket) {
         error: "You are muted in this community.",
       });
     }
+  
+    const communityId =
+      data.communityId;
+    const clientId = data.client_id;
+
+    console.log(
+      "🏘️ COMMUNITY MESSAGE RECEIVED:",
+      {
+        communityId,
+        client_id: clientId,
+        encrypted_text: data.encrypted_text,
+      }
+    );
+
+    if (!communityId) {
+      console.error(
+        "❌ Community message rejected: missing communityId",
+        data
+      );
+
+      return callback?.({
+        ok: false,
+        error: "Missing communityId",
+        client_id: clientId,
+      });
+    }
+
+    if (!clientId) {
+      return callback?.({
+        ok: false,
+        error: "Missing client_id",
+      });
+    }
 
     const role =
       socket.communityPermissions?.[
         data.communityId
       ]?.role;
 
+    const mediaSource =
+      data.media_source === "upload" ||
+      data.media_source === "external" ||
+      data.media_source === "forward"
+        ? data.media_source
+        : null;
+    
+    const mediaAssetIds =
+      mediaSource === "upload"
+        ? (
+            Array.isArray(data.media_asset_ids)
+              ? data.media_asset_ids
+              : []
+          )
+        : [];
+    
+    const mediaUrls =
+      mediaSource === "external"
+        ? (
+            Array.isArray(data.media_url)
+              ? data.media_url
+              : []
+          )
+        : [];
+  
+    const replyToId =
+      Number.isInteger(data.reply_to_id)
+        ? data.reply_to_id
+        : (
+            typeof data.reply_to === "number"
+              ? data.reply_to
+              : data.reply_to?.id ?? null
+          );
+  
+    console.log("🔥 RAW MEDIA SOURCE:", data.media_source);
+    console.log("🔥 RAW MEDIA URL:", data.media_url);
+    console.log("🔥 RAW MEDIA ASSETS:", data.media_asset_ids);
+    console.log("🔥 COMPUTED MEDIA SOURCE:", mediaSource);
+
     try {
       const payload = {
-        text: data.text || '',
-        reply_to_id: data.reply_to?.id || null,
-      };
+        encrypted_text:
+          typeof data.encrypted_text === "string"
+            ? data.encrypted_text
+            : "",
+      
+        caption:
+          typeof data.caption === "string"
+            ? data.caption
+            : "",
+      
+        media_type:
+          typeof data.media_type === "string"
+            ? data.media_type
+            : "text",
+      
+        client_id: clientId,
+      
+        mention_user_ids:
+          Array.isArray(data.mention_user_ids)
+            ? data.mention_user_ids
+            : [],
+      
+        mention_all:
+          Boolean(data.mention_all),
 
-      if (data.media_url) {
-        payload.media_url = data.media_url;
-        payload.media_type = data.media_type;
+        media_source: mediaSource,
+        media_asset_ids: mediaAssetIds,
+        media_url: mediaUrls,
+      
+        thumbnail:
+          Array.isArray(data.thumbnail)
+            ? data.thumbnail
+            : [],
+      
+        waveform:
+          Array.isArray(data.waveform)
+            ? data.waveform
+            : [],
+      
+        reply_to_id: replyToId,
+      
+        client_created_at:
+          data.client_created_at ?? null,
+      };
+      
+      if (data.reply_to?.id) {
+        payload.reply_to_id = data.reply_to.id;
       }
 
+      console.log(
+        "🔥 FINAL MEDIA PAYLOAD:",
+        JSON.stringify({
+          media_source: payload.media_source,
+          media_asset_ids: payload.media_asset_ids,
+          media_url: payload.media_url,
+        }, null, 2)
+      );
+      console.log(
+        "📤 COMMUNITY API PAYLOAD:",
+        JSON.stringify(payload, null, 2)
+      );
       const res = await socket.api.post(
-        `chats/chats/${data.communityId}/community_messages/`,
+        `chats/chats/${data.communityId}/community-messages/`,
         payload
       );
 
       const savedMessage = res.data;
+      console.log(
+        "✅ COMMUNITY MESSAGE SAVED:",
+        {
+          server_id: savedMessage.id,
+          client_id: savedMessage.client_id,
+          encrypted_text: savedMessage.encrypted_text,
+        }
+      );
 
       savedMessage.sender = socket.user.id;
       savedMessage.sender_username = socket.user.username;
       savedMessage.sender_avatar = socket.user.avatar;
+  
+      const inboxUserIds =
+        savedMessage.inbox_user_ids || [];
+  
+      const recipientIds = [];
 
+      for (const userId of inboxUserIds) {
+      
+        // Don't push to sender
+        if (String(userId) === String(socket.user.id)) {
+          continue;
+        }
+      
+        const state = getUserState(userId);
+      
+        const shouldPush =
+          state === "background" ||
+          state === "offline";
+      
+        if (shouldPush) {
+          recipientIds.push(userId);
+        }
+      }
+
+      if (recipientIds.length) {
+
+        try {
+      
+          await socket.api.post(
+            `chats/messages/${savedMessage.id}/community-push/`,
+            {
+              recipient_ids:
+                recipientIds,
+            }
+          );
+      
+        } catch (pushError) {
+      
+          console.error(
+            "❌ COMMUNITY CHAT PUSH FAILED:",
+            pushError.response?.data ||
+            pushError.message
+          );
+        }
+      }
+
+      const messageEvent = {
+        ...savedMessage,
+      
+        sender: socket.user.id,
+        sender_username: socket.user.username,
+        sender_avatar: socket.user.avatar,
+      
+        communityId: Number(data.communityId),
+      
+        inbox_type: "community",
+      
+        status: "sent",
+      
+        members: savedMessage.members || [],
+      
+        // Inbox fields
+        community_id: Number(data.communityId),
+        chat_id: savedMessage.chat_id,
+        username: socket.user.username,
+        avatar: socket.user.avatar,
+        last_sender_id: socket.user.id,
+        media_type: savedMessage.media_type,
+      };
+      
       io.to(`community_${data.communityId}`).emit(
-        'community_message',
-        savedMessage
+        "community_message",
+        messageEvent
       );
 
-      callback?.({ ok: true, id: savedMessage.id });
+      for (const userId of inboxUserIds) {
+        io.to(USER_ROOM(userId)).emit(
+          "inbox_message",
+          messageEvent
+        );
+      }
+
+      callback?.({ ok: true, id: savedMessage.id, message: messageEvent, client_id: clientId });
 
     } catch (err) {
       console.error('community message failed:', err.message);
-      callback?.({ ok: false });
+      callback?.({ ok: false, client_id: clientId,
+      error:
+        err.response?.data ||
+        err.message ||
+        "Failed to send community message" });
     }
   });
   
@@ -204,67 +633,248 @@ module.exports = function communitySocket(io, socket) {
   // =========================
   // TYPING
   // =========================
-  socket.on('community_typing', ({ communityId }) => {
-    socket.to(`community_${communityId}`).emit('community_typing', {
-      userId: socket.user.id,
-      username: socket.user.username,
-    });
-  });
+  socket.on(
+    "community_typing_start",
+    ({ communityId }) => {
+      if (!communityId) return;
+
+      const permissions =
+        socket.communityPermissions?.[
+          communityId
+        ];
+      
+      if (!permissions) {
+        return;
+      }
+  
+      socket
+        .to(`community_${communityId}`)
+        .emit(
+          "community_typing",
+          {
+            communityId,
+            userId:
+              socket.user.id,
+            username:
+              socket.user.username,
+            isTyping: true,
+          }
+        );
+    }
+  );
+  
+  socket.on(
+    "community_typing_stop",
+    ({ communityId }) => {
+      if (!communityId) return;
+
+      const permissions =
+        socket.communityPermissions?.[
+          communityId
+        ];
+      
+      if (!permissions) {
+        return;
+      }
+  
+      socket
+        .to(`community_${communityId}`)
+        .emit(
+          "community_typing",
+          {
+            communityId,
+            userId:
+              socket.user.id,
+            username:
+              socket.user.username,
+            isTyping: false,
+          }
+        );
+    }
+  );
 
   // =========================
   // REACTION
   // =========================
-  socket.on('community_reaction', async ({ communityId, messageId, emoji }) => {
-    try {
-      await socket.api.post(`messages/${messageId}/react/`, { emoji });
-
-      io.to(`community_${communityId}`).emit('community_reaction', {
-        messageId,
-        emoji,
-        userId: socket.user.id,
-      });
-
-    } catch (err) {
-      console.error('community reaction failed:', err.message);
+  socket.on(
+    "community_reaction",
+    async ({
+      communityId,
+      messageId,
+      emoji,
+    }) => {
+  
+      if (!communityId || !messageId || !emoji) {
+        return;
+      }
+  
+      try {
+        const res = await socket.api.post(
+          `chats/messages/${messageId}/react/`,
+          {
+            emoji,
+          }
+        );
+        
+        console.log(
+          "🔥 REACTION API RESPONSE:",
+          JSON.stringify(res.data, null, 2)
+        );
+  
+        const reactionEvent = {
+          communityId,
+          messageId,
+          userId: res.data.user_id,
+          emoji: res.data.emoji,
+          removed: Boolean(res.data.removed),
+          reactions: Array.isArray(
+            res.data.reactions
+          )
+            ? res.data.reactions
+            : [],
+        };
+        
+        console.log(
+          "🔥 REACTIONS FROM SERVER:",
+          JSON.stringify(res.data.reactions, null, 2)
+        );
+  
+        io.to(
+          `community_${communityId}`
+        ).emit(
+          "community_reaction",
+          reactionEvent
+        );
+  
+      } catch (err) {
+        console.error(
+          "community reaction failed:",
+          err.response?.data ||
+          err.message
+        );
+      }
     }
-  });
+  );
 
   // =========================
   // DELETE
   // =========================
-  socket.on('community_delete', async ({ communityId, messageId }) => {
-    try {
-      await socket.api.post(`messages/${messageId}/delete_message/`);
-
-      io.to(`community_${communityId}`).emit('community_delete', {
-        messageId,
-        deletedByAdmin: false,
-      });
-
-    } catch (err) {
-      console.error('community delete failed:', err.message);
+  socket.on(
+    "community_delete",
+    ({
+      communityId,
+      messageIds,
+      deletedByAdmin = false,
+    }) => {
+  
+      if (!communityId) {
+        return;
+      }
+  
+      if (
+        !Array.isArray(messageIds) ||
+        !messageIds.length
+      ) {
+        return;
+      }
+  
+      io
+        .to(`community_${communityId}`)
+        .emit(
+          "community_messages_deleted",
+          {
+            communityId,
+            messageIds,
+            deletedByAdmin,
+          }
+        );
     }
-  });
+  );
 
   // =========================
-  // PIN
+  // COMMUNITY PIN BROADCAST
   // =========================
-  socket.on('community_pin', async ({ communityId, messageId }) => {
-    try {
-      const res = await socket.api.post(
-        `messages/${messageId}/toggle_pin/`
+  
+  socket.on(
+    "community_pin",
+    ({
+      communityId,
+      messageId,
+      pinned,
+      message,
+      pinnedCount,
+      maxPinned,
+      userId,
+    }) => {
+  
+      const normalizedCommunityId =
+        Number(communityId);
+  
+      const normalizedMessageId =
+        Number(messageId);
+  
+      if (
+        !normalizedCommunityId ||
+        !normalizedMessageId
+      ) {
+        console.error(
+          "❌ COMMUNITY PIN BROADCAST: invalid payload",
+          {
+            communityId,
+            messageId,
+            pinned,
+          }
+        );
+  
+        return;
+      }
+  
+      const room =
+        `community_${normalizedCommunityId}`;
+  
+      console.log(
+        "📡 COMMUNITY PIN BROADCAST:",
+        {
+          socketId: socket.id,
+          userId: socket.user?.id,
+          communityId:
+            normalizedCommunityId,
+          messageId:
+            normalizedMessageId,
+          pinned: Boolean(pinned),
+          room,
+        }
       );
-
-      io.to(`community_${communityId}`).emit('community_pin', {
-        messageId,
-        pinned: res.data.is_pinned,
-      });
-
-    } catch (err) {
-      console.error('community pin failed:', err.message);
+  
+      io.to(room).emit(
+        "community_pin",
+        {
+          communityId:
+            normalizedCommunityId,
+  
+          messageId:
+            normalizedMessageId,
+  
+          pinned:
+            Boolean(pinned),
+  
+          userId:
+            userId ??
+            socket.user?.id,
+  
+          message:
+            message ?? null,
+  
+          pinnedCount:
+            pinnedCount ?? null,
+  
+          maxPinned:
+            maxPinned ?? 5,
+        }
+      );
     }
-  });
-
+  );
+  
   // =========================
   // LEAVE COMMUNITY
   // =========================
@@ -278,12 +888,10 @@ module.exports = function communitySocket(io, socket) {
 
     leaveCommunity(communityId, socket.user.id);
 
-    const count = getCommunityCount(communityId);
-
-    io.to(room).emit('community_presence_update', {
-      communityId,
-      onlineCount: count,
-    });
+    emitCommunityPresence(
+      io,
+      communityId
+    );
   });
 
   // =========================
@@ -294,12 +902,10 @@ module.exports = function communitySocket(io, socket) {
       leaveCommunity(communityId, socket.user.id);
 
       const room = `community_${communityId}`;
-      const count = getCommunityCount(communityId);
-
-      io.to(room).emit('community_presence_update', {
-        communityId,
-        onlineCount: count,
-      });
+      emitCommunityPresence(
+        io,
+        communityId
+      );
     });
 
     joinedCommunities.clear();

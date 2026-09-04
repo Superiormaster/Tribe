@@ -41,41 +41,86 @@ class InitializeMediaUploadView(APIView):
 
     def post(self, request):
 
-        print("MEDIA INITIALIZE DATA:", request.data)
-        print("MEDIA INITIALIZE CONTENT TYPE:",
-              request.data.get("content_type"))
-  
         content_type = request.data.get("content_type")
         size = request.data.get("size", 0)
+        upload_mode = request.data.get("upload_mode")
+        duration = request.data.get("duration")
 
         if not content_type:
             return Response(
                 {"detail": "content_type is required."},
-                status=400
+                status=status.HTTP_400_BAD_REQUEST,
             )
+
+        if upload_mode not in {
+            "direct",
+            "multipart",
+        }:
+            return Response(
+                {
+                    "detail":
+                        "upload_mode must be direct or multipart."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # ----------------------------------------------------
+        # CLIENT DURATION
+        # ----------------------------------------------------
+
+        if duration is not None:
+
+            try:
+                duration = float(duration)
+
+                if duration < 0:
+                    raise ValueError
+
+            except (TypeError, ValueError):
+
+                return Response(
+                    {"detail": "Invalid duration."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        else:
+            duration = None
+
+        # ----------------------------------------------------
+        # FILE SIZE
+        # ----------------------------------------------------
 
         try:
             size = int(size)
+
         except (TypeError, ValueError):
+
             return Response(
                 {"detail": "Invalid file size."},
-                status=400
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:
+
             result = initialize_media_upload(
                 user=request.user,
                 content_type=content_type,
                 size=size,
+                duration=duration,
+                upload_mode=upload_mode,
             )
 
         except ValidationError as e:
+
             return Response(
                 {"detail": str(e)},
-                status=400
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return Response(result, status=201)
+        return Response(
+            result,
+            status=status.HTTP_201_CREATED,
+        )
 
 class CompleteMediaUploadView(APIView):
 
@@ -115,6 +160,12 @@ class CompleteMediaUploadView(APIView):
               ),
           },
           flush=True,
+        )
+  
+        print(
+            "=== MEDIA OBJECT KEY ===",
+            asset.object_key if asset else None,
+            flush=True,
         )
 
         if not asset:
@@ -156,13 +207,68 @@ class CompleteMediaUploadView(APIView):
             metadata = get_object_metadata(
                 asset.object_key
             )
-
-        except Exception:
-
+        
+        except Exception as exc:
+        
+            print(
+                "=== R2 OBJECT VERIFY FAILED ===",
+                flush=True,
+            )
+        
+            print(
+                "MEDIA ID:",
+                asset.media_id,
+                flush=True,
+            )
+        
+            print(
+                "OBJECT KEY:",
+                asset.object_key,
+                flush=True,
+            )
+        
+            print(
+                "BUCKET:",
+                R2_BUCKET_NAME,
+                flush=True,
+            )
+        
+            print(
+                "R2 ENDPOINT:",
+                R2_ENDPOINT_URL,
+                flush=True,
+            )
+        
+            print(
+                "ERROR TYPE:",
+                type(exc).__name__,
+                flush=True,
+            )
+        
+            print(
+                "ERROR:",
+                repr(exc),
+                flush=True,
+            )
+        
+            print(
+              "=== R2 VERIFY ERROR ===",
+              {
+                  "media_id": asset.media_id,
+                  "object_key": asset.object_key,
+                  "error_type": type(exc).__name__,
+                  "error": repr(exc),
+              },
+              flush=True,
+            )
+        
             return Response(
                 {
                     "detail":
-                        "Uploaded file was not found."
+                        "Uploaded file was not found.",
+        
+                    "error":
+                        str(exc),
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
@@ -235,10 +341,22 @@ class CompleteMediaUploadView(APIView):
             "video",
         }:
 
-            generate_media_thumbnail.delay(
-                asset.id
-            )
+            try:
+                generate_media_thumbnail.delay(asset.id)
+            except Exception as exc:
+                print(
+                    "THUMBNAIL QUEUE FAILED:",
+                    repr(exc),
+                    flush=True,
+                )
 
+            asset.thumbnail_status = "processing"
+            asset.save(
+                update_fields=[
+                    "thumbnail_status",
+                    "updated_at",
+                ]
+            )
             thumbnail_status = "processing"
 
         else:
@@ -682,19 +800,28 @@ class CompleteMultipartMediaUploadView(APIView):
             
                 raise
             
-            
-            generate_media_thumbnail.delay(
-                asset.id
-            )
+            try:
+                generate_media_thumbnail.delay(asset.id)
+            except Exception as exc:
+                print(
+                    "THUMBNAIL QUEUE FAILED:",
+                    repr(exc),
+                    flush=True,
+                )
             
             print(
                 "=== CELERY TASK DISPATCHED ===",
                 flush=True,
             )
-            
-            thumbnail_status = (
-                "processing"
+  
+            asset.thumbnail_status = "processing"
+            asset.save(
+                update_fields=[
+                    "thumbnail_status",
+                    "updated_at",
+                ]
             )
+            thumbnail_status = "processing"
 
         else:
 

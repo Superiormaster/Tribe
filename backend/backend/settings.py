@@ -13,7 +13,10 @@ from celery.schedules import crontab
 from dotenv import load_dotenv
 
 LANGUAGE_CODE = "en-us"
+
 TIME_ZONE = "Africa/Lagos"
+CELERY_TIMEZONE = "Africa/Lagos"
+
 USE_I18N = True
 USE_TZ = True
 
@@ -76,6 +79,66 @@ CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_ACKS_LATE = True
 CELERY_TASK_REJECT_ON_WORKER_LOST = True
 CELERY_WORKER_PREFETCH_MULTIPLIER = 1
+CELERY_BEAT_SCHEDULE = {
+
+    # ==============================
+    # SPORTS
+    # ==============================
+
+    "sports-upcoming-fixtures": {
+        "task": "sports.tasks.sync_upcoming_matches",
+        "schedule": 60 * 60 * 12,
+    },
+
+    "sports-today": {
+        "task": "sports.tasks.sync_today_matches",
+        "schedule": 60 * 60 * 2,
+    },
+
+    "sports-results": {
+        "task": "sports.tasks.sync_recent_results",
+        "schedule": 60 * 60 * 6,
+    },
+
+    "sports-live-cleanup": {
+        "task": "sports.tasks.cleanup_stale_live_matches",
+        "schedule": 60 * 10,
+    },
+
+
+    # ==============================
+    # USERS
+    # ==============================
+
+    "update-user-locations-daily": {
+        "task": "backend.tasks.update_user_locations_task",
+        "schedule": crontab(
+            hour=2,
+            minute=0,
+        ),
+    },
+}
+
+SPORTS_PROVIDER = os.getenv(
+    "SPORTS_PROVIDER",
+    "api-football",
+)
+
+API_FOOTBALL_KEY = os.getenv(
+    "API_FOOTBALL_KEY",
+)
+
+API_FOOTBALL_BASE_URL = os.getenv(
+    "API_FOOTBALL_BASE_URL",
+    "https://v3.football.api-sports.io",
+)
+
+SPORTS_PROVIDER_TIMEOUT = int(
+    os.getenv(
+        "SPORTS_PROVIDER_TIMEOUT",
+        "10",
+    )
+)
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=10),
@@ -116,6 +179,8 @@ INSTALLED_APPS = [
     'admin_panel',
     'feedback',
     'media.apps.MediaConfig',
+    'dashboard',
+    'sports',
 ]
 
 # -----------------------------
@@ -171,33 +236,22 @@ if DATABASE_URL:
     import dj_database_url
 
     DATABASES = {
-        "default": dj_database_url.parse(DATABASE_URL)
+        "default": dj_database_url.parse(
+            DATABASE_URL,
+            conn_max_age=60,
+            conn_health_checks=True,
+        )
     }
 else:
     DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": BASE_DIR / "db.sqlite3",
-        }
+      "default": {
+          "ENGINE": "django.db.backends.sqlite3",
+          "NAME": BASE_DIR / "db.sqlite3",
+          "OPTIONS": {
+              "timeout": 30,
+          },
+      }
     }
-
-# -----------------------------
-# Cloudinary (Media Storage)
-# -----------------------------
-DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
-CLOUDINARY_STORAGE = {
-    "CLOUD_NAME": os.getenv("CLOUDINARY_CLOUD_NAME"),
-    "API_KEY": os.getenv("CLOUDINARY_API_KEY"),
-    "API_SECRET": os.getenv("CLOUDINARY_API_SECRET"),
-    "FOLDER": "Tribe",
-    "SECURE": True,
-}
-cloudinary.config(
-    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
-    api_key=os.getenv("CLOUDINARY_API_KEY"),
-    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
-    secure=True
-)
 
 # -----------------------------
 # Password Validation
@@ -210,15 +264,6 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 # -----------------------------
-# Internationalization
-# -----------------------------
-LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
-CELERY_TIMEZONE = 'UTC'
-USE_I18N = True
-USE_TZ = True
-
-# -----------------------------
 # Static files
 # -----------------------------
 STATIC_URL = 'static/'
@@ -228,13 +273,6 @@ LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET"),
 LIVEKIT_URL = "wss://your-project.livekit.cloud"
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-CELERY_BEAT_SCHEDULE = {
-    'update-user-locations-daily': {
-        'task': 'backend.tasks.update_user_locations_task',
-        'schedule': crontab(hour=2, minute=0),  # runs daily at 2 AM
-    },
-}
 
 # -----------------------------
 # Channels (Redis)

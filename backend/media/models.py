@@ -99,8 +99,8 @@ class MediaAsset(models.Model):
         blank=True,
     )
 
-    duration = models.JSONField(
-        default=list,
+    duration = models.FloatField(
+        null=True,
         blank=True,
     )
 

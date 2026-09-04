@@ -1,6 +1,6 @@
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from notifications.services import create_notification
+from notifications.createNotification import create_notification
 from users.models import SavedLoginDevice
 from .permissions import IsAdmin, IsSuperAdmin
 from django.shortcuts import get_object_or_404

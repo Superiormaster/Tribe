@@ -8,7 +8,6 @@ import {
   Animated,
   Easing,
   Image,
-  StyleSheet,
   Text,
   View,
 } from "react-native";
@@ -97,8 +96,9 @@ export default function LoadingScreen({
       }
     }, 150);
 
-    return () =>
+    return () => {
       clearInterval(interval);
+    };
   }, [
     onComplete,
     refreshOnComplete,
@@ -111,85 +111,42 @@ export default function LoadingScreen({
     });
 
   return (
-    <View style={styles.container}>
+    <View className="flex-1 items-center justify-center bg-gray-50 dark:bg-gray-950">
+
+      {/* Logo */}
       <Animated.View
         style={{
           opacity,
           transform: [{ scale }],
         }}
       >
-        <View style={styles.logoWrapper}>
+        <View className="h-[72px] w-[72px] overflow-hidden rounded-full border border-indigo-600">
           <Image
             source={tribe}
-            style={styles.logo}
             resizeMode="cover"
+            className="h-full w-full"
           />
         </View>
       </Animated.View>
 
-      <Text style={styles.title}>
+      {/* Title */}
+      <Text className="mt-[30px] text-[34px] font-bold text-gray-900 dark:text-gray-100">
         {text}
-        <Text style={styles.cursor}>
+        <Text className="text-blue-500">
           |
         </Text>
       </Text>
 
-      <View style={styles.track}>
+      {/* Progress Track */}
+      <View className="mt-6 h-[3px] w-[200px] overflow-hidden rounded-full bg-gray-300 dark:bg-gray-700">
         <Animated.View
-          style={[
-            styles.bar,
-            { width },
-          ]}
+          className="h-full bg-blue-500"
+          style={{
+            width,
+          }}
         />
       </View>
+
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F9FAFB",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  logoWrapper: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "#4F46E5",
-  },
-
-  logo: {
-    width: "100%",
-    height: "100%",
-  },
-
-  title: {
-    marginTop: 30,
-    fontSize: 34,
-    fontWeight: "bold",
-    color: "#111827",
-  },
-
-  cursor: {
-    color: "#3B82F6",
-  },
-
-  track: {
-    marginTop: 24,
-    width: 200,
-    height: 3,
-    backgroundColor: "#D1D5DB",
-    borderRadius: 999,
-    overflow: "hidden",
-  },
-
-  bar: {
-    height: "100%",
-    backgroundColor: "#3B82F6",
-  },
-});
