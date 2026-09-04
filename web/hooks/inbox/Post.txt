@@ -1,309 +1,62 @@
-
-  const handlePost = async () => {
-    if (!isOnline) {
-      await handleOfflinePost();
-      return;
-    }
-  
-    const hasText = content.trim().length > 0;
-
-    const hasImages =
-        imageFiles.length > 0 ||
-        imageUrls.length > 0;
-  
-    const hasVideo = !!video;
-  
-    const hasUploadedMedia =
-        uploadedMedia.length > 0;
-  
-    if (
-        !hasText &&
-        !hasImages &&
-        !hasVideo &&
-        !hasUploadedMedia
-    ) {
-        toast.error("Write something or attach media.");
-        return;
-    }
-
-    if ((mode === "community" || mode === "reel") && !selectedCommunity) {
-      alert("Please select a community");
-      return;
-    }
-
-    setLoading(true);
-    setFileProgress({});
-  
-    try {
-      if (uploadError) {
-        const saved = await handleUploadFailure();
-      
-        if (saved) {
-          return;
-        }
-      
-        return;
-      }
-    
-      let media = uploadedMedia;
-
-      if (uploadPromiseRef.current) {
-        const toastId = toast.loading("Finishing upload...");
-      
-        try {
-          media = await uploadPromiseRef.current;
-      
-          uploadPromiseRef.current = null;
-      
-          toast.dismiss(toastId);
-        } catch (uploadError) {
-          console.error("Media upload failed:", uploadError);
-      
-          toast.dismiss(toastId);
-      
-          // Save as MANUAL draft
-          const saved = await handleUploadFailure();
-      
-          if (saved) {
-            return;
-          }
-      
-          return;
-        }
-      
-        // Upload finished but user went offline
-        if (!isOnline) {
-          const saved = await handleOfflinePost();
-      
-          if (saved) {
-            return;
-          }
-      
-          return;
-        }
-      }
-  
-      if (uploadError) {
-        const saved =
-          await handleUploadFailure();
-      
-        if (saved) {
-          return;
-        }
-      
-        return;
-      }
-    
-      const hasText = content.trim().length > 0;
-      const hasMedia = media.length > 0;
-      
-      if (!hasText && !hasMedia) {
-        await handleUploadFailure();
-        return;
-      }
-  
-      let contentType = "text";
-
-      if (video) {
-        if (isReel) {
-          contentType = "short_video";
-        } else {
-          contentType = "long_video";
-        }
-      } else if (
-        imageFiles.length > 0 ||
-        imageUrls.length > 0
-      ) {
-        contentType = "image";
-      }
-      
-      contentType = String(contentType);
-
-      const media_files = media.map(
-        toPostMediaPayload
-      );
-  
-      const payload = {
-        caption: content,
-        content_type: contentType,
-        media_files,
-        community: selectedCommunity,
-        client_post_id: getClientPostId(),
-      };
-  
-      const editPayload = {
-        caption: content,
-        content_type: contentType,
-        media_files,
-        community: selectedCommunity,
-      };
-  
-      let newPost = null;
-
-      if (isEdit) {
-        if (!isOnline) {
-          await handleOfflinePost();
-          return;
-        }
-  
-        const updatedPost = await apiRequest(`api/post/${postId}/`, {
-            method: "PUT",
-            data: editPayload,
-        });
-  
-        if (!postId) {
-          console.error("Missing postId");
-          return;
-        }
-  
-        const numericPostId = Number(postId);
-  
-        if (!Number.isFinite(numericPostId)) {
-          console.error("Invalid postId:", postId);
-          return;
-        }
-
-        await updateFeedPost(numericPostId, {
-          caption: updatedPost.caption,
-          media_files: updatedPost.media_files,
-          updated_at: updatedPost.updated_at,
-          is_edited: true,
-        });
-    
-        toast.success("Post updated!");
-        push("/main/home");
-        return;
-      }
-
-      if (
-          payload.caption.trim() === "" &&
-          payload.media_files.length === 0
-      ) {
-          toast.error("Cannot create an empty post.");
-          return;
-      }
-  
-      if (!isOnline) {
-        await handleOfflinePost();
-        return;
-      }
-  
-      await uploadDebug({
-        event: "POST_CREATE_START",
-        level: "info",
-        data: {
-          text_length: content.length,
-          media_count: media.length,
-          media_ids: media.map(
-            item => item.mediaId
-          ),
-          has_text: Boolean(content.trim()),
-        },
-      });
-
-      newPost = await apiRequest(`api/post/`, {
-        method: "POST",
-        data: payload,
-      });
-  
-      await uploadDebug({
-        event: "POST_CREATE_RESPONSE",
-        level: "info",
-        data: {
-          success: true,
-          post_id: newPost?.id,
-          media_count: newPost?.media_files?.length ?? 0,
-        },
-      });
-  
-      clientPostIdRef.current = null;
-  
-      setContent('');
-      setImageUrls([]);
-      setImageFiles([]);
-      setVideo(null);
-      setFileProgress({});
-      await deletePostDraft(
-          selectedCommunity
-              ? `auto-community-${selectedCommunity}`
-              : "auto-global"
-      );
-      
-      if (draftId) {
-          await deletePostDraft(draftId);
-      }
-      
-      if (!newPost?.is_approved) {
-        toast.success("Post submitted for approval.");
-        push("/main/home");
-        return;
-      }
-
-      toast.success("Post created!");
-
-      if (newPost.content_type === "short_video") {
-        sessionStorage.setItem(
-            "clicked_reel_id",
-            String(newPost.id)
-        );
-    
-        push(`/main/reels/${newPost.id}`);
-        return;
-      }
-      
-      const feedPost = {
-          ...newPost,
-          feed_type: "post",
-          is_starred_by_user: false,
-      };
-      
-      sessionStorage.setItem(
-          "new_post",
-          JSON.stringify(feedPost)
-      );
-      
-      push("/main/home");
-      return;
-    } catch (err: any) {
-      console.log("FULL ERROR:", err.data || err);
-      console.error(err);
-    
-      await uploadDebug({
-        event: "POST_CREATE_ERROR",
-        level: "error",
-        data: {
-          message:
-            err instanceof Error
-              ? err.message
-              : String(err),
-        },
-      });
-
-      const isUploadNetworkError =
-        err?.isNetworkError === true ||
-        err?.name === "UploadNetworkError" ||
-        err?.message?.toLowerCase().includes("network error");
-    
-      if (!isOnline || isUploadNetworkError) {
-        const saved = await handleOfflinePost();
-    
-        if (saved) {
-          toast.error(
-            "Connection lost. Your post was saved to Drafts and can be resumed when you're back online."
-          );
-        }
-    
-        return;
-      }
-    
-      toast.error(
-        err?.data?.media ||
-        err?.data?.detail ||
-        "Failed to create post."
-      );
-    
-      setFileProgress({});
-    } finally {
-      setLoading(false);
-    }
-  };
+wallet/
+├── __init__.py
+├── admin.py
+├── apps.py
+├── models.py
+├── serializers.py
+├── urls.py
+├── permissions.py
+├── exceptions.py
+├── constants.py
+│
+├── views/
+│   ├── __init__.py
+│   ├── dashboard.py
+│   ├── wallet.py
+│   ├── transactions.py
+│   ├── withdrawals.py
+│   ├── payouts.py
+│   ├── revenue.py
+│   ├── rewards.py
+│   ├── goals.py
+│   └── insights.py
+│
+├── services/
+│   ├── __init__.py
+│   ├── wallet.py
+│   ├── earnings.py
+│   ├── transactions.py
+│   ├── withdrawals.py
+│   ├── payouts.py
+│   ├── revenue.py
+│   ├── rewards.py
+│   ├── goals.py
+│   └── insights.py
+│
+├── selectors/
+│   ├── __init__.py
+│   ├── dashboard.py
+│   ├── wallet.py
+│   ├── transactions.py
+│   ├── revenue.py
+│   └── payouts.py
+│
+├── utils/
+│   ├── __init__.py
+│   ├── currency.py
+│   ├── calculations.py
+│   └── reference.py
+│
+├── migrations/
+│   └── __init__.py
+│
+└── tests/
+    ├── __init__.py
+    ├── test_dashboard.py
+    ├── test_wallet.py
+    ├── test_transactions.py
+    ├── test_withdrawals.py
+    ├── test_payouts.py
+    ├── test_revenue.py
+    ├── test_rewards.py
+    └── test_goals.py

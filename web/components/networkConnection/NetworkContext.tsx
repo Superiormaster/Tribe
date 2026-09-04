@@ -13,13 +13,13 @@ import {
 
 import { apiRequest } from '@/utils/api';
 
-type NetworkStatus =
+export type NetworkStatus =
   | 'offline'
   | 'poor'
   | 'slow'
   | 'good';
 
-type ConnectionType =
+export type ConnectionType =
   | 'wifi'
   | 'cellular'
   | 'unknown';
@@ -203,7 +203,9 @@ export function NetworkProvider({
         );
 
       if (isSlow) {
-        setNetworkStatus('slow');
+          setNetworkStatus("slow");
+      } else if (networkStatus !== "poor") {
+          setNetworkStatus("good");
       }
     }, [networkStatus]);
 

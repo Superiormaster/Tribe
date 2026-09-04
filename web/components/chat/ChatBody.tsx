@@ -1,8 +1,10 @@
 'use client';
 
 import React, { forwardRef } from 'react';
-import MessageBubbles from '@/components/MessageBubbles';
+import MessageBubbles, { MessageBubblesHandle } from '@/components/MessageBubbles';
 import { Message } from "@/utils/chat/messageContract";
+import CommunityChatSkeleton from '@/components/Com-Pri-Chat/ChatSkeleton';
+import { isRenderableMessage } from "@/utils/chat/isRenderableMessage";
 
 type Props = {
   chatId: number;
@@ -17,12 +19,17 @@ type Props = {
   setDrawerMode: (
     mode: 'plus' | 'emoji' | null
   ) => void;
+  loadMessageWindow: (
+    messageId: number
+  ) => Promise<void>;
 
   page: number;
   hasMore: boolean;
   hasNewer: boolean;
+  initializing: boolean;
   loadMore: () => void;
   loadNewer: () => void;
+  closeReactionPicker: () => void;
 
   selectedMessages: Set<string>;
 
@@ -65,7 +72,7 @@ type Props = {
 };
 
 const ChatBody = forwardRef<
-  HTMLDivElement,
+  MessageBubblesHandle,
   Props
 >(
   (
@@ -81,6 +88,8 @@ const ChatBody = forwardRef<
       hasNewer,
       loadMore,
       loadNewer,
+      closeReactionPicker,
+      loadMessageWindow,
       selectedMessages,
       previewState,
       setPreviewState,
@@ -91,6 +100,7 @@ const ChatBody = forwardRef<
       clearSelection,
       replyingTo,
       setReplyingTo,
+      initializing,
       onForward,
       onReaction,
     },
@@ -98,7 +108,6 @@ const ChatBody = forwardRef<
   ) => {
     return (
       <div
-        ref={ref}
         className={`
           flex-1
           min-h-0
@@ -111,37 +120,44 @@ const ChatBody = forwardRef<
           }
         `}
       >
-        <MessageBubbles
-          chatId={chatId}
-          messages={messages}
-          currentUserId={currentUser.id}
-          loadMore={loadMore}
-          loadNewer={loadNewer}
-          onOpenDrawer={(mode) => {
-            setDrawerMode(mode);
-            setShowDrawer(true);
-          }}
-          onForward={onForward}
-          selectedMessages={selectedMessages}
-          previewState={previewState}
-          setPreviewState={setPreviewState}
-          resendPendingMessage={
-            resendPendingMessage
-          }
-          retryFailedMessage={
-            retryFailedMessage
-          }
-          resendMedia={resendMedia}
-          toggleSelectMessage={
-            toggleSelectMessage
-          }
-          clearSelection={clearSelection}
-          replyingTo={replyingTo}
-          onReply={setReplyingTo}
-          hasMore={hasMore}
-          hasNewer={hasNewer}
-          onReaction={onReaction}
-        />
+        {initializing && messages.length === 0 ? (
+          <CommunityChatSkeleton />
+        ) : (
+          <MessageBubbles
+            ref={ref}
+            chatId={chatId}
+            messages={messages.filter(isRenderableMessage)}
+            currentUserId={currentUser.id}
+            onCloseReactionPicker={closeReactionPicker}
+            loadMore={loadMore}
+            loadNewer={loadNewer}
+            onOpenDrawer={(mode) => {
+              setDrawerMode(mode);
+              setShowDrawer(true);
+            }}
+            loadMessageWindow={loadMessageWindow}
+            onForward={onForward}
+            selectedMessages={selectedMessages}
+            previewState={previewState}
+            setPreviewState={setPreviewState}
+            resendPendingMessage={
+              resendPendingMessage
+            }
+            retryFailedMessage={
+              retryFailedMessage
+            }
+            resendMedia={resendMedia}
+            toggleSelectMessage={
+              toggleSelectMessage
+            }
+            clearSelection={clearSelection}
+            replyingTo={replyingTo}
+            onReply={setReplyingTo}
+            hasMore={hasMore}
+            hasNewer={hasNewer}
+            onReaction={onReaction}
+          />
+        )}
       </div>
     );
   }

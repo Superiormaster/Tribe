@@ -20,10 +20,10 @@ interface MediaActivityItem {
 }
 
 interface MediaActivityProps {
-  posts: number;
-  reels: number;
-  photos: number;
-  videos: number;
+  posts?: number;
+  reels?: number;
+  photos?: number;
+  videos?: number;
   postGrowth?: number;
   reelGrowth?: number;
   photoGrowth?: number;
@@ -43,28 +43,28 @@ export default function MediaActivity({
   const activities: MediaActivityItem[] = [
     {
       title: "Posts",
-      total: posts,
+      total: posts ?? 0,
       growth: postGrowth,
       icon: <FileText size={22} />,
       color: "text-blue-500",
     },
     {
       title: "Reels",
-      total: reels,
+      total: reels ?? 0,
       growth: reelGrowth,
       icon: <Clapperboard size={22} />,
       color: "text-pink-500",
     },
     {
       title: "Photos",
-      total: photos,
+      total: photos ?? 0,
       growth: photoGrowth,
       icon: <ImageIcon size={22} />,
       color: "text-green-500",
     },
     {
       title: "Videos",
-      total: videos,
+      total: videos ?? 0,
       growth: videoGrowth,
       icon: <PlayCircle size={22} />,
       color: "text-orange-500",
@@ -76,7 +76,7 @@ export default function MediaActivity({
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: .35 }}
-      className="rounded-3xl border border-white/10 bg-background/70 backdrop-blur-xl p-6"
+      className="rounded-3xl border border-indigo-300 dark:border-white/10 bg-gray-200 dark:bg-gray-900/70 backdrop-blur-xl p-6"
     >
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -104,7 +104,7 @@ export default function MediaActivity({
             transition={{
               delay: index * .08,
             }}
-            className="rounded-2xl border border-white/10 bg-white/[0.03] p-5"
+            className="rounded-2xl border border-gray-700/15 dark:border-white/10 bg-gray-300 dark:bg-white/[0.03] p-5"
           >
             <div
               className={`mb-4 ${item.color}`}
@@ -117,7 +117,7 @@ export default function MediaActivity({
             </h3>
 
             <p className="mt-2 text-3xl font-bold">
-              {item.total.toLocaleString()}
+              {(item.total ?? 0).toLocaleString()}
             </p>
 
             <div className="mt-4">

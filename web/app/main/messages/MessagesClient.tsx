@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useContext, useEffect, useRef, useMemo } from 'react';
+import { useState, useCallback, useContext, useEffect, useRef, useMemo } from 'react';
 import { useNavigation } from "@/utils/useNavigation"
 import { apiRequest } from '@/utils/api';
 import { getDisplayData } from "@/utils/inbox/display";
@@ -13,8 +13,11 @@ import { resetDatabase } from "@/lib/db";
 import { UserContext } from "@/components/UserContext";
 import { formatChatTime } from '@/utils/inbox/formatChatTime';
 import { getPreviewData, getOfflinePreview } from '@/utils/inbox/preview';
-import { openChat } from '@/lib/inbox/openChat';
+import { openChat, openCommunityChat } from '@/lib/inbox/openChat';
 import { markSeen } from '@/lib/inbox/markSeen';
+import {
+  markCommunitySeen,
+} from "@/lib/communityInbox/markSeenCommunities";
 import { pinChats } from '@/lib/inbox/pinChats';
 import { pinCommunityChats } from '@/lib/communityInbox/pinCommunities';
 import { archiveChats } from "@/lib/inbox/archiveChats";
@@ -161,6 +164,111 @@ export default function MessagesClient() {
     communityInitialFetchDone,
   ]);
   
+  const handlePrivateInboxMessage = useCallback(
+    (message: any) => {
+      if (message.inbox_type !== "private") {
+        return;
+      }
+  
+      const chatId = Number(
+        message.chat ?? message.chat_id
+      );
+  
+      if (!chatId) {
+        return;
+      }
+  
+      setPrivateRecentChats(prev => {
+        const existing = prev.find(
+          chat => Number(chat.chat_id) === chatId
+        );
+  
+        if (!existing) {
+          return prev;
+        }
+  
+        return prev.map(chat => {
+          if (Number(chat.chat_id) !== chatId) {
+            return chat;
+          }
+  
+          return {
+            ...chat,
+            text: message.text ?? chat.text,
+            encrypted_text:
+              message.encrypted_text ??
+              chat.encrypted_text,
+            created_at:
+              message.created_at ??
+              chat.created_at,
+            last_sender_id:
+              Number(message.sender) ||
+              chat.last_sender_id,
+            last_media_type:
+              message.media_type ??
+              chat.last_media_type,
+            status: "sent",
+          };
+        });
+      });
+    },
+    [setPrivateRecentChats]
+  );
+  
+  const handleCommunityInboxMessage = useCallback(
+    (message: any) => {
+      if (message.inbox_type !== "community") {
+        return;
+      }
+  
+      const communityId = Number(
+        message.community_id ??
+        message.communityId
+      );
+  
+      if (!communityId) {
+        return;
+      }
+  
+      setCommunityRecentChats(prev => {
+        const existing = prev.find(
+          chat =>
+            Number(chat.community_id) === communityId
+        );
+  
+        if (!existing) {
+          return prev;
+        }
+  
+        return prev.map(chat => {
+          if (
+            Number(chat.community_id) !==
+            communityId
+          ) {
+            return chat;
+          }
+  
+          return {
+            ...chat,
+            text:
+              message.text ??
+              chat.text,
+            created_at:
+              message.created_at ??
+              chat.created_at,
+            last_sender_id:
+              Number(message.sender) ||
+              chat.last_sender_id,
+            media_type:
+              message.media_type ??
+              chat.media_type,
+          };
+        });
+      });
+    },
+    [setCommunityRecentChats]
+  );
+  
   const openDiscoverPanel = async () => {
     setConnectedUsers([]);
     setConnectedPage(1);
@@ -183,16 +291,18 @@ export default function MessagesClient() {
       // 1. open chat first
       push(`/main/messages/chat/${chat.chat_id}`);
   
-      // 2. mark as seen immediately
       await markSeen(chat.chat_id);
   
-      // 3. update UI instantly (no waiting reload)
       setPrivateRecentChats(prev =>
         prev.map(c =>
           c.chat_id === chat.chat_id
             ? { ...c, unseen: 0 }
             : c
         )
+      );
+  
+      window.dispatchEvent(
+        new Event("chat-unread-update")
       );
   
     } catch (err) {
@@ -247,41 +357,37 @@ export default function MessagesClient() {
       if (selectedChat.size > 0) {
         toggleSelectChat(communityId);
       } else {
-        handleOpenCommunity(communityId);
+        OpenCommunity(communityId);
       }
     },
   });
 
-  const communityPress = useLongPressSelection<CommunityChat>({
+  const communityPress =
+  useLongPressSelection<CommunityChat>({
     onLongPress: chat => {
-      toggleSelectChat(chat.chat_id);
+      toggleSelectChat(
+        chat.community_id
+      );
     },
-  
+
     onClick: chat => {
       if (selectedChat.size > 0) {
-        toggleSelectChat(chat.chat_id);
+        toggleSelectChat(
+          chat.community_id
+        );
       } else {
-        handleOpenCommunity(chat.community_id);
+        handleOpenCommunity(
+          chat.community_id
+        );
       }
     },
   });
   
-  const {
-    onDelivered,
-    onSeen,
-  } = useInboxSocketEvents({
+  useInboxSocketEvents({
     userId: currentUser.id,
     setRecentChats: setPrivateRecentChats,
+    setCommunityChats: setCommunityRecentChats,
   });
-  
-  const socketRef = useChatSocket(
-    null,
-    currentUser,
-    {
-      onDelivered,
-      onSeen,
-    }
-  );
   
   useEffect(() => {
     const onScroll = () => {
@@ -349,8 +455,56 @@ export default function MessagesClient() {
     }
   };
   
-  const handleOpenCommunity = (communityId:number)=>{
-    push(`/main/community/${communityId}/chat`)
+  const handleOpenCommunity = async (
+    communityId: number
+  ) => {
+    try {
+      await openCommunityChat(
+        communityId
+      );
+  
+      await markCommunitySeen(
+        communityId
+      );
+  
+      push(
+        `/main/community/${communityId}/chat`
+      );
+  
+      window.dispatchEvent(
+        new Event("chat-unread-update")
+      );
+  
+    } catch (err) {
+      console.error(
+        "Failed to open chat",
+        err
+      );
+    }
+  };
+  
+  const OpenCommunity = async (
+    communityId: number
+  ) => {
+    try {
+      await openCommunityChat(
+        communityId
+      );
+  
+      push(
+        `/main/community/${communityId}/chat`
+      );
+  
+      window.dispatchEvent(
+        new Event("chat-unread-update")
+      );
+  
+    } catch (err) {
+      console.error(
+        "Failed to open chat",
+        err
+      );
+    }
   };
   
   const {
@@ -363,10 +517,20 @@ export default function MessagesClient() {
   const hasSelection =
     selectedChat.size > 0;
   
+  const selectedPrivateItems =
+    privateRecentChats.filter(chat =>
+      selectedChat.has(chat.chat_id)
+    );
+  
+  const selectedCommunityItems =
+    communityRecentChats.filter(chat =>
+      selectedChat.has(chat.community_id)
+    );
+  
   const selectedItems = [
-    ...privateRecentChats,
-    ...communityRecentChats,
-  ].filter(chat => selectedChat.has(chat.chat_id));
+    ...selectedPrivateItems,
+    ...selectedCommunityItems,
+  ];
   
   const localChats = useMemo(
     () =>
@@ -442,7 +606,6 @@ export default function MessagesClient() {
     if (privateSelected.length) {
         await pinChats(
             privateSelected.map(c => c.chat_id),
-            privateSelected,
             setPrivatePinnedCount,
             setPrivateRecentChats
         );
@@ -451,7 +614,6 @@ export default function MessagesClient() {
     if (communitySelected.length) {
         await pinCommunityChats(
             communitySelected.map(c => c.chat_id),
-            communitySelected,
             setCommunityPinnedCount,
             setCommunityRecentChats
         );
@@ -462,7 +624,6 @@ export default function MessagesClient() {
   
   const handleArchiveChat = async () => {
     try {
-  
       if (privateSelected.length) {
         await archiveChats(
           privateSelected.map(c => c.chat_id)
@@ -535,52 +696,174 @@ export default function MessagesClient() {
     );
   }, [selectedChat.size]);
   
-  const inboxItems: InboxItem[] = [
-    ...localChats.map(chatId => ({
-      type: "local-private" as const,
-      chatId,
-      time: getDisplayData(
-        undefined,
-        drafts[chatId],
-        pendingMap[chatId]
-      ).displayTime,
-    })),
+  const mergedCommunityItems = useMemo(() => {
+    const items = new Map<
+      string,
+      {
+        type: "community";
+        chat: any;
+        localCommunityId?: number;
+      }
+    >();
   
-    ...privateRecentChats.map(chat => ({
-      type: "private" as const,
-      chat,
-      time: getDisplayData(
+    for (const communityId of localCommunityChats) {
+      const pending = communityPendingMap[communityId];
+      const draft = communityDrafts[communityId];
+      const meta = communityChatMeta[communityId];
+  
+      items.set(`community-${communityId}`, {
+        type: "community",
+  
+        chat: {
+          chat_id: pending?.chatId ?? 0,
+  
+          community_id: communityId,
+  
+          chat_type: "community",
+  
+          community_name:
+            meta?.communityName ||
+            "Unknown Community",
+  
+          cover_image_url:
+            meta?.cover_image_url ||
+            null,
+  
+          unseen: 0,
+          pinned: false,
+  
+          created_at:
+            pending?.created_at ||
+            draft?.updated_at,
+        },
+  
+        localCommunityId: communityId,
+      });
+    }
+  
+    for (const chat of communityRecentChats) {
+      const communityId = chat.community_id;
+  
+      if (!communityId) {
+        console.warn(
+          "Community chat missing community_id:",
+          chat
+        );
+        continue;
+      }
+  
+      items.set(`community-${communityId}`, {
+        type: "community",
+  
+        chat: {
+          ...chat,
+          chat_type: "community",
+          community_id: communityId,
+        },
+  
+        localCommunityId: communityId,
+      });
+    }
+  
+    return Array.from(items.values());
+  }, [
+    localCommunityChats,
+    communityPendingMap,
+    communityDrafts,
+    communityChatMeta,
+    communityRecentChats,
+  ]);
+  
+  const inboxItems = useMemo(() => {
+    const privateItems = [
+      ...localChats.map(chatId => ({
+        type: "local-private" as const,
+        chatId,
+        time: getDisplayData(
+          undefined,
+          drafts[chatId],
+          pendingMap[chatId]
+        ).displayTime,
+      })),
+  
+      ...privateRecentChats.map(chat => ({
+        type: "private" as const,
         chat,
-        drafts[chat.chat_id],
-        pendingMap[chat.chat_id]
-      ).displayTime,
-    })),
+        time: getDisplayData(
+          chat,
+          drafts[chat.chat_id],
+          pendingMap[chat.chat_id]
+        ).displayTime,
+      })),
+    ];
   
-    ...localCommunityChats.map(chatId => ({
-      type: "local-community" as const,
-      chatId,
-      time: getDisplayData(
-        undefined,
-        communityDrafts[chatId],
-        communityPendingMap[chatId]
-      ).displayTime,
-    })),
+    const communityItems =
+      mergedCommunityItems.map(item => {
+        const communityId =
+          item.localCommunityId ??
+          item.chat.community_id;
   
-    ...communityRecentChats.map(chat => ({
-      type: "community" as const,
-      chat,
-      time: getDisplayData(
-        chat,
-        communityDrafts[chat.chat_id],
-        communityPendingMap[chat.chat_id]
-      ).displayTime,
-    })),
-  ].sort((a, b) => {
-    return (
-      new Date(b.time ?? 0).getTime() -
-      new Date(a.time ?? 0).getTime()
-    );
-  });
+        return {
+          type: "community" as const,
+          chat: item.chat,
+          communityId,
+  
+          time: getDisplayData(
+            item.chat,
+            communityDrafts[communityId],
+            communityPendingMap[communityId]
+          ).displayTime,
+        };
+      });
+  
+    return [
+      ...privateItems,
+      ...communityItems,
+    ].sort((a, b) => {
+      const aChat =
+        "chat" in a ? a.chat : undefined;
+
+      const bChat =
+        "chat" in b ? b.chat : undefined;
+
+      const aPinned =
+        !!aChat?.pinned;
+
+      const bPinned =
+        !!bChat?.pinned;
+
+      // Pinned chats always come first
+      if (aPinned && !bPinned) return -1;
+      if (!aPinned && bPinned) return 1;
+
+      // Both pinned → newest pin first
+      if (aPinned && bPinned) {
+        const aPinnedAt = new Date(
+          aChat?.pinned_at ?? 0
+        ).getTime();
+
+        const bPinnedAt = new Date(
+          bChat?.pinned_at ?? 0
+        ).getTime();
+
+        return bPinnedAt - aPinnedAt;
+      }
+
+      // Otherwise newest message/draft first
+      return (
+        new Date(b.time ?? 0).getTime() -
+        new Date(a.time ?? 0).getTime()
+      );
+    });
+  }, [
+    localChats,
+    drafts,
+    pendingMap,
+    privateRecentChats,
+    mergedCommunityItems,
+    communityDrafts,
+    communityPendingMap,
+  ]);
   
   const dbReady =
     privateLoaded &&
@@ -620,7 +903,7 @@ export default function MessagesClient() {
   }
   
   return (
-    <div className="flex flex-col h-full my-20 p-4">
+    <div className="flex flex-col h-full my-14 p-4">
 
       <InboxDeleteModal
         open={showChatDeleteModal}
@@ -657,7 +940,7 @@ export default function MessagesClient() {
             onCommunitiesScroll={handleCommunitiesScroll}
             onClose={closeConnectionsPanel}
             onOpenChat={handleOpenChat}
-            onOpenCommunity={handleOpenCommunity}
+            onOpenCommunity={OpenCommunity}
           />,
           document.body
         )}
@@ -705,33 +988,35 @@ export default function MessagesClient() {
                   />
                 );
           
-              case "local-community":
-                return (
-                  <LocalCommunityItem
-                    key={`lc-${item.chatId}`}
-                    chatId={item.chatId}
-                    draft={communityDrafts[item.chatId]}
-                    pending={communityPendingMap[item.chatId]}
-                    chatMeta={communityChatMeta[item.chatId]}
-                    selected={selectedChat.has(item.chatId)}
-                    bind={localCommunityPress.bind(item.chatId)}
-                    currentUserId={currentUser.id}
-                  />
-                );
+              case "community": {
+                const communityId =
+                  item.chat.community_id;
           
-              case "community":
                 return (
                   <CommunityInboxItem
-                    key={item.chat.chat_id}
+                    key={`community-${communityId}`}
                     chat={item.chat}
-                    draft={communityDrafts[item.chat.chat_id]}
-                    pending={communityPendingMap[item.chat.chat_id]}
-                    chatMeta={communityChatMeta[item.chat.chat_id]}
-                    selected={selectedChat.has(item.chat.chat_id)}
-                    bind={communityPress.bind(item.chat)}
-                    currentUserId={currentUser.id}
+                    draft={
+                      communityDrafts[communityId]
+                    }
+                    pending={
+                      communityPendingMap[communityId]
+                    }
+                    chatMeta={
+                      communityChatMeta[communityId]
+                    }
+                    selected={
+                      selectedChat.has(communityId)
+                    }
+                    bind={
+                      communityPress.bind(item.chat)
+                    }
+                    currentUserId={
+                      currentUser.id
+                    }
                   />
                 );
+              }
           
               default:
                 return null;
@@ -757,7 +1042,7 @@ export default function MessagesClient() {
         💬
       </button>
 
-      <button
+      {/*<button
         onClick={async () => {
           try {
             await resetDatabase();
@@ -769,7 +1054,7 @@ export default function MessagesClient() {
         className="fixed bottom-20 left-1 w-14 h-14 bg-red-600 text-white rounded-full shadow-lg text-sm"
       >
         Reset DB
-      </button>
+      </button>*/}
     </div>
   );
 }

@@ -180,6 +180,7 @@ export default function CommunitySettingsPage({
             cover_image_asset_id: coverAssetId,
             intro_video_asset_id: videoAssetId,
 
+            rules: community.rules || "",
             website: community.website,
 
             require_post_approval:
@@ -610,6 +611,33 @@ export default function CommunitySettingsPage({
               description: e.target.value,
             })
           }
+          className="w-full bg-indigo-200 text-gray-700 dark:text-white dark:bg-indigo-900 p-2 border rounded"
+        />
+      </div>
+  
+      {/* COMMUNITY RULES */}
+
+      <div>
+        <p className="text-xl font-medium text-gray-700 dark:text-white">
+          Community Rules
+        </p>
+      
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+          Write one rule per line. Numbering will be added automatically.
+        </p>
+      
+        <textarea
+          value={community.rules || ""}
+          onChange={(e) =>
+            setCommunity({
+              ...community,
+              rules: e.target.value,
+            })
+          }
+          placeholder={`Be respectful to other members.
+      No spam or self-promotion.
+      Keep discussions relevant.`}
+          rows={6}
           className="w-full bg-indigo-200 text-gray-700 dark:text-white dark:bg-indigo-900 p-2 border rounded"
         />
       </div>

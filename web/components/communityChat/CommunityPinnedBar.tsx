@@ -1,7 +1,19 @@
 'use client';
 
-import { useMemo, useState } from "react";
-import { Pin, ChevronDown, ChevronUp, Play } from "lucide-react";
+import { useState } from "react";
+import {
+  Pin,
+  PanelTopOpen,
+  PanelTopClose,
+  Play,
+  Sticker,
+  Images,
+  FileImage,
+  Mic,
+  FileText,
+  MessageCircle,
+} from "lucide-react";
+
 import type { Message } from "@/utils/chat/messageContract";
 
 type Props = {
@@ -16,7 +28,6 @@ type Preview = {
 };
 
 const getPinnedPreview = (msg: Message): Preview => {
-
   if (msg.encrypted_text) {
     return {
       type: "text",
@@ -25,15 +36,11 @@ const getPinnedPreview = (msg: Message): Preview => {
   }
 
   switch (msg.media_type) {
-
     case "image":
       return {
         type: "image",
-        thumb:
-          msg.media_url?.[0],
-        text:
-          msg.caption ||
-          "Photo",
+        thumb: msg.media_url?.[0],
+        text: msg.caption || "Photo",
       };
 
     case "video":
@@ -42,24 +49,20 @@ const getPinnedPreview = (msg: Message): Preview => {
         thumb:
           msg.thumbnail?.[0] ??
           msg.media_url?.[0],
-        text:
-          msg.caption ||
-          "Video",
+        text: msg.caption || "Video",
       };
 
     case "gif":
       return {
         type: "gif",
-        thumb:
-          msg.media_url?.[0],
+        thumb: msg.media_url?.[0],
         text: "GIF",
       };
 
     case "sticker":
       return {
         type: "sticker",
-        thumb:
-          msg.media_url?.[0],
+        thumb: msg.media_url?.[0],
         text: "Sticker",
       };
 
@@ -70,20 +73,16 @@ const getPinnedPreview = (msg: Message): Preview => {
       };
 
     case "gallery": {
+      const media = msg.media_url ?? [];
 
-      const media =
-        msg.media_url ?? [];
+      const images = media.filter(
+        (url) =>
+          !url.includes(".mp4") &&
+          !url.includes(".mov") &&
+          !url.includes(".webm")
+      ).length;
 
-      const images =
-        media.filter(
-          m =>
-            !m.includes(".mp4") &&
-            !m.includes(".mov") &&
-            !m.includes(".webm")
-        ).length;
-
-      const videos =
-        media.length - images;
+      const videos = media.length - images;
 
       return {
         type: "gallery",
@@ -98,12 +97,9 @@ const getPinnedPreview = (msg: Message): Preview => {
     }
 
     default:
-
       return {
         type: "file",
-        text:
-          msg.caption ||
-          "Attachment",
+        text: msg.caption || "Attachment",
       };
   }
 };
@@ -112,30 +108,69 @@ export default function CommunityPinnedBar({
   pinnedMessages,
   onJumpToMessage,
 }: Props) {
+  const [expanded, setExpanded] = useState(false);
+  const [expandedAll, setExpandedAll] = useState(false);
 
-  const [expanded, setExpanded] =
-    useState(false);
-  
-  const [expandedAll, setExpandedAll] =
-    useState(false);
-  
-  const previewMessages =
-    expandedAll
-      ? pinnedMessages
-      : pinnedMessages.slice(0, 3);
-
-  if (!pinnedMessages.length)
+  if (!pinnedMessages.length) {
     return null;
+  }
 
-  const newest =
-    pinnedMessages[0];
-  
+  const newest = pinnedMessages[0];
+
+  const previewMessages = expandedAll
+    ? pinnedMessages
+    : pinnedMessages.slice(0, 3);
+
+  const newestPreview =
+    getPinnedPreview(newest);
+
+  const handleJump = (message: Message) => {
+    if (message.id == null) {
+      console.warn(
+        "[PINNED] Message has no backend ID:",
+        message
+      );
+      return;
+    }
+
+    console.log(
+      "[PINNED] Jumping to message:",
+      message.id
+    );
+
+    onJumpToMessage?.(Number(message.id));
+  };
+
   return (
-    <div className="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-[#0f1720]">
-  
-      {/* Header */}
+    <div
+      className="
+        border-b
+        sticky
+        top-14
+        z-20
+        w-full
+        border-gray-200
+        dark:border-gray-800
+        bg-gray-200
+        dark:bg-[#0f1720]
+      "
+    >
+      {/* =========================
+          HEADER
+      ========================== */}
+
       <button
-        onClick={() => setExpanded(p => !p)}
+        type="button"
+        onClick={() => {
+          if (pinnedMessages.length === 1) {
+            handleJump(newest);
+            return;
+          }
+  
+          if (pinnedMessages.length > 1) {
+            setExpanded((prev) => !prev);
+          }
+        }}
         className="
           w-full
           flex
@@ -146,57 +181,151 @@ export default function CommunityPinnedBar({
           hover:bg-gray-50
           dark:hover:bg-gray-800/40
           transition
+          text-left
         "
       >
-        <div className="flex items-center gap-3 flex-1 overflow-hidden">
-  
+        <div className="flex items-center gap-3 flex-1 min-w-0">
           <Pin
             size={16}
-            className="text-green-600 flex-shrink-0"
+            className="
+              text-indigo-500
+              flex-shrink-0
+            "
           />
-  
+
           <div className="min-w-0 flex-1">
-  
-            <div className="flex items-center gap-2">
-  
-              <span className="font-semibold text-sm">
-                Pinned Message
-              </span>
-  
-              <span className="text-xs text-gray-500">
+            {pinnedMessages.length > 1 && (
+              <div className="text-xs text-gray-500">
                 1 of {pinnedMessages.length}
-              </span>
-  
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 mt-1">
+              {newestPreview.thumb && (
+                <div className="relative flex-shrink-0">
+                  <img
+                    src={newestPreview.thumb}
+                    alt=""
+                    className="
+                      w-10
+                      h-10
+                      rounded
+                      object-cover
+                    "
+                  />
+
+                  {newestPreview.type === "video" && (
+                    <Play
+                      size={12}
+                      fill="white"
+                      className="
+                        absolute
+                        inset-0
+                        m-auto
+                        text-white
+                        drop-shadow
+                      "
+                    />
+                  )}
+                </div>
+              )}
+
+              <div className="min-w-0">
+                <div
+                  className="
+                    text-sm
+                    truncate
+                    text-gray-600
+                    dark:text-gray-200
+                    font-medium
+                  "
+                >
+                  {newestPreview.text}
+                </div>
+              </div>
             </div>
-  
-            {(() => {
-  
+          </div>
+        </div>
+
+        {pinnedMessages.length > 1 &&
+          (expanded ? (
+            <PanelTopClose
+              size={18}
+              className="text-gray-700 dark:text-gray-100 flex-shrink-0"
+            />
+          ) : (
+            <PanelTopOpen
+              size={18}
+              className="text-gray-700 dark:text-gray-100 flex-shrink-0"
+            />
+          ))}
+      </button>
+
+      {/* =========================
+          PINNED MESSAGE LIST
+      ========================== */}
+
+      {expanded &&
+        pinnedMessages.length > 1 && (
+          <div
+            className="
+              border-t
+              border-gray-300
+              dark:border-gray-800
+            "
+          >
+            {previewMessages.map((msg) => {
               const preview =
-                getPinnedPreview(newest);
-  
+                getPinnedPreview(msg);
+
               return (
-  
-                <div className="flex items-center gap-2 mt-1">
-  
-                  {preview.thumb && (
-  
-                    <div className="relative">
-  
+                <button
+                  type="button"
+                  key={
+                    msg.id ??
+                    msg.client_id
+                  }
+                  onClick={() =>
+                    handleJump(msg)
+                  }
+                  className="
+                    w-full
+                    flex
+                    items-center
+                    gap-3
+                    px-3
+                    py-2 
+                    hover:bg-gray-50
+                    dark:hover:bg-gray-800/40
+                    transition
+                    text-left
+                  "
+                >
+                  {/* Thumbnail */}
+
+                  {preview.thumb ? (
+                    <div
+                      className="
+                        relative
+                        flex-shrink-0
+                      "
+                    >
                       <img
                         src={preview.thumb}
+                        alt=""
                         className="
-                          w-10
-                          h-10
-                          rounded
+                          w-12
+                          h-12
+                          rounded-md
                           object-cover
-                          flex-shrink-0
                         "
                       />
-  
-                      {preview.type === "video" && (
-  
+
+                      {preview.type ===
+                        "video" && (
                         <Play
-                          size={12}
+                          size={16}
+                          fill="white"
                           className="
                             absolute
                             inset-0
@@ -204,217 +333,113 @@ export default function CommunityPinnedBar({
                             text-white
                             drop-shadow
                           "
-                          fill="white"
                         />
-  
                       )}
-  
                     </div>
-  
-                  )}
-  
-                  <div className="min-w-0">
-  
-                    <div className="
-                      text-sm
-                      truncate
-                      font-medium
-                    ">
-                      {preview.text}
-                    </div>
-  
-                    <div className="
-                      text-xs
-                      text-gray-500
-                      truncate
-                    ">
-                      {newest.sender_info?.username ??
-                       "Unknown"}
-                    </div>
-  
-                  </div>
-  
-                </div>
-  
-              );
-  
-            })()}
-  
-          </div>
-  
-        </div>
-  
-        {expanded ? (
-          <ChevronUp size={18}/>
-        ) : (
-          <ChevronDown size={18}/>
-        )}
-  
-      </button>
-    
-      {expanded && (
-        <div className="border-t border-gray-200 dark:border-gray-800">
-  
-          {previewMessages.map((msg) => {
-  
-            const preview =
-              getPinnedPreview(msg);
-  
-            return (
-              <button
-                key={msg.id}
-                onClick={() => onJumpToMessage?.(msg.id!)}
-                className="
-                  w-full
-                  flex
-                  items-center
-                  gap-3
-                  px-3
-                  py-2
-                  hover:bg-gray-50
-                  dark:hover:bg-gray-800/40
-                  transition
-                  text-left
-                "
-              >
-  
-                {/* Thumbnail */}
-  
-                {preview.thumb ? (
-  
-                  <div className="relative flex-shrink-0">
-  
-                    <img
-                      src={preview.thumb}
+                  ) : (
+                    <div
                       className="
                         w-12
                         h-12
                         rounded-md
-                        object-cover
+                        bg-gray-300
+                        dark:bg-gray-700
+                        flex 
+                        text-gray-700
+                        dark:text-gray-300
+                        items-center
+                        justify-center
+                        text-xl
+                        flex-shrink-0
                       "
-                    />
-  
-                    {preview.type === "video" && (
-                      <Play
-                        size={16}
-                        fill="white"
-                        className="
-                          absolute
-                          inset-0
-                          m-auto
-                          text-white
-                          drop-shadow
-                        "
-                      />
-                    )}
-  
+                    >
+                      {preview.type ===
+                      "gallery" ? (
+                        <Images size={22} />
+                      ) : preview.type ===
+                        "audio" ? (
+                        <Mic size={22} />
+                      ) : preview.type ===
+                        "gif" ? (
+                        <FileImage size={22} />
+                      ) : preview.type ===
+                        "sticker" ? (
+                        <Sticker size={22} />
+                      ) : preview.type ===
+                        "file" ? (
+                        <FileText size={22} />
+                      ) : (
+                        <MessageCircle
+                          size={22}
+                        />
+                      )}
+                    </div>
+                  )}
+
+                  {/* Text */}
+
+                  <div className="flex-1 min-w-0">
+                    <div
+                      className="
+                        text-sm 
+                        text-gray-700
+                        dark:text-gray-100
+                        font-medium
+                        truncate
+                      "
+                    >
+                      {preview.text}
+                    </div>
                   </div>
-  
-                ) : (
-  
-                  <div
-                    className="
-                      w-12
-                      h-12
-                      rounded-md
-                      bg-gray-200
-                      dark:bg-gray-700
-                      flex
-                      items-center
-                      justify-center
-                      text-xl
-                      flex-shrink-0
-                    "
-                  >
-                    {preview.type === "audio"
-                      ? "🎤"
-                      : preview.type === "gif"
-                      ? "GIF"
-                      : preview.type === "sticker"
-                      ? "😊"
-                      : preview.type === "gallery"
-                      ? "🖼"
-                      : preview.type === "file"
-                      ? "📄"
-                      : "💬"}
-                  </div>
-  
-                )}
-  
-                {/* Text */}
-  
-                <div className="flex-1 min-w-0">
-  
-                  <div
-                    className="
-                      text-sm
-                      font-medium
-                      truncate
-                    "
-                  >
-                    {preview.text}
-                  </div>
-  
-                  <div
-                    className="
-                      text-xs
-                      text-gray-500
-                      truncate
-                    "
-                  >
-                    {msg.sender_info?.username ??
-                     "Unknown"}
-                  </div>
-  
-                </div>
-  
+                </button>
+              );
+            })}
+
+            {/* Show More */}
+
+            {pinnedMessages.length > 3 &&
+              !expandedAll && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpandedAll(true)
+                  }
+                  className="
+                    w-full
+                    py-2
+                    text-sm
+                    text-indigo-600
+                    hover:bg-gray-50
+                    dark:hover:bg-gray-800
+                  "
+                >
+                  Show All (
+                  {pinnedMessages.length})
+                </button>
+              )}
+
+            {/* Show Less */}
+
+            {expandedAll && (
+              <button
+                type="button"
+                onClick={() =>
+                  setExpandedAll(false)
+                }
+                className="
+                  w-full
+                  py-2
+                  text-sm
+                  text-indigo-600
+                  hover:bg-gray-50
+                  dark:hover:bg-gray-800
+                "
+              >
+                Show Less
               </button>
-  
-            );
-  
-          })}
-  
-          {/* Show More */}
-  
-          {pinnedMessages.length > 3 && !expandedAll && (
-  
-            <button
-              onClick={() => setExpandedAll(true)}
-              className="
-                w-full
-                py-2
-                text-sm
-                text-indigo-600
-                hover:bg-gray-50
-                dark:hover:bg-gray-800
-              "
-            >
-              Show All ({pinnedMessages.length})
-            </button>
-  
-          )}
-  
-          {expandedAll && (
-  
-            <button
-              onClick={() => setExpandedAll(false)}
-              className="
-                w-full
-                py-2
-                text-sm
-                text-indigo-600
-                hover:bg-gray-50
-                dark:hover:bg-gray-800
-              "
-            >
-              Show Less
-            </button>
-  
-          )}
-  
-        </div>
-      )}
-  
+            )}
+          </div>
+        )}
     </div>
   );
 }

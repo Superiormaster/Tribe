@@ -103,7 +103,7 @@ export async function uploadPart({
     }
 
     void uploadDebug({
-      event: "PART_UPLOAD_SUCCESS",
+      event: "PART_UPLOAD_START",
       part_number: partNumber,
       data: {
         chunk_size: chunkSize,
@@ -124,7 +124,7 @@ export async function uploadPart({
         );
   
       void uploadDebug({
-        event: "PART_UPLOAD_START",
+        event: "PART_UPLOAD_SUCCESS",
         part_number: partNumber,
         data: {
           start,

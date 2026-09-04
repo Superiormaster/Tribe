@@ -14,6 +14,7 @@ import { useSearchParams } from "next/navigation"
 import { storeRefreshToken, getRefreshToken } from "@/lib/keyStore"
 import { saveCachedUser } from "@/lib/userCache"
 import { useNavigation } from "@/utils/useNavigation";
+import { updateSocketAccessToken } from "@/lib/globalSocket/updateSocketAccessToken";
 
 declare global {
   interface Window {
@@ -126,6 +127,9 @@ export default function LoginPage() {
 
       await storeRefreshToken(user.email, refresh);
       setAccessToken(access);
+      updateSocketAccessToken(
+        access
+      );
 
       saveAccount(user, "google");
       setActiveAccount(user.email);
@@ -173,6 +177,9 @@ export default function LoginPage() {
 
       await storeRefreshToken(user.email, refresh);
       setAccessToken(access);
+      updateSocketAccessToken(
+        access
+      );
 
       saveAccount(user, "password");
       setActiveAccount(user.email);

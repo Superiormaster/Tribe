@@ -79,22 +79,90 @@ export async function refreshSocketAuth() {
   };
 }
 
-export async function reconnectSocket() {
+let connectPromise: Promise<Socket> | null = null;
+
+export async function reconnectSocket(): Promise<Socket> {
   const socket = await getSocket();
 
   if (socket.connected) {
     return socket;
   }
 
-  await refreshSocketAuth();
+  if (connectPromise) {
+    return connectPromise;
+  }
 
-  return new Promise<Socket>((resolve, reject) => {
-    socket.once("connect", () => {
-      resolve(socket);
-    });
+  connectPromise = (async () => {
+    try {
+      await refreshSocketAuth();
 
-    socket.once("connect_error", reject);
+      if (socket.connected) {
+        return socket;
+      }
 
-    socket.connect();
-  });
+      return await new Promise<Socket>(
+        (resolve, reject) => {
+          let settled = false;
+
+          const cleanup = () => {
+            socket.off(
+              "connect",
+              onConnect
+            );
+
+            socket.off(
+              "connect_error",
+              onError
+            );
+          };
+
+          const onConnect = () => {
+            if (settled) return;
+
+            settled = true;
+            cleanup();
+
+            console.log(
+              "🟢 [SOCKET] CONNECTED:",
+              socket.id
+            );
+
+            resolve(socket);
+          };
+
+          const onError = (err: Error) => {
+            if (settled) return;
+
+            settled = true;
+            cleanup();
+
+            console.error(
+              "🔴 [SOCKET] CONNECTION ERROR:",
+              err
+            );
+
+            reject(err);
+          };
+
+          socket.once(
+            "connect",
+            onConnect
+          );
+
+          socket.once(
+            "connect_error",
+            onError
+          );
+
+          if (!socket.connected) {
+            socket.connect();
+          }
+        }
+      );
+    } finally {
+      connectPromise = null;
+    }
+  })();
+
+  return connectPromise;
 }

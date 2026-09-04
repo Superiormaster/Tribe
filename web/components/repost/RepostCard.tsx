@@ -1,12 +1,13 @@
 'use client';
 
 import AppLink from '@/components/AppLink';
-import { Repeat, AlarmClock, MoreHorizontal, Trash2 } from 'lucide-react';
+import { Repeat, AlarmClock, MoreHorizontal, Trash2, Flag } from 'lucide-react';
 import { useState, useEffect, useRef } from "react";
 import { timeAgo } from '@/utils/timeAgo'
 import { starCreator } from '@/lib/api'
 import PostCard from '@/components/PostCard';
 import { apiRequest } from '@/utils/api';
+import toast from "react-hot-toast";
 import { useNavigation } from "@/utils/useNavigation";
 
 type CardContext =
@@ -24,6 +25,7 @@ type RepostCardProps = {
   shouldHideStar?: boolean;
   canModerateReposts?: boolean;
   context?: CardContext;
+  canReport?: boolean;
 };
 
 export default function RepostCard({
@@ -34,6 +36,7 @@ export default function RepostCard({
   hideStarButton = false,
   starredUserIds = new Set(),
   shouldHideStar = false,
+  canReport,
   canModerateReposts = false,
 }: RepostCardProps) {
   const [isStarred, setIsStarred] = useState(false);
@@ -50,6 +53,9 @@ export default function RepostCard({
   
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+  const [reportDetails, setReportDetails] = useState("");
   
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -72,6 +78,41 @@ export default function RepostCard({
         handleClickOutside
       );
   }, []);
+  
+  const handleReport = async () => {
+    if (!reportReason) {
+      alert("Please select a reason");
+      return;
+    }
+  
+    try {
+      const res = await apiRequest(
+        `api/post/${repost.post.id}/report/`,
+        {
+          method: "POST",
+          data: {
+            reason: reportReason,
+            details: reportDetails,
+          },
+        }
+      );
+  
+      toast.success("Report submitted!");
+  
+      setReportOpen(false);
+      setReportReason("");
+      setReportDetails("");
+  
+    } catch (err: any) {
+  
+      alert(
+        err?.data?.message ||
+        "Failed to submit report"
+      );
+  
+      console.error(err);
+    }
+  };
 
   const handleStar = async (userId: number) => {
     if (userId === currentUser?.id) {
@@ -212,6 +253,41 @@ export default function RepostCard({
                   <Trash2 className="w-4 h-4" />
                   Delete
                 </button>
+                
+                {/* REPORT */}
+                {canReport &&
+                  !isRepostOwner && (
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setMenuOpen(
+                        false
+                      );
+                      setReportOpen(
+                        true
+                      );
+                    }}
+                    className="
+                      flex
+                      items-center
+                      gap-2
+                      w-full
+                      px-3
+                      py-2
+                      text-left
+                      text-gray-700
+                      dark:text-gray-400
+                      hover:bg-gray-100
+                      dark:hover:bg-gray-700
+                    "
+                  >
+                    <Flag
+                      className="w-4 h-4"
+                    />
+                    Report
+                  </button>
+                )}
               </div>
             )}
           </div>

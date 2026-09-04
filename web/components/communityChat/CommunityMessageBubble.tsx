@@ -1,17 +1,18 @@
 'use client';
 
-import AppLink from '@/components/AppLink';
 import React, {
   useRef,
   useState,
   useEffect,
   useMemo,
+  useCallback,
 } from 'react';
 
 import CommunityBubbles from '@/components/communityChat/CommunityBubbles';
 import formatMessageDate from '@/components/chat/utils';
 import {
   saveCommunityChatScroll, getCommunityChatScroll,
+  saveCommunityRead, getCommunityRead,
 } from "@/lib/communityMessageDB";
 import { Message } from "@/utils/chat/messageContract"
 
@@ -24,6 +25,7 @@ type Props = {
   loadNewer?: () => void;
   hasMore?: boolean;
   hasNewer?: boolean;
+  onCloseReactionPicker: () => void;
 
   resendPendingMessage?: (msg: Message) => void;
   retryFailedMessage?: (msg: Message) => void;
@@ -57,6 +59,9 @@ type Props = {
     messageId: any,
     emoji: string
   ) => void;
+  loadMessageWindow?: (
+    messageId: number
+  ) => Promise<void>;
   
   replyingTo?: any;
   onReply?: (msg: Message) => void;
@@ -65,7 +70,15 @@ type Props = {
   ) => void;
 };
 
-export default function CommunityMessageBubbles({
+export type CommunityMessageBubblesHandle = {
+  jumpToMessage: (messageId: number) => Promise<void>;
+  closeReactionPicker: () => void;
+};
+
+const CommunityMessageBubbles = React.forwardRef<
+  CommunityMessageBubblesHandle,
+  Props
+>(function CommunityMessageBubbles({
   communityId,
   messages,
   currentUserId,
@@ -73,6 +86,8 @@ export default function CommunityMessageBubbles({
   loadNewer,
   hasMore,
   hasNewer,
+  loadMessageWindow,
+  onCloseReactionPicker,
   resendPendingMessage,
   retryFailedMessage,
   resendMedia,
@@ -86,7 +101,9 @@ export default function CommunityMessageBubbles({
   setPreviewState,
   toggleSelectMessage,
   clearSelection,
-}: Props) {
+}: Props,
+  ref
+) {
 
   const containerRef =
     useRef<HTMLDivElement | null>(null);
@@ -96,16 +113,32 @@ export default function CommunityMessageBubbles({
   const [activeReaction, setActiveReaction] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasScrolledInitially = useRef(false);
+  const jumpInProgressRef = useRef(false);
   const loadingMoreRef = useRef(false);
   const loadingNewerRef = useRef(false);
-  const lastMessageRef = useRef<Message["id"] | null>(null);
+  const lastMessageRef = useRef<string | number | null>(null);
+  const lastUnreadMessageIdRef = useRef<Message["id"] | string | null>(null);
+  const lastReadMessageKeyRef = useRef<string | number | null>(null);
   
   const [showScrollButton, setShowScrollButton] =
     useState(false);
+  const [scrollReady, setScrollReady] = useState(false);
+  const restoringScrollRef = useRef(true);
+  const scrollReadyRef = useRef(false);
+  const scrollRestoredRef = useRef(false);
   
   const [unreadCount, setUnreadCount] =
     useState(0);
-  const mediaCounter = { value: 0 };
+  const mediaCounter = useRef(0);
+  
+  const getMessageKey = useCallback((msg: Message) => {
+    return msg.client_id ?? msg.id;
+  }, []);
+  
+  const closeReactionPicker = useCallback(() => {
+    setActiveReaction(null);
+    onCloseReactionPicker?.();
+  }, [onCloseReactionPicker]);
 
   useEffect(() => {
     if (
@@ -114,6 +147,260 @@ export default function CommunityMessageBubbles({
       setActiveReaction(null);
     }
   }, [selectedMessages]);
+  
+  // =========================
+  // WAIT FOR MESSAGE
+  // =========================
+
+  const waitForMessageElement = useCallback(
+    async (
+      messageId: number,
+      timeout = 5000
+    ): Promise<HTMLElement | null> => {
+      const start = Date.now();
+  
+      while (Date.now() - start < timeout) {
+        const container = containerRef.current;
+  
+        if (!container) {
+          return null;
+        }
+  
+        const element = container.querySelector(
+          `[data-message-id="${messageId}"]`
+        ) as HTMLElement | null;
+  
+        if (element) {
+          return element;
+        }
+  
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => resolve());
+        });
+      }
+  
+      return null;
+    },
+    []
+  );
+  
+  const highlightMessage = useCallback(
+    (messageId: number) => {
+      const container = containerRef.current;
+  
+      if (!container) {
+        return;
+      }
+  
+      const element =
+        container.querySelector(
+          `[data-message-id="${messageId}"]`
+        ) as HTMLElement | null;
+  
+      if (!element) {
+        return;
+      }
+  
+      const classes = [
+        "ring-2",
+        "ring-indigo-500",
+        "bg-indigo-50",
+        "dark:bg-indigo-950/40",
+        "message-jump-highlight",
+      ];
+  
+      // Remove previous highlights
+      container
+        .querySelectorAll(
+          ".message-jump-highlight"
+        )
+        .forEach((el) => {
+          el.classList.remove(...classes);
+        });
+  
+      element.classList.add(...classes);
+  
+      window.setTimeout(() => {
+        element.classList.remove(...classes);
+      }, 2000);
+    },
+    []
+  );
+  
+  const jumpToMessage = useCallback(
+    async (messageId: number) => {
+      if (jumpInProgressRef.current) {
+        console.log(
+          "[JUMP] Already in progress"
+        );
+        return;
+      }
+  
+      if (!messageId) {
+        console.warn(
+          "[JUMP] Invalid message ID:",
+          messageId
+        );
+        return;
+      }
+  
+      const container =
+        containerRef.current;
+  
+      if (!container) {
+        console.warn(
+          "[JUMP] Scroll container not available"
+        );
+        return;
+      }
+  
+      jumpInProgressRef.current = true;
+  
+      try {
+        console.log(
+          "[JUMP] Starting:",
+          messageId
+        );
+  
+        let target =
+          container.querySelector(
+            `[data-message-id="${messageId}"]`
+          ) as HTMLElement | null;
+  
+        if (target) {
+          console.log(
+            "[JUMP] Message already rendered:",
+            messageId
+          );
+        }
+  
+        if (!target) {
+          console.log(
+            "[JUMP] Message not rendered."
+          );
+  
+          if (!loadMessageWindow) {
+            console.warn(
+              "[JUMP] loadMessageWindow is unavailable."
+            );
+  
+            return;
+          }
+  
+          console.log(
+            "[JUMP] Loading message window:",
+            messageId
+          );
+  
+          await loadMessageWindow(
+            messageId
+          );
+  
+          console.log(
+            "[JUMP] Message window loaded. Waiting for render..."
+          );
+  
+          target =
+            await waitForMessageElement(
+              messageId,
+              5000
+            );
+        }
+  
+        if (!target) {
+          console.warn(
+            "[JUMP] Message could not be rendered:",
+            messageId
+          );
+  
+          return;
+        }
+  
+        console.log(
+          "[JUMP] Message rendered:",
+          messageId
+        );
+  
+        const containerRect =
+          container.getBoundingClientRect();
+  
+        const targetRect =
+          target.getBoundingClientRect();
+  
+        const targetCenter =
+          targetRect.top +
+          targetRect.height / 2;
+  
+        const containerCenter =
+          containerRect.top +
+          container.clientHeight / 2;
+  
+        const scrollOffset =
+          targetCenter -
+          containerCenter;
+  
+        container.scrollTo({
+          top:
+            container.scrollTop +
+            scrollOffset,
+          behavior: "smooth",
+        });
+  
+        window.setTimeout(() => {
+          highlightMessage(
+            messageId
+          );
+        }, 400);
+  
+        console.log(
+          "[JUMP] Completed:",
+          messageId
+        );
+  
+      } catch (error) {
+        console.error(
+          "[JUMP] Failed:",
+          error
+        );
+      } finally {
+        // Small cooldown prevents accidental double jumps
+        window.setTimeout(() => {
+          jumpInProgressRef.current =
+            false;
+        }, 450);
+      }
+    },
+    [
+      loadMessageWindow,
+      waitForMessageElement,
+      highlightMessage,
+    ]
+  );
+  
+  React.useImperativeHandle(
+    ref,
+    () => ({
+      jumpToMessage,
+      closeReactionPicker,
+    }),
+    [
+      jumpToMessage,
+      closeReactionPicker,
+    ]
+  );
+  
+  useEffect(() => {
+    restoringScrollRef.current = true;
+    scrollReadyRef.current = false;
+  
+    scrollRestoredRef.current = false;
+    hasScrolledInitially.current = false;
+    lastMessageRef.current = null;
+  
+    setScrollReady(false);
+    setUnreadCount(0);
+    setShowScrollButton(false);
+  }, [communityId, currentUserId]);
   
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -177,9 +464,6 @@ export default function CommunityMessageBubbles({
     if (!el) return;
   
     const handleScroll = async () => {
-      // -----------------------
-      // Load older messages
-      // -----------------------
       if (
         loadMore &&
         hasMore &&
@@ -203,9 +487,6 @@ export default function CommunityMessageBubbles({
         return;
       }
   
-      // -----------------------
-      // Load newer messages
-      // -----------------------
       const distanceFromBottom =
         el.scrollHeight -
         el.scrollTop -
@@ -252,6 +533,11 @@ export default function CommunityMessageBubbles({
   
     if (!el) return;
   
+    if (restoringScrollRef.current) {
+      prevCountRef.current = messages.length;
+      return;
+    }
+  
     const isNearBottom =
       el.scrollHeight - el.scrollTop - el.clientHeight < 150;
   
@@ -269,33 +555,71 @@ export default function CommunityMessageBubbles({
   }, [messages]);
   
   useEffect(() => {
-    if (
-      messages.length > 0 &&
-      !hasScrolledInitially.current
-    ) {
-      const el = containerRef.current;
-  
-      if (!el) return;
-  
-      el.scrollTop = el.scrollHeight;
-      hasScrolledInitially.current = true;
-    }
-  }, [messages.length]);
-  
-  useEffect(() => {
-    const preload = (url: string | null | undefined) => {
+    const preloadImage = (url?: string | null) => {
       if (!url) return;
-    
+  
       const img = new Image();
       img.src = url;
     };
-    
-    messages.slice(-20).forEach(msg => {
-      if (msg.media_type === "image") {
-        msg.media_url?.forEach(preload);
+  
+    const preloadVideo = (url?: string | null) => {
+      if (!url) return;
+  
+      const video = document.createElement("video");
+      video.preload = "metadata";
+      video.src = url;
+    };
+  
+    const preloadAudio = (url?: string | null) => {
+      if (!url) return;
+  
+      const audio = new Audio();
+      audio.preload = "metadata";
+      audio.src = url;
+    };
+  
+    messages.slice(-20).forEach((msg) => {
+      const type = msg.media_type;
+  
+      if (!type) return;
+  
+      const urls = msg.media_url ?? [];
+      const thumbnails = msg.thumbnail ?? [];
+  
+      switch (type) {
+        case "image":
+        case "gif":
+        case "sticker":
+          urls.forEach((url) => preloadImage(url));
+  
+          thumbnails.forEach((url) => {
+            preloadImage(url);
+          });
+          break;
+  
+        case "video":
+          urls.forEach((url) => preloadVideo(url));
+  
+          thumbnails.forEach((url) => {
+            preloadImage(url);
+          });
+          break;
+  
+        case "audio":
+          urls.forEach((url) => preloadAudio(url));
+          break;
+  
+        case "gallery":
+          urls.forEach((url) => preloadImage(url));
+  
+          thumbnails.forEach((url) => {
+            preloadImage(url);
+          });
+          break;
+  
+        default:
+          break;
       }
-    
-      msg.thumbnail?.forEach(preload);
     });
   }, [messages]);
   
@@ -305,6 +629,10 @@ export default function CommunityMessageBubbles({
     if (!el) return;
   
     const save = () => {
+      if (restoringScrollRef.current) {
+        return;
+      }
+  
       const bubbles = Array.from(
         el.querySelectorAll("[data-message-id]")
       ) as HTMLElement[];
@@ -331,46 +659,236 @@ export default function CommunityMessageBubbles({
     };
   }, [communityId, currentUserId]);
   
+  const mediaPriorityIds = useMemo(() => {
+    const ids = new Set<string | number>();
+    let count = 0;
+  
+    for (const msg of messages) {
+      const isMedia = [
+        "image",
+        "video",
+        "gif",
+        "sticker",
+        "gallery",
+      ].includes(msg.media_type ?? "");
+  
+      if (!isMedia) continue;
+  
+      if (count < 10) {
+        const messageId = msg.client_id ?? msg.id;
+      
+        if (messageId !== undefined && messageId !== null) {
+          ids.add(messageId);
+          count++;
+        }
+      }
+    }
+  
+    return ids;
+  }, [messages]);
+  
   useEffect(() => {
     if (!messages.length) return;
   
-    const restore = async () => {
+    let cancelled = false;
+  
+    const restoreScroll = async () => {
       const el = containerRef.current;
   
       if (!el) return;
   
-      const saved = await getCommunityChatScroll(
-        communityId,
-        currentUserId
-      );
+      restoringScrollRef.current = true;
+      scrollReadyRef.current = false;
+      scrollRestoredRef.current = false;
   
-      if (!saved) return;
+      setScrollReady(false);
+      setUnreadCount(0);
+      setShowScrollButton(false);
   
-      requestAnimationFrame(() => {
-        let target =
-          containerRef.current?.querySelector(
+      try {
+        const saved = await getCommunityChatScroll(
+          communityId,
+          currentUserId
+        );
+  
+        const savedRead = await getCommunityRead(
+          communityId,
+          currentUserId
+        );
+        
+        if (cancelled) return;
+        
+        if (savedRead) {
+          lastReadMessageKeyRef.current =
+            savedRead.clientId ??
+            savedRead.messageId ??
+            null;
+        }
+  
+        // Wait until the message DOM has actually been painted.
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              resolve();
+            });
+          });
+        });
+  
+        if (cancelled) return;
+  
+        const container = containerRef.current;
+  
+        if (!container) return;
+  
+        let target: HTMLElement | null = null;
+  
+        if (saved) {
+          target = container.querySelector(
             `[data-message-id="${saved.messageId}"]`
           ) as HTMLElement | null;
-      
-        if (!target && saved.clientId) {
-          target =
-            containerRef.current?.querySelector(
+  
+          if (!target && saved.clientId) {
+            target = container.querySelector(
               `[data-client-id="${saved.clientId}"]`
             ) as HTMLElement | null;
+          }
         }
-      
-        // Message no longer exists in current window
-        if (!target) {
-          el.scrollTop = el.scrollHeight;
-          return;
+  
+        if (target && saved) {
+          container.scrollTop =
+            target.offsetTop +
+            (saved.offset ?? 0);
+        } else {
+          container.scrollTop =
+            container.scrollHeight;
         }
-      
-        el.scrollTop = target.offsetTop + (saved.offset ?? 0);
-      });
+  
+        requestAnimationFrame(() => {
+          if (cancelled) return;
+  
+          const last =
+            messages[messages.length - 1];
+  
+          lastMessageRef.current =
+            last.client_id ?? last.id;
+  
+          hasScrolledInitially.current = true;
+          scrollRestoredRef.current = true;
+  
+          restoringScrollRef.current = false;
+          scrollReadyRef.current = true;
+  
+          setUnreadCount(0);
+          setShowScrollButton(false);
+          setScrollReady(true);
+        });
+  
+      } catch (error) {
+        console.error(
+          "[COMMUNITY SCROLL RESTORE] Failed:",
+          error
+        );
+  
+        if (cancelled) return;
+  
+        const container = containerRef.current;
+  
+        if (!container) return;
+  
+        container.scrollTop =
+          container.scrollHeight;
+  
+        requestAnimationFrame(() => {
+          if (cancelled) return;
+  
+          const last =
+            messages[messages.length - 1];
+  
+          lastMessageRef.current =
+            last.client_id ?? last.id;
+  
+          hasScrolledInitially.current = true;
+          scrollRestoredRef.current = true;
+  
+          restoringScrollRef.current = false;
+          scrollReadyRef.current = true;
+  
+          setUnreadCount(0);
+          setShowScrollButton(false);
+          setScrollReady(true);
+        });
+      }
     };
   
-    restore();
+    restoreScroll();
+  
+    return () => {
+      cancelled = true;
+    };
+  
   }, [communityId, currentUserId, messages.length]);
+  
+  const markVisibleMessagesAsRead = useCallback(() => {
+    const el = containerRef.current;
+  
+    if (!el || restoringScrollRef.current) {
+      return;
+    }
+  
+    const bubbles = Array.from(
+      el.querySelectorAll("[data-message-id]")
+    ) as HTMLElement[];
+  
+    if (!bubbles.length) {
+      return;
+    }
+  
+    const containerRect =
+      el.getBoundingClientRect();
+  
+    let lastVisible: HTMLElement | null = null;
+  
+    for (const bubble of bubbles) {
+      const rect = bubble.getBoundingClientRect();
+  
+      const visible =
+        rect.bottom > containerRect.top &&
+        rect.top < containerRect.bottom;
+  
+      if (visible) {
+        lastVisible = bubble;
+      }
+    }
+  
+    if (!lastVisible) {
+      return;
+    }
+  
+    const messageId =
+      lastVisible.dataset.messageId;
+  
+    const clientId =
+      lastVisible.dataset.clientId;
+  
+    if (!messageId && !clientId) {
+      return;
+    }
+  
+    lastReadMessageKeyRef.current =
+      clientId ?? messageId ?? null;
+  
+    saveCommunityRead({
+      communityId,
+      userId: currentUserId,
+      messageId,
+      clientId,
+    }).catch(error => {
+      console.error(
+        "[CHAT READ] Failed to save:",
+        error
+      );
+    });
+  }, [communityId, currentUserId]);
   
   useEffect(() => {
     const el = containerRef.current;
@@ -393,6 +911,8 @@ export default function CommunityMessageBubbles({
       if (atBottom) {
         setUnreadCount(0);
       }
+
+      markVisibleMessagesAsRead();
     };
   
     el.addEventListener(
@@ -405,41 +925,75 @@ export default function CommunityMessageBubbles({
         "scroll",
         onScroll
       );
-  }, []);
+  }, [markVisibleMessagesAsRead]);
   
   useEffect(() => {
     if (!messages.length) return;
   
-    const last = messages[messages.length - 1];
-  
-    if (lastMessageRef.current === last.id) {
+    if (
+      !scrollRestoredRef.current ||
+      restoringScrollRef.current
+    ) {
       return;
     }
   
-    lastMessageRef.current = last.id;
+    const readKey =
+      lastReadMessageKeyRef.current;
   
     const el = containerRef.current;
   
     if (!el) return;
   
-    const atBottom =
-      el.scrollHeight -
-        el.scrollTop -
-        el.clientHeight <
-      100;
+    if (!readKey) {
+      return;
+    }
   
-    const isIncoming =
-      last.sender !== currentUserId;
+    const readIndex = messages.findIndex(
+      msg =>
+        String(getMessageKey(msg)) ===
+        String(readKey)
+    );
+  
+    if (readIndex === -1) {
+      return;
+    }
+  
+    const unreadMessages =
+      messages
+        .slice(readIndex + 1)
+        .filter(msg =>
+          String(msg.sender) !==
+          String(currentUserId)
+        );
+  
+    const distanceFromBottom =
+      el.scrollHeight -
+      el.scrollTop -
+      el.clientHeight;
+  
+    const atBottom =
+      distanceFromBottom < 100;
   
     if (atBottom) {
-      requestAnimationFrame(() => {
-        el.scrollTop = el.scrollHeight;
-      });
-    } else if (isIncoming) {
-      setUnreadCount(c => c + 1);
-      setShowScrollButton(true);
+      setUnreadCount(0);
+      setShowScrollButton(false);
+      return;
     }
-  }, [messages, currentUserId]);
+  
+    setUnreadCount(
+      unreadMessages.length
+    );
+  
+    setShowScrollButton(
+      unreadMessages.length > 0 ||
+      distanceFromBottom >= 100
+    );
+  
+  }, [
+    messages,
+    currentUserId,
+    getMessageKey,
+  ]);
   
   const scrollToBottom = () => {
     const el = containerRef.current;
@@ -449,6 +1003,14 @@ export default function CommunityMessageBubbles({
     el.scrollTo({
       top: el.scrollHeight,
       behavior: "smooth",
+    });
+  
+    setUnreadCount(0);
+
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        markVisibleMessagesAsRead();
+      });
     });
   };
   
@@ -486,6 +1048,9 @@ export default function CommunityMessageBubbles({
           clearSelection();
         }
       }}
+      style={{
+        visibility: scrollReady ? "visible" : "hidden",
+      }}
       className="flex flex-col h-full overflow-x-hidden overflow-y-auto py-3 px-2"
     >
 
@@ -514,22 +1079,22 @@ export default function CommunityMessageBubbles({
                   msgs[index - 1];
 
                 const sameUser =
-                  prev?.sender === msg.sender;
-                const isMedia =
-                  [
-                    "image",
-                    "video",
-                    "gif",
-                    "sticker",
-                    "gallery",
-                  ].includes(msg.media_type ?? "");
+                  !!prev &&
+                  String(prev.sender) === String(msg.sender);
+                  const messageKey = msg.client_id || msg.id;
+
+                const isMedia = [
+                  "image",
+                  "video",
+                  "gif",
+                  "sticker",
+                  "gallery",
+                ].includes(msg.media_type ?? "");
                 
-                let priority = false;
-                
-                if (isMedia) {
-                  priority = mediaCounter.value < 10;
-                  mediaCounter.value++;
-                }
+                const priority =
+                  isMedia &&
+                  messageKey != null &&
+                  mediaPriorityIds.has(messageKey);
 
                 return (
                   <CommunityBubbles
@@ -538,10 +1103,13 @@ export default function CommunityMessageBubbles({
                       msg.id
                     }
                     msg={msg}
+                    closeReactionPicker={closeReactionPicker}
                     isCurrentUser={isCurrentUser}
+                    currentUserId={currentUserId}
                     sameUser={sameUser}
                     priority={priority}
                     resendPendingMessage={resendPendingMessage}
+                    jumpToMessage={jumpToMessage}
                     retryFailedMessage={retryFailedMessage}
                     resendMedia={resendMedia}
                     onForward={onForward}
@@ -569,10 +1137,7 @@ export default function CommunityMessageBubbles({
 
       {showScrollButton && (
         <button
-          onClick={() => {
-            scrollToBottom();
-            setUnreadCount(0);
-          }}
+          onClick={scrollToBottom}
           className="fixed bottom-24 right-4 z-50 w-12 h-12 rounded-full border bg-gray-300 dark:bg-gray-900 text-gray-800 dark:text-white shadow-lg"
         >
           ↓
@@ -588,4 +1153,6 @@ export default function CommunityMessageBubbles({
       <div ref={messagesEndRef} />
     </div>
   );
-}
+});
+
+export default CommunityMessageBubbles;

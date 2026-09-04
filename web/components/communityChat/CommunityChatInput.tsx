@@ -15,9 +15,14 @@ import ChatDrawer from "@/components/chat/ChatDrawer";
 import { getVideoDuration } from "@/utils/chat/videoThumbnail";
 import MediaPickerSheet from "@/components/chat/MediaPickerSheet";
 import PreviewViewer from  "@/components/chat/PreviewViewer";
+import { useCommunityMentions } from "@/utils/chat/mention/useCommunityMentions";
+import MentionDropdown from "@/components/chat/MentionDropdown";
+import {
+  insertMention,
+} from "@/utils/chat/mention/mentionUtils";
 import { useChatInputState } from "@/utils/chat/useChatInputState";
 import CameraCaptureModal from '@/components/CameraCaptureModal';
-import { Message } from "@/utils/chat/messageContract";
+import { Message, ReplyMessage } from "@/utils/chat/messageContract";
 
 import { useRef, useEffect, useMemo, useState } from 'react';
 
@@ -28,14 +33,12 @@ type Props = {
   handleTyping?: (v: string) => void;
   saveDraftLocal: (v: string) => void;
   communityId: number;
-  onSend: (payload?: any) => void;
+  onSend: (payload?: any) => Promise<void>;
 
   onFileSelect: (file: MediaFile) => void;
 
   disabled?: boolean;
-
-  replyingTo?: Message | null;
-
+  replyingTo?: ReplyMessage | null;
   onCancelReply?: () => void;
 
   // 🎤 Voice recording
@@ -46,9 +49,7 @@ type Props = {
   duration?: number;
 
   onMicStart?: (e: any) => void;
-
   onMicMove?: (e: any) => void;
-
   onMicEnd?: () => void;
   drag: {
     x: number;
@@ -147,6 +148,9 @@ export default function CommunityChatInput({
     useRef<HTMLTextAreaElement | null>(null);
   
   const isActiveTab = (tab: string) => drawerMode === tab;
+  const [selectedMentions, setSelectedMentions] = useState<
+    { id: number; username: string }[]
+  >([]);
   
   const [inputMode, setInputMode] = useState<InputMode>("keyboard");
   const cursorRef = useRef<number>(0);
@@ -160,6 +164,22 @@ export default function CommunityChatInput({
   const [stickers, setStickers] = useState<any[]>([]);
   const [gifs, setGifs] = useState<any[]>([]);
   const [loadingGifs, setLoadingGifs] = useState(false);
+  const [cursor, setCursor] = useState(0);
+
+  const {
+    members,
+    isMentioning,
+    isMentioningAll,
+    mentionStart,
+    mentionEnd,
+    loading,
+    hasNext,
+    loadMore,
+  } = useCommunityMentions(
+    communityId,
+    value,
+    cursor
+  );
 
   const activeQuery =
     drawerMode === "gif"
@@ -354,32 +374,55 @@ export default function CommunityChatInput({
         };
 
       case "gallery": {
+        const assets = Array.isArray(reply.media_assets)
+          ? reply.media_assets
+          : [];
+      
         const media = Array.isArray(reply.media_url)
           ? reply.media_url
           : [];
       
-        const images = media.filter(
-          (m: any) =>
-            !m.includes(".mp4") &&
-            !m.includes(".mov") &&
-            !m.includes(".webm")
+        const items = assets.length
+          ? assets
+          : media.map((url: string, index: number) => ({
+              original_url: url,
+              media_type:
+                reply.media_type === "video"
+                  ? "video"
+                  : reply.media_type === "audio"
+                    ? "audio"
+                    : "image",
+            }));
+      
+        const images = items.filter(
+          (item: any) =>
+            item.content_type?.startsWith("image/") ||
+            item.media_type === "image" ||
+            !item.media_type
         ).length;
       
-        const videos = media.length - images;
+        const videos = items.filter(
+          (item: any) =>
+            item.content_type?.startsWith("video/") ||
+            item.media_type === "video"
+        ).length;
       
-        let text = "";
+        let text = "Media";
       
-        if (images && videos) {
-          text = `${media.length} media`;
-        } else if (images) {
+        if (images > 0 && videos > 0) {
+          text = `${images} photo${images > 1 ? "s" : ""}, ${videos} video${videos > 1 ? "s" : ""}`;
+        } else if (images > 0) {
           text = `${images} photo${images > 1 ? "s" : ""}`;
-        } else {
+        } else if (videos > 0) {
           text = `${videos} video${videos > 1 ? "s" : ""}`;
         }
       
         return {
           type: "gallery",
-          thumb: media[0],
+          thumb:
+            assets[0]?.thumbnail_url ||
+            assets[0]?.original_url ||
+            media[0],
           text,
         };
       }
@@ -390,6 +433,43 @@ export default function CommunityChatInput({
           text: "Attachment",
         };
     }
+  };
+  
+  const handleSend = async () => {
+    const mentionUserIds = selectedMentions.map(
+      mention => mention.id
+    );
+  
+    const mentions = selectedMentions.map((mention) => ({
+      id: mention.id,
+      username: mention.username,
+    }));
+  
+    const mentionAll = /@all\b/i.test(value);
+  
+    await onSend({
+      encrypted_text: selectedFiles.length
+        ? ""
+        : value,
+      caption: selectedFiles.length
+        ? value
+        : "",
+      mention_user_ids: mentionUserIds,
+      mention_all: mentionAll,
+      mentions,
+      files: selectedFiles,
+      media_source: selectedFiles.length
+        ? "upload"
+        : null,
+    });
+  
+    setSelectedMentions([]);
+    setSelectedFiles([]);
+    setPreviewIndex(null);
+    onChange("");
+    setShowDrawer(false);
+    setDrawerMode(null);
+    setInputMode("keyboard");
   };
   
   const preview = replyingTo
@@ -514,176 +594,252 @@ export default function CommunityChatInput({
             }}
           />
     
-          {/* INPUT CONTAINER */}
-          <div className="flex-1 bg-gray-200 dark:bg-[#202c33] rounded-2xl overflow-hidden relative">
-  
-            {/* REPLY PREVIEW */}
-            <div
-              className={`
-                transition-all duration-300 overflow-hidden
-                ${
-                  replyingTo
-                    ? 'max-h-24 opacity-100'
-                    : 'max-h-0 opacity-0'
-                }
-              `}
-            >
-              {replyingTo && (
-                <div className="flex items-start gap-2 px-3 pt-3 pb-2 border-l-4 border-green-500 bg-gray-100 dark:bg-[#182229]">
-  
-                  <div className="flex-1 overflow-hidden">
-  
-                    <p className="text-xs items-center flex text-gray-900 dark:text-green-400 font-semibold">
-                      <Reply className="mr-2 w-5" /> Replying to {replyingTo.sender_info?.username ?? "Unknown"}
-                    </p>
-  
-                    {preview?.thumb && (
-                      <img
-                        src={preview.thumb}
-                        className="w-10 h-10 rounded object-cover"
-                      />
-                    )}
-                    
-                    <p className="text-xs text-gray-600 dark:text-gray-300 truncate">
-                      {preview?.text}
-                    </p>
-  
-                  </div>
-  
-                  <button
-                    onClick={onCancelReply}
-                    className="text-gray-400 hover:text-white"
-                  >
-                    <X size={16} />
-                  </button>
-  
-                </div>
-              )}
-            </div>
-  
-            {showRecorder && (
+          {/* INPUT + MENTION WRAPPER */}
+          <div className="flex-1 relative">
+          
+            {/* MENTION DROPDOWN */}
+            {(isMentioning || isMentioningAll) && (
               <div
                 className="
                   absolute
-                  inset-0
-                  flex
-                  items-center
-                  px-4
-                  bg-white
-                  dark:bg-[#202c33]
-                  rounded-2xl
-                  overflow-hidden
+                  left-0
+                  right-0
+                  bottom-full
+                  mb-2
+                  z-[9999]
                 "
               >
-                {/* Counter */}
-                <div className="flex items-center gap-2 min-w-[70px]">
-                  <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
-            
-                  <span className="dark:text-white text-gray-600 text-lg">
-                    {formatTime(duration ?? 0)}
-                  </span>
-                </div>
-            
-                {/* Slide text */}
-                {!isLocked && (
-                  <div
-                    className="flex-1 text-center text-gray-400 text-lg transition-all duration-75"
-                    style={{
-                      transform: `translateX(${drag.x}px)`,
-                    }}
-                  >
-                    &lt; Slide to cancel
+                <MentionDropdown
+                  members={members}
+                  loading={loading}
+                  hasNext={hasNext}
+                  mentionAll={isMentioningAll}
+                  onLoadMore={loadMore}
+                  onSelect={(member) => {
+                    if (mentionStart == null) return;
+                  
+                    const username = member.username;
+                    const userId = Number(member.id);
+                  
+                    const newValue = insertMention(
+                      value,
+                      mentionStart,
+                      mentionEnd,
+                      username
+                    );
+                  
+                    onChange(newValue);
+                  
+                    // SAVE THE ACTUAL MENTION
+                    setSelectedMentions(prev => {
+                      const exists = prev.some(
+                        mention => mention.id === userId
+                      );
+                  
+                      if (exists) {
+                        return prev;
+                      }
+                  
+                      return [
+                        ...prev,
+                        {
+                          id: userId,
+                          username,
+                        },
+                      ];
+                    });
+                  
+                    const newCursor =
+                      mentionStart +
+                      username.length +
+                      2;
+                  
+                    cursorRef.current = newCursor;
+                    setCursor(newCursor);
+                  
+                    setTimeout(() => {
+                      textRef.current?.focus();
+                  
+                      textRef.current?.setSelectionRange(
+                        newCursor,
+                        newCursor
+                      );
+                    }, 0);
+                  }}
+                />
+              </div>
+            )}
+          
+            {/* ACTUAL INPUT BOX */}
+            <div
+              className="
+                bg-gray-200
+                dark:bg-[#202c33]
+                rounded-2xl
+                overflow-hidden
+                relative
+              "
+            >
+  
+              {/* REPLY PREVIEW */}
+              <div
+                className={`
+                  transition-all duration-300 overflow-hidden
+                  ${
+                    replyingTo
+                      ? 'max-h-24 opacity-100'
+                      : 'max-h-0 opacity-0'
+                  }
+                `}
+              >
+                {replyingTo && (
+                  <div className="flex items-start gap-2 px-3 pt-3 pb-2 border-l-4 border-indigo-500 bg-gray-100 dark:bg-[#182229]">
+    
+                    <div className="flex-1 overflow-hidden">
+    
+                      <p className="text-xs items-center flex text-gray-900 dark:text-indigo-400 font-semibold">
+                        <Reply className="mr-2 w-5" />
+                        Replying to{" "}
+                        {replyingTo.sender_username ??
+                          replyingTo.sender_info?.username ??
+                          "Unknown"}
+                      </p>
+    
+                      {preview?.thumb && (
+                        <img
+                          src={preview.thumb}
+                          className="w-10 h-10 rounded object-cover"
+                        />
+                      )}
+                      
+                      <p className="text-xs text-gray-600 dark:text-gray-300 truncate">
+                        {preview?.text}
+                      </p>
+    
+                    </div>
+    
+                    <button
+                      onClick={onCancelReply}
+                      className="text-gray-400 hover:text-white"
+                    >
+                      <X size={16} />
+                    </button>
+    
                   </div>
                 )}
               </div>
-            )}
-
-            {/* TEXTAREA */}
-            <textarea
-              ref={textRef}
-              value={value}
-              onChange={(e) => {
-                const val = e.target.value;
+    
+              {showRecorder && (
+                <div
+                  className="
+                    absolute
+                    inset-0
+                    flex
+                    items-center
+                    px-4
+                    bg-white
+                    dark:bg-[#202c33]
+                    rounded-2xl
+                    overflow-hidden
+                  "
+                >
+                  {/* Counter */}
+                  <div className="flex items-center gap-2 min-w-[70px]">
+                    <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
               
-                onChange(val);
+                    <span className="dark:text-white text-gray-600 text-lg">
+                      {formatTime(duration ?? 0)}
+                    </span>
+                  </div>
               
-                handleTyping?.(val);
-              
-                saveDraftLocal?.(val);
-              }}
-              onSelect={(e) => {
-                cursorRef.current = e.currentTarget.selectionStart;
-              }}
-              
-              onClick={(e) => {
-                cursorRef.current = e.currentTarget.selectionStart;
-              }}
-              
-              onKeyUp={(e) => {
-                cursorRef.current = e.currentTarget.selectionStart;
-              }}
-              placeholder={
-                selectedFiles.length > 0
-                  ? "Add a caption..."
-                  : disabled
-                    ? "Chat locked"
-                    : "Message"
-              }
-              disabled={disabled}
-              rows={1}
-              className="
-                w-full
-                bg-[#202c33]
-                px-4
-                pr-12
-                py-3
-                bg-transparent
-                text-white
-                outline-none
-                resize-none
-                max-h-32
-                overflow-y-auto
-              "
-            />
-
-            {!value.trim() && (
-              <button
-                onClick={() => setShowCamera(true)}
+                  {/* Slide text */}
+                  {!isLocked && (
+                    <div
+                      className="flex-1 text-center text-gray-400 text-lg transition-all duration-75"
+                      style={{
+                        transform: `translateX(${drag.x}px)`,
+                      }}
+                    >
+                      &lt; Slide to cancel
+                    </div>
+                  )}
+                </div>
+              )}
+  
+              {/* TEXTAREA */}
+              <textarea
+                ref={textRef}
+                value={value}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  onChange(val);
+                  handleTyping?.(val);
+                  saveDraftLocal?.(val);
+                }}
+                onSelect={(e) => {
+                  const position =
+                    e.currentTarget.selectionStart;
+                
+                  cursorRef.current = position;
+                  setCursor(position);
+                }}
+                onClick={(e) => {
+                  const position =
+                    e.currentTarget.selectionStart;
+                
+                  cursorRef.current = position;
+                  setCursor(position);
+                }}
+                onKeyUp={(e) => {
+                  const position =
+                    e.currentTarget.selectionStart;
+                
+                  cursorRef.current = position;
+                  setCursor(position);
+                }}
+                placeholder={
+                  selectedFiles.length > 0
+                    ? "Add a caption..."
+                    : disabled
+                      ? "Chat locked"
+                      : "Message"
+                }
+                disabled={disabled}
+                rows={1}
                 className="
-                  absolute
-                  right-3
-                  bottom-4
-                  text-gray-400
+                  w-full
+                  bg-[#202c33]
+                  px-4
+                  pr-12
+                  py-3
+                  bg-transparent
+                  text-white
+                  outline-none
+                  resize-none
+                  max-h-32
+                  overflow-y-auto
                 "
-              >
-                <Camera size={20} />
-              </button>
-            )}
+              />
+  
+              {!value.trim() && (
+                <button
+                  onClick={() => setShowCamera(true)}
+                  className="
+                    absolute
+                    right-3
+                    bottom-4
+                    text-gray-400
+                  "
+                >
+                  <Camera size={20} />
+                </button>
+              )}
+            </div>
           </div>
 
           {canSend ? (
             <button
-              onClick={() => {
-                onSend({
-                  encrypted_text: selectedFiles.length
-                    ? ""
-                    : value,
-                  caption: selectedFiles.length
-                    ? value
-                    : "",
-                  files: selectedFiles,
-                  media_source: selectedFiles.length
-                    ? "upload"
-                    : null,
-                });
-              
-                setSelectedFiles([]);
-                setPreviewIndex(null);
-                onChange("");
-                setShowDrawer(false);
-                setDrawerMode(null);
-                setInputMode("keyboard");
-              }}
+              onClick={handleSend}
               className="
                 p-3
                 rounded-full

@@ -15,7 +15,7 @@ import ChatDrawer from "@/components/chat/ChatDrawer";
 import { getVideoDuration } from "@/utils/chat/videoThumbnail";
 import MediaPickerSheet from "@/components/chat/MediaPickerSheet";
 import PreviewViewer from  "@/components/chat/PreviewViewer";
-import { Message } from "@/utils/chat/messageContract";
+import { Message, ReplyMessage } from "@/utils/chat/messageContract";
 import { useChatInputState } from "@/utils/chat/useChatInputState";
 import CameraCaptureModal
 from '@/components/CameraCaptureModal';
@@ -36,7 +36,7 @@ type Props = {
 
   disabled?: boolean;
 
-  replyingTo?: Message | null;
+  replyingTo?: ReplyMessage | null;
 
   onCancelReply?: () => void;
 
@@ -356,32 +356,55 @@ export default function ChatInput({
         };
 
       case "gallery": {
+        const assets = Array.isArray(reply.media_assets)
+          ? reply.media_assets
+          : [];
+      
         const media = Array.isArray(reply.media_url)
           ? reply.media_url
           : [];
       
-        const images = media.filter(
-          (m: any) =>
-            !m.includes(".mp4") &&
-            !m.includes(".mov") &&
-            !m.includes(".webm")
+        const items = assets.length
+          ? assets
+          : media.map((url: string, index: number) => ({
+              original_url: url,
+              media_type:
+                reply.media_type === "video"
+                  ? "video"
+                  : reply.media_type === "audio"
+                    ? "audio"
+                    : "image",
+            }));
+      
+        const images = items.filter(
+          (item: any) =>
+            item.content_type?.startsWith("image/") ||
+            item.media_type === "image" ||
+            !item.media_type
         ).length;
       
-        const videos = media.length - images;
+        const videos = items.filter(
+          (item: any) =>
+            item.content_type?.startsWith("video/") ||
+            item.media_type === "video"
+        ).length;
       
-        let text = "";
+        let text = "Media";
       
-        if (images && videos) {
-          text = `${media.length} media`;
-        } else if (images) {
+        if (images > 0 && videos > 0) {
+          text = `${images} photo${images > 1 ? "s" : ""}, ${videos} video${videos > 1 ? "s" : ""}`;
+        } else if (images > 0) {
           text = `${images} photo${images > 1 ? "s" : ""}`;
-        } else {
+        } else if (videos > 0) {
           text = `${videos} video${videos > 1 ? "s" : ""}`;
         }
       
         return {
           type: "gallery",
-          thumb: media[0],
+          thumb:
+            assets[0]?.thumbnail_url ||
+            assets[0]?.original_url ||
+            media[0],
           text,
         };
       }
@@ -533,12 +556,16 @@ export default function ChatInput({
               `}
             >
               {replyingTo && (
-                <div className="flex items-start gap-2 px-3 pt-3 pb-2 border-l-4 border-green-500 bg-gray-100 dark:bg-[#182229]">
+                <div className="flex items-start gap-2 px-3 pt-3 pb-2 border-l-4 border-indigo-500 bg-gray-100 dark:bg-[#182229]">
   
                   <div className="flex-1 overflow-hidden">
   
-                    <p className="text-xs items-center flex text-gray-900 dark:text-green-400 font-semibold">
-                      <Reply className="mr-2 w-5" /> Replying to {replyingTo.sender_info?.username ?? "Unknown"}
+                    <p className="text-xs items-center flex text-gray-900 dark:text-indigo-400 font-semibold">
+                      <Reply className="mr-2 w-5" />
+                      Replying to{" "}
+                      {replyingTo.sender_username ??
+                        replyingTo.sender_info?.username ??
+                        "Unknown"}
                     </p>
   
                     {preview?.thumb && (

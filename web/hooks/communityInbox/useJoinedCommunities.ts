@@ -38,7 +38,7 @@ export function useJoinedCommunities() {
       setLoadingCommunities(true);
 
       const res = await apiRequest(
-        `api/joined-communities/?page=${page}`
+        `api/communities/joined-communities/?page=${page}`
       );
 
       if (page === 1) {
@@ -50,7 +50,7 @@ export function useJoinedCommunities() {
         ]);
       }
   
-      for (const community of res) {
+      for (const community of res.results) {
         await saveCommunityMeta(
           community.id,
           community.name,

@@ -10,12 +10,13 @@ import {
   Bookmark,
   ChevronRight,
   TrendingUp,
+  Image as ImageIcon,
 } from "lucide-react";
 
 interface TopPost {
   id: string;
   title: string;
-  thumbnail: string;
+  thumbnail?: string | null;
   impressions: number;
   likes: number;
   comments: number;
@@ -45,7 +46,7 @@ export default function TopPosts({
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: .35 }}
-      className="rounded-3xl border border-white/10 bg-background/70 backdrop-blur-xl p-6"
+      className="rounded-3xl border border-indigo-300 dark:border-white/10 bg-gray-200 dark:bg-gray-900/70 backdrop-blur-xl p-6"
     >
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -84,16 +85,27 @@ export default function TopPosts({
             whileHover={{
               scale: 1.01,
             }}
-            className="w-full rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left transition hover:border-primary/30"
+            className="w-full rounded-2xl border border-gray-700/15 dark:border-white/10 bg-gray-300 dark:bg-white/[0.03] p-4 text-left transition hover:border-primary/30"
           >
             <div className="flex gap-4">
-              <div className="relative h-20 w-20 overflow-hidden rounded-xl shrink-0">
-                <Image
-                  src={post.thumbnail}
-                  alt={post.title}
-                  fill
-                  className="object-cover"
-                />
+              <div className="relative h-20 w-20 overflow-hidden rounded-xl shrink-0 bg-muted">
+                {typeof post.thumbnail === "string" &&
+                post.thumbnail.trim() ? (
+                  <Image
+                    src={post.thumbnail}
+                    alt={post.title}
+                    fill
+                    sizes="80px"
+                    className="object-cover"
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center">
+                    <ImageIcon
+                      size={24}
+                      className="text-muted-foreground"
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="flex-1 min-w-0">

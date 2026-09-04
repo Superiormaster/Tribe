@@ -25,10 +25,6 @@ function openDB(): Promise<IDBDatabase> {
   });
 }
 
-/**
- * Save cached user.
- * Key = email
- */
 export async function saveCachedUser(user: any) {
   const db = await openDB();
 
@@ -52,9 +48,6 @@ export async function saveCachedUser(user: any) {
   });
 }
 
-/**
- * Read cached user
- */
 export async function getCachedUser(
   email: string
 ) {

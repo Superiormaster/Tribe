@@ -9,7 +9,7 @@ type Props = {
   top: number;
   left: number;
   isCurrentUser: boolean;
-  messageId: string;
+  messageId: string | null;
   onReact: (messageId: string, emoji: string) => void;
   onClose: () => void;
   onOpenEmojiDrawer?: () => void;
@@ -31,6 +31,14 @@ export default function ReactionPicker({
 
   return (
     <div
+      onPointerDown={(e) => e.stopPropagation()}
+      onPointerMove={(e) => e.stopPropagation()}
+      onPointerUp={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+      onTouchMove={(e) => e.stopPropagation()}
+      onTouchEnd={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
       style={{
         position: "fixed",
         top,
@@ -62,7 +70,14 @@ export default function ReactionPicker({
         {REACTION_EMOJIS.map((emoji) => (
           <button
             key={emoji}
-            onClick={() => {
+            type="button"
+            onPointerDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+          
+              if (!messageId) return;
+          
               onReact(messageId, emoji);
               onClearSelection?.();
               onClose();
@@ -79,7 +94,11 @@ export default function ReactionPicker({
         ))}
 
         <button
-          onClick={() => {
+          onPointerDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+        
             onClearSelection?.();
             onClose();
             onOpenEmojiDrawer?.();

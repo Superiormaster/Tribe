@@ -8,6 +8,7 @@ import NetworkBannerWrapper from "@/components/networkConnection/NetworkBannerWr
 import {
   NetworkProvider,
 } from "@/components/networkConnection/NetworkContext";
+import GlobalSocketProvider from "@/components/GlobalSocketProvider";
 import { apiRequest } from "@/utils/api";
 import { useEffect } from "react";
 
@@ -45,7 +46,9 @@ export default function ClientWrapper({ children }: { children: React.ReactNode 
         <NetworkProvider>
           <NetworkBannerWrapper />
           <UserProvider>
-            <AppContent>{children}</AppContent>
+            <GlobalSocketProvider>
+              <AppContent>{children}</AppContent>
+            </GlobalSocketProvider>
           </UserProvider>
         </NetworkProvider>
       </ThemeProvider>

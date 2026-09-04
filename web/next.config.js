@@ -9,6 +9,21 @@ const withPWA = require("next-pwa")({
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
+  
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "media.tribe-app.app",
+        pathname: "/**",
+      },
+      {
+        protocol: "https",
+        hostname: "res.cloudinary.com",
+        pathname: "/**",
+      },
+    ],
+  },
 
   webpack: (config) => {
     config.watchOptions = {

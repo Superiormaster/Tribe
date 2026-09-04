@@ -5,12 +5,13 @@ import { useParams, useSearchParams } from 'next/navigation';
 import Skeleton from '@/components/Skeleton';
 import Avatar from '@/components/Avatar';
 import Linkify from "linkify-react";
-import { AlarmClock, ThumbsUp, ChartNoAxesColumn, MessageCircle } from 'lucide-react';
+import { AlarmClock, ThumbsUp, ChartNoAxesColumn, Bookmark, MessageCircle } from 'lucide-react';
 import CommentList from '@/components/CommentList'
 import CommentInput from '@/components/CommentInput'
 import ShareButton from '@/components/share/ShareButton'
 import { useShareSheet } from '@/components/share/ShareContext'
 import { usePostSocket } from '@/hooks/usePostSocket'
+import toast from "react-hot-toast";
 import { apiRequest } from '@/utils/api'
 import { timeAgo } from '@/utils/timeAgo'
 
@@ -41,6 +42,8 @@ type Post = {
   comments_count: number
   liked_by_user: boolean
   views_count?: number
+  is_bookmarked: boolean
+  content_type: "post" | "short_video" | string
 }
 
 export default function PostPage() {
@@ -49,6 +52,7 @@ export default function PostPage() {
   const startTime = Number(searchParams.get("t")) || 0;
   const postId = Number(params.id)
   const [post, setPost] = useState<Post | null>(null)
+  const [bookmarked, setBookmarked] = useState(false)
   const { showShare } = useShareSheet();
   const [newComment, setNewComment] = useState("");
   const [comments, setComments] = useState<any[]>([]);
@@ -261,6 +265,7 @@ export default function PostPage() {
   
       setLikes(data.likes_count)
       setLiked(data.liked_by_user)
+      setBookmarked(data.is_bookmarked ?? false)
   
     } catch (err) {
       console.error(err)
@@ -280,6 +285,42 @@ export default function PostPage() {
 
     } catch (error) {
       console.error("Failed to toggle like:", error);
+    }
+  };
+  
+  const handleBookmark = async () => {
+    if (!post) return;
+  
+    try {
+      const result = await apiRequest(
+        `api/bookmarks/toggle/`,
+        {
+          method: "POST",
+          data: {
+            type:
+              post.content_type === "short_video"
+                ? "reel"
+                : "post",
+            post_id: post.id,
+          },
+        }
+      );
+  
+      setBookmarked(result.bookmarked);
+  
+      // Keep the post object in sync too
+      setPost(prev =>
+        prev
+          ? {
+              ...prev,
+              is_bookmarked: result.bookmarked,
+            }
+          : prev
+      );
+  
+    } catch (error) {
+      console.error("Failed to toggle bookmark:", error);
+      toast.error("Failed to update bookmark");
     }
   };
   
@@ -380,18 +421,18 @@ export default function PostPage() {
         
         <button
           onClick={handleLike}
-          className={`flex items-center gap-1 text-gray-500 font-medium ${
+          className={`flex items-center gap-1 text-xs text-gray-500 font-medium ${
             liked ? "text-blue-600" : ""
           }`}
         >
-          <ThumbsUp className="inline mr-2" />
+          <ThumbsUp className="w-4 h-4 inline mr-2" />
           {likes > 0 && (
             <span>{likes}</span>
           )}
         </button>
     
-        <button className="flex items-center gap-1 text-gray-500 font-medium">
-          <MessageCircle className="mr-2" />
+        <button className="flex items-center gap-1 text-xs text-gray-500 font-medium">
+          <MessageCircle className="mr-2 w-4 h-4" />
           {post.comments_count > 0 && (
             <span>{post.comments_count}</span>
           )}
@@ -401,10 +442,30 @@ export default function PostPage() {
           sharesCount={post.shares_count ?? 0}
           onOpen={(post) => showShare(post)}
         />
+  
+        <button
+          onClick={handleBookmark}
+          className={`flex text-xs items-center gap-1 font-medium transition ${
+            bookmarked
+              ? "text-blue-600"
+              : ""
+          }`}
+          aria-label={
+            bookmarked
+              ? "Remove bookmark"
+              : "Bookmark post"
+          }
+        >
+          <Bookmark
+            className={`mr-2 h-4 w-4 ${
+              bookmarked ? "fill-current" : ""
+            }`}
+          />
+        </button>
     
         {post.views_count !== undefined && (
-          <span className="text-gray-400 ml-auto flex items-center">
-            <ChartNoAxesColumn className="mr-2" />
+          <span className="text-gray-400 ml-auto text-xs flex items-center">
+            <ChartNoAxesColumn className="mr-2 w-4 h-4" />
             {post.views_count > 0 && (
               <span>{post.views_count} </span>
             )}
@@ -474,27 +535,42 @@ export default function PostPage() {
             onRemoveComment={onRemoveComment}
             onNewComment={(newComment) => {
               setComments(prev => {
-                  if (!newComment.parent) {
-                      return [newComment, ...prev];
-                  }
-          
-                  const addReply = (list: any[]): any[] =>
-                      list.map(c => {
-                          if (c.id === newComment.root_parent_id) {
-                              return {
-                                  ...c,
-                                  replies: [...(c.replies ?? []), newComment],
-                              };
-                          }
-          
-                          return {
-                              ...c,
-                              replies: c.replies ? addReply(c.replies) : [],
-                          };
-                      });
-          
-                  return addReply(prev);
-              });
+                const exists = prev.some(
+                  comment =>
+                    Number(comment.id) === Number(newComment.id)
+                )
+            
+                if (exists) return prev
+            
+                if (!newComment.parent) {
+                  return [newComment, ...prev]
+                }
+            
+                const addReply = (list: any[]): any[] =>
+                  list.map(comment => {
+                    if (
+                      Number(comment.id) ===
+                      Number(newComment.root_parent_id)
+                    ) {
+                      return {
+                        ...comment,
+                        replies: [
+                          ...(comment.replies ?? []),
+                          newComment,
+                        ],
+                      }
+                    }
+            
+                    return {
+                      ...comment,
+                      replies: comment.replies
+                        ? addReply(comment.replies)
+                        : [],
+                    }
+                  })
+            
+                return addReply(prev)
+              })
             }}
           />
         </div>

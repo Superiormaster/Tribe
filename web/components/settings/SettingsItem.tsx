@@ -11,6 +11,7 @@ interface SettingsItemProps {
   // NEW
   type?: "link" | "toggle";
   value?: boolean;
+  onClick?: () => void;
   onToggle?: (val: boolean) => void;
 }
 
@@ -22,6 +23,7 @@ export default function SettingsItem({
   type = "link",
   value = false,
   onToggle,
+  onClick,
 }: SettingsItemProps) {
   const [checked, setChecked] = useState(value);
 

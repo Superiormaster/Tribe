@@ -29,10 +29,14 @@ export default function BottomNavWrapper() {
   const hideBottomNav =
     /^\/main\/home\/\d+/.test(pathname) ||
     /^\/main\/reposts\/\d+/.test(pathname) ||
+    /^\/main\/share\/\d+/.test(pathname) ||
     /^\/main\/messages\/chat\/\d+/.test(pathname) ||
     /^\/main\/reels\/\d+/.test(pathname) ||
     /^\/main\/reels/.test(pathname) ||
+    /^\/main\/monetization/.test(pathname) ||
+    /^\/main\/dashboard/.test(pathname) ||
     /^\/main\/community\/\d+\/chat/.test(pathname) ||
+    /^\/main\/community\/\d+\/info/.test(pathname) ||
     mediaViewerOpen;
 
   if (hideBottomNav) return null

@@ -3,6 +3,7 @@
 import { useNavigation } from "@/utils/useNavigation"
 import React from "react";
 import { useInView } from '@/components/UseInView'
+import { Play } from 'lucide-react';
 import toast from "react-hot-toast";
 
 function ReelCard({
@@ -53,10 +54,14 @@ function ReelCard({
         {/* PLAY BUTTON */}
         <button
           onClick={goToReel}
+          aria-label="Play reel"
           className="absolute inset-0 flex items-center justify-center"
         >
-          <div className="bg-black/60 p-4 rounded-full text-white text-xl">
-            ▶
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-black/50 backdrop-blur-md shadow-xl ring-1 ring-white/30 transition-transform duration-200 hover:scale-105 active:scale-95">
+            <Play
+              className="ml-0.5 h-6 w-6 fill-white text-white"
+              strokeWidth={2.5} 
+            />
           </div>
         </button>
 

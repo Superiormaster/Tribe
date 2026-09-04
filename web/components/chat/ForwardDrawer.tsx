@@ -40,7 +40,7 @@ export default function ForwardDrawer({
   currentDestination,
   selectedDestinations,
   setSelectedDestinations,
-  selectedMessages,
+  selectedMessages = [],
   getMessageKey,
   forwardCaption,
   setForwardCaption,
@@ -74,8 +74,9 @@ export default function ForwardDrawer({
   const canAddCaption =
     selectedMessages.length === 1 &&
     (
-      selectedMessages[0].media_type === "image" ||
-      selectedMessages[0].media_type === "video"
+      selectedMessages[0]?.media_type === "image" ||
+      selectedMessages[0]?.media_type === "video" ||
+      selectedMessages[0]?.media_type === "gallery"
     );
   
   const getPreview = (msg: any) => {
@@ -104,8 +105,36 @@ export default function ForwardDrawer({
       case "video":
         return {
           type: "video",
-          thumb: msg.thumbnail || first,
+          thumb: Array.isArray(msg.thumbnail)
+            ? msg.thumbnail[0]
+            : msg.thumbnail || first,
         };
+  
+      case "gallery": {
+        const images = media.filter((url: string) =>
+          !/\.(mp4|mov|webm|mkv|avi)(\?|$)/i.test(url)
+        ).length;
+  
+        const videos = media.length - images;
+  
+        let text = "";
+  
+        if (images && videos) {
+          text = `${media.length} media`;
+        } else if (images) {
+          text = `${images} photo${images > 1 ? "s" : ""}`;
+        } else if (videos) {
+          text = `${videos} video${videos > 1 ? "s" : ""}`;
+        } else {
+          text = "Gallery";
+        }
+  
+        return {
+          type: "gallery",
+          thumb: first,
+          text,
+        };
+      }
   
       case "gif":
         return {
@@ -297,6 +326,7 @@ export default function ForwardDrawer({
                         >
                           {(preview.type === "image" ||
                             preview.type === "video" ||
+                            preview.type === "gallery" ||
                             preview.type === "gif" ||
                             preview.type === "sticker") &&
                             preview.thumb && (

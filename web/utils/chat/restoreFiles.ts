@@ -5,6 +5,17 @@ export function restoreFiles(files: any[] = []) {
         (f as any).preview =
           URL.createObjectURL(f);
       }
+  
+      if (!(f as any).mediaType) {
+        (f as any).mediaType =
+          f.type.startsWith("video/")
+            ? "video"
+            : f.type.startsWith("image/")
+              ? "image"
+              : f.type.startsWith("audio/")
+                ? "audio"
+                : undefined;
+      }
 
       return f;
     }
@@ -23,14 +34,16 @@ export function restoreFiles(files: any[] = []) {
       return f;
     }
 
+    const type =
+      f.type ||
+      blob.type ||
+      "application/octet-stream";
+
     const file = new File(
       [blob],
       f.name || "file",
       {
-        type:
-          f.type ||
-          blob.type ||
-          "application/octet-stream",
+        type,
 
         lastModified:
           f.lastModified ??
@@ -49,6 +62,15 @@ export function restoreFiles(files: any[] = []) {
 
     (file as any).duration =
       f.duration ?? null;
+  
+    (file as any).mediaType =
+      type.startsWith("video/")
+        ? "video"
+        : type.startsWith("image/")
+          ? "image"
+          : type.startsWith("audio/")
+            ? "audio"
+            : undefined;
 
     console.log(
       "[restoreFiles output]",

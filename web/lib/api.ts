@@ -104,7 +104,7 @@ export const getJoinedCommunities = async (
 ) => {
     try {
         return await apiRequest(
-            `api/joined-communities/?page=${page}`
+            `api/communities/joined-communities/?page=${page}`
         );
     } catch (err) {
         console.error(err);

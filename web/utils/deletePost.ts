@@ -1,44 +1,71 @@
 import { apiRequest } from "@/utils/api";
+
 import {
   removePostFromAllFeedCaches,
+  removeRepostFromAllFeedCaches,
+  removeShareFromAllFeedCaches,
 } from "@/lib/feedDb";
 
 import {
   emitPostDeleted,
   emitRepostDeleted,
+  emitShareDeleted,
 } from "@/lib/postEvents";
 
 export async function deletePostEverywhere(
-  postId: number,
-  type: "post" | "repost" = "post"
+  id: number,
+  type: "post" | "repost" | "share" = "post"
 ) {
-  const id = Number(postId);
+  const itemId = Number(id);
 
-  if (!id) {
-    throw new Error("Invalid post ID");
+  if (!itemId) {
+    throw new Error("Invalid ID");
   }
-  
+
   if (type === "repost") {
     await apiRequest(
-      `api/reposts/${id}/`,
+      `api/reposts/${itemId}/`,
       {
         method: "DELETE",
       }
     );
-  } else {
+
+    await removeRepostFromAllFeedCaches(
+      itemId
+    );
+
+    emitRepostDeleted(itemId);
+
+    return;
+  }
+
+  if (type === "share") {
     await apiRequest(
-      `api/post/${id}/`,
+      `api/shares/${itemId}/`,
       {
         method: "DELETE",
       }
     );
+
+    await removeShareFromAllFeedCaches(
+      itemId
+    );
+
+    emitShareDeleted(itemId);
+
+    return;
   }
 
-  await removePostFromAllFeedCaches(id);
+  await apiRequest(
+    `api/post/${itemId}/`,
+    {
+      method: "DELETE",
+    }
+  );
 
-  if (type === "repost") {
-    emitRepostDeleted(id);
-  } else {
-    emitPostDeleted(id);
-  }
+  await removePostFromAllFeedCaches(
+    itemId
+  );
+
+  emitPostDeleted(itemId);
 }

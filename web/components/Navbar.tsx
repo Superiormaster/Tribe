@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import AppLink from '@/components/AppLink';
 import { Home, MessageSquare, Bell, Menu } from "lucide-react";
 import { useNetwork } from "@/components/networkConnection/NetworkContext";
@@ -30,9 +30,8 @@ export default function Navbar() {
   const navItems = [
     { name: "Home", path: "/main/home", icon: Home },
     { name: "Notification", path: "/main/notification", icon: Bell },
-    
+    { name: "Messages", path: "/main/messages", icon: MessageSquare },
   ];
-  //{ name: "Messages", path: "/main/messages", icon: MessageSquare },
   
   return (
     <>
@@ -60,35 +59,31 @@ export default function Navbar() {
                 key={name}
                 href={path}
                 prefetch={false}
-                onClick={async () => {
-                  if (name === "Notifications") {
-                    setCount(0);
-              
-                    try {
-                      await apiRequest(
-                        "api/notifications/read-all/",
-                        { method: "POST" }
-                      );
-                    } catch (e) {
-                      console.error(e);
-                    }
-                  }
-                }}
                 className="flex flex-col items-center text-xs relative p-2 rounded-lg transition cursor-pointer text-indigo-500 dark:text-white"
               >
-                <Icon className={active
+                <Icon
+                  className={
+                    active
                       ? "text-indigo-600"
                       : ""
-                  } />
-                {name === "Notifications" && count > 0 && (
+                  }
+                />
+              
+                {name === "Notification" && count > 0 && (
                   <span className="absolute -top-1 right-4 bg-red-500 text-white text-[10px] px-1 rounded-full">
-                    {count}
+                    {count > 9 ? "9+" : count}
                   </span>
                 )}
-                <span className={active
+              
+                <span
+                  className={
+                    active
                       ? "text-indigo-600"
                       : ""
-                  }>{name}</span>
+                  }
+                >
+                  {name}
+                </span>
               </AppLink>
             );
           })}

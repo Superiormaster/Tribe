@@ -8,6 +8,7 @@ import { useReels } from "@/reelsHook/useReels";
 import { useReelPlayer } from  "@/reelsHook/useReelsPlayer";
 import ReelItem from  "@/components/reels/ReelItem";
 import NoReels from "@/components/reels/NoReels";
+import ReelNetworkStatus from "@/components/reels/ReelNetworkStatus";
 import ReelSkeleton from "@/components/reels/ReelSkeleton";
 
 export default function ReelsPage() {
@@ -22,8 +23,16 @@ export default function ReelsPage() {
     });
     const openedPostId = reelsState.openCommentsPostId;
   
-    if (reelsState.loading) {
-      return <ReelSkeleton/>; 
+    if (
+      reelsState.loading &&
+      reelsState.reels.length === 0
+    ) {
+      return (
+        <>
+          <ReelNetworkStatus />
+          <ReelSkeleton />
+        </>
+      );
     }
 
     const videoReels = reelsState.reels.filter(
@@ -38,6 +47,9 @@ export default function ReelsPage() {
     }
 
     return (
+      <>
+        <ReelNetworkStatus />
+  
         <div
           ref={player.containerRef}
           className="h-dvh overflow-y-scroll snap-y snap-mandatory bg-black"
@@ -75,5 +87,6 @@ export default function ReelsPage() {
               />
             )}
         </div>
+      </>
     );
 }

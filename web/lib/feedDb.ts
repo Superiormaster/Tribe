@@ -114,9 +114,9 @@ export async function removeFeedPost(
 
         const filtered = posts.filter(
           (post: any) =>
-              post &&
-              typeof post === "object" &&
-              post.id !== postId
+            post &&
+            typeof post === "object" &&
+            Number(post.id) !== id
         );
 
         if (filtered.length !== posts.length) {
@@ -434,9 +434,7 @@ export async function removePostFromAllFeedCaches(
 
   const id = Number(postId);
 
-  // =========================
-  // FEED CACHE
-  // =========================
+  if (!id) return;
 
   const feedKeys = await db.getAllKeys("feed");
 
@@ -445,25 +443,48 @@ export async function removePostFromAllFeedCaches(
 
     if (!Array.isArray(posts)) continue;
 
-    const filtered = posts.filter((post: any) => {
-      if (!post) return false;
-
-      const postIdFromItem = Number(post.id);
-
-      // Normal post
-      if (postIdFromItem === id) {
+    const filtered = posts.filter((item: any) => {
+      if (!item || typeof item !== "object") {
         return false;
       }
 
-      // Repost
-      if (post.type === "repost" || post.feed_type === "repost") {
-        const originalId = Number(
-          post.post?.id ??
-          post.post_id ??
-          post.original_post_id
+      if (
+        item.id &&
+        Number(item.id) === id &&
+        item.type !== "repost" &&
+        item.feed_type !== "repost" &&
+        item.type !== "share" &&
+        item.feed_type !== "share"
+      ) {
+        return false;
+      }
+
+      if (
+        item.type === "repost" ||
+        item.feed_type === "repost"
+      ) {
+        const originalPostId = Number(
+          item.post?.id ??
+          item.post_id ??
+          item.original_post_id
         );
 
-        if (originalId === id) {
+        if (originalPostId === id) {
+          return false;
+        }
+      }
+
+      if (
+        item.type === "share" ||
+        item.feed_type === "share"
+      ) {
+        const originalPostId = Number(
+          item.post?.id ??
+          item.post_id ??
+          item.original_post_id
+        );
+
+        if (originalPostId === id) {
           return false;
         }
       }
@@ -476,10 +497,6 @@ export async function removePostFromAllFeedCaches(
     }
   }
 
-  // =========================
-  // REELS CACHE
-  // =========================
-
   const reelKeys = await db.getAllKeys("reels");
 
   for (const key of reelKeys) {
@@ -488,13 +505,95 @@ export async function removePostFromAllFeedCaches(
     if (!Array.isArray(reels)) continue;
 
     const filtered = reels.filter((reel: any) => {
-      if (!reel) return false;
+      if (!reel || typeof reel !== "object") {
+        return false;
+      }
 
       return Number(reel.id) !== id;
     });
 
     if (filtered.length !== reels.length) {
       await db.put("reels", filtered, key);
+    }
+  }
+}
+
+export async function removeRepostFromAllFeedCaches(
+  repostId: number
+) {
+  const db = await getDB();
+  if (!db) return;
+
+  const id = Number(repostId);
+
+  if (!id) return;
+
+  const feedKeys = await db.getAllKeys("feed");
+
+  for (const key of feedKeys) {
+    const posts = await db.get("feed", key);
+
+    if (!Array.isArray(posts)) continue;
+
+    const filtered = posts.filter((item: any) => {
+      if (!item || typeof item !== "object") {
+        return false;
+      }
+
+      const isRepost =
+        item.type === "repost" ||
+        item.feed_type === "repost";
+
+      if (!isRepost) {
+        return true;
+      }
+
+      // The wrapper's ID is the REPOST ID.
+      return Number(item.id) !== id;
+    });
+
+    if (filtered.length !== posts.length) {
+      await db.put("feed", filtered, key);
+    }
+  }
+}
+
+export async function removeShareFromAllFeedCaches(
+  shareId: number
+) {
+  const db = await getDB();
+  if (!db) return;
+
+  const id = Number(shareId);
+
+  if (!id) return;
+
+  const feedKeys = await db.getAllKeys("feed");
+
+  for (const key of feedKeys) {
+    const posts = await db.get("feed", key);
+
+    if (!Array.isArray(posts)) continue;
+
+    const filtered = posts.filter((item: any) => {
+      if (!item || typeof item !== "object") {
+        return false;
+      }
+
+      const isShare =
+        item.type === "share" ||
+        item.feed_type === "share";
+
+      if (!isShare) {
+        return true;
+      }
+
+      // The wrapper's ID is the SHARE ID.
+      return Number(item.id) !== id;
+    });
+
+    if (filtered.length !== posts.length) {
+      await db.put("feed", filtered, key);
     }
   }
 }

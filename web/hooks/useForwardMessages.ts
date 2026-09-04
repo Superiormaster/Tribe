@@ -6,6 +6,7 @@ import { useNavigation } from "@/utils/useNavigation"
 import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import { sendChatMessage } from "@/utils/chat/sendChatMessage";
 import { sendCommunityMessage } from "@/utils/communityChatPage/sendCommunityMessage";
+import { createReplySnapshot } from "@/utils/chat/replySnapshot";
 import type { MediaSource } from "@/utils/chat/messageContract";
 
 type Props = {
@@ -34,7 +35,11 @@ export function useForwardMessages({
   setMessages,
   clearSelection,
 }: Props) {
-  const { canCommunicate } = useNetwork();
+  const {
+    canCommunicate,
+    networkStatus,
+    connectionType,
+  } = useNetwork();
   const { push } = useNavigation()
   const [forwardMode, setForwardMode] = useState(false);
   const [forwardCaption, setForwardCaption] =
@@ -117,21 +122,35 @@ export function useForwardMessages({
     }
   };
 
-  const openForward = async (messages: any[]) => {
+  const openForward = async (messages: any[] | any) => {
     try {
+      const normalizedMessages = Array.isArray(messages)
+        ? messages
+        : messages
+          ? [messages]
+          : [];
+  
+      if (normalizedMessages.length === 0) {
+        console.warn("[FORWARD] No messages supplied");
+        return;
+      }
+  
       setUserPage(1);
       setCommunityPage(1);
   
       setConnectedUsers([]);
       setJoinedCommunities([]);
-
-      setForwardMessages(messages);
-
+  
+      setForwardMessages(normalizedMessages);
+  
       await fetchForwardDestinations();
-
+  
       setForwardMode(true);
     } catch (err) {
-      console.error('Forward open failed', err);
+      console.error(
+        "[FORWARD] Open failed:",
+        err
+      );
     }
   };
 
@@ -197,6 +216,8 @@ export function useForwardMessages({
     const newCaption =
       forwardCaption?.trim();
   
+    const clientCreatedAt = new Date().toISOString();
+  
     const payload = {
       client_id: crypto.randomUUID(),
     
@@ -227,6 +248,9 @@ export function useForwardMessages({
       thumbnail: msg.thumbnail ?? [],
     
       media_source: "forward" as MediaSource,
+      client_created_at: clientCreatedAt,
+      created_at:
+        new Date().toISOString(),
     
       reply_to: null,
     
@@ -276,6 +300,8 @@ export function useForwardMessages({
                     socketRef,
                     setMessages,
                     canCommunicate,
+                    networkStatus,
+                    connectionType,
                 });
             } else {
                 await sendCommunityMessage({
@@ -284,6 +310,8 @@ export function useForwardMessages({
                     socketRef,
                     setMessages,
                     canCommunicate,
+                    networkStatus,
+                    connectionType,
                 });
             }
         }

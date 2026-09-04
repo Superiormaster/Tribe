@@ -56,8 +56,7 @@ export default function MediaContainer({
       >
         {children}
 
-        {(status === "uploading" ||
-          status === "sending") && (
+        {(status === "uploading" || status === "sending") && (
           <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
             <div className="w-8 h-8 border-4 border-white border-t-transparent rounded-full animate-spin" />
           </div>
@@ -75,7 +74,7 @@ export default function MediaContainer({
           status === "sending") && (
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
             <div
-              className="h-full bg-green-400"
+              className="h-full transition-all duration-200 bg-indigo-400"
               style={{
                 width: `${progress ?? 0}%`,
               }}

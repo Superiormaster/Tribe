@@ -77,7 +77,7 @@ export default function ReelsAnalytics({
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: .35 }}
-      className="rounded-3xl border border-white/10 bg-background/70 backdrop-blur-xl p-6"
+      className="rounded-3xl border border-indigo-300 dark:border-white/10 bg-gray-200 dark:bg-gray-900/70 backdrop-blur-xl p-6"
     >
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -105,7 +105,7 @@ export default function ReelsAnalytics({
             transition={{
               delay: index * .08,
             }}
-            className="rounded-2xl border border-white/10 bg-white/[0.03] p-5"
+            className="rounded-2xl border border-gray-700/15 dark:border-white/10 bg-gray-300 dark:bg-white/[0.03] p-5"
           >
             <div className={item.color}>
               {item.icon}
@@ -122,7 +122,7 @@ export default function ReelsAnalytics({
         ))}
       </div>
 
-      <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+      <div className="mt-8 rounded-2xl border border-gray-700/15 dark:border-white/10 bg-gray-300 dark:bg-white/[0.03] p-5">
         <div className="mb-3 flex items-center justify-between">
           <span className="text-sm font-medium">
             Completion Rate
@@ -133,7 +133,7 @@ export default function ReelsAnalytics({
           </span>
         </div>
 
-        <div className="h-3 overflow-hidden rounded-full bg-white/10">
+        <div className="h-3 overflow-hidden rounded-full bg-gray-200 dark:bg-white/10">
           <motion.div
             initial={{ width: 0 }}
             animate={{

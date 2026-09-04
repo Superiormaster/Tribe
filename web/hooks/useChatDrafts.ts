@@ -7,6 +7,12 @@ import {
   getDraft,
 } from '@/lib/messageDB';
 
+type ChatDraft = {
+  chatId: number;
+  text: string;
+  updated_at: string;
+};
+
 export function useChatDrafts(
   chatId: number | null
 ) {
@@ -26,7 +32,7 @@ export function useChatDrafts(
 
     const loadDraft = async () => {
       try {
-        const draft = await getDraft(chatId);
+        const draft = await getDraft(chatId) as ChatDraft | undefined;
 
         if (draft) {
           setInput(draft.text || "");

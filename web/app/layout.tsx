@@ -2,8 +2,13 @@ import "./globals.css";
 import ClientWrapper from "@/components/ClientWrapper";
 import { Toaster } from "react-hot-toast";
 import InstallButton from "@/components/InstallButton";
+import type { Metadata } from "next";
 
-export const metadata = {
+export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL || "https://tribe-app.app"
+  ),
+  
   title: "Tribe",
   description:
     "Find your tribe, join communities, chat, watch reels and make new friends.",
@@ -70,8 +75,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   
         <InstallButton />
 
-        {/*<script src="https://cdn.jsdelivr.net/npm/eruda"></script>
-        <script dangerouslySetInnerHTML={{ __html: "eruda.init();" }} />*/}
+        <script src="https://cdn.jsdelivr.net/npm/eruda"></script>
+        <script dangerouslySetInnerHTML={{ __html: "eruda.init();" }} />
 
       </body>
     </html>

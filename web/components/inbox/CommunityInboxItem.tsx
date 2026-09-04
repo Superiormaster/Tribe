@@ -1,12 +1,12 @@
 import InboxChatBubble from "./InboxChatBubble";
-import type { ChatMeta } from "@/hooks/inbox/usePendingMessages";
+import type { CommunityChatMeta } from "@/hooks/communityInbox/useCommunityPendingMessages";
 
 interface Props {
   chat: any;
   draft: any;
   pending: any;
   selected: boolean;
-  chatMeta?: ChatMeta;
+  chatMeta?: CommunityChatMeta;
   bind: any;
   currentUserId: number;
 }
@@ -20,6 +20,41 @@ export default function CommunityInboxItem({
   bind,
   currentUserId,
 }: Props) {
+
+  const communityCover =
+    chat.cover_image_url ??
+    chat.community_cover_image_url ??
+    chat.community_cover ??
+    chat.cover_image ??
+    pending?.cover_image_url ??
+    chatMeta?.cover_image_url ??
+    null;
+
+  const communityName =
+    chat.community_name ??
+    pending?.community_name ??
+    pending?.name ??
+    draft?.community_name ??
+    draft?.name ??
+    chatMeta?.communityName ??
+    "Unknown Community";
+
+  const communityChat = {
+    ...chat,
+
+    chat_type: "community",
+
+    community_id:
+      chat.community_id ??
+      pending?.community_id,
+
+    community_name:
+      communityName,
+
+    cover_image_url:
+      communityCover,
+  };
+
   return (
     <div
       {...bind}
@@ -29,23 +64,28 @@ export default function CommunityInboxItem({
           : "hover:bg-gray-100 dark:hover:bg-gray-800"
       }`}
     >
-      {chat.cover_image ? (
+
+      {communityCover ? (
         <img
-          src={chat.cover_image}
-          className="w-12 h-12 rounded-full object-cover"
+          src={communityCover}
+          alt={communityName}
+          className="w-12 h-12 rounded-full object-cover shrink-0"
         />
       ) : (
-        <div className="w-12 h-12 rounded-full bg-gray-400 flex items-center justify-center text-white font-bold">
-          {chat.community_name.slice(0, 2).toUpperCase()}
+        <div className="w-12 h-12 rounded-full bg-gray-400 flex items-center justify-center text-white font-bold shrink-0">
+          {communityName
+            .slice(0, 2)
+            .toUpperCase()}
         </div>
       )}
 
       <InboxChatBubble
-        chat={chat}
+        chat={communityChat}
         draft={draft}
         pending={pending}
         currentUserId={currentUserId}
       />
+
     </div>
   );
 }

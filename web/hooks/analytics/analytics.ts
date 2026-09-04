@@ -19,52 +19,37 @@ export interface AnalyticsQuery {
 
 const analytics = {
   async overview(params: AnalyticsQuery = {}) {
-    return await apiRequest("analytics/overview/", {
+    return await apiRequest("api/dashboard/overview/", {
       method: "GET",
       params,
     }) as AnalyticsResponse;
   },
 
   async content(params: AnalyticsQuery = {}) {
-    return await apiRequest("analytics/content/", {
+    return await apiRequest("api/dashboard/content/", {
       method: "GET",
       params,
     });
   },
 
   async audience(params: AnalyticsQuery = {}) {
-    return await apiRequest("analytics/audience/", {
+    return await apiRequest("api/dashboard/audience/", {
       method: "GET",
       params,
     });
   },
 
   async communities(params: AnalyticsQuery = {}) {
-    return await apiRequest("analytics/communities/", {
+    return await apiRequest("api/dashboard/communities/", {
       method: "GET",
       params,
     });
   },
 
-  async topPosts(range: AnalyticsRange) {
-    return await apiRequest("analytics/top-posts/", {
-      method: "GET",
-      params: { range },
-    });
-  },
-
   async reels(range: AnalyticsRange) {
-    return await apiRequest("analytics/reels/", {
+    return await apiRequest("api/dashboard/reels/", {
       method: "GET",
       params: { range },
-    });
-  },
-
-  async exportCSV(range: AnalyticsRange) {
-    return await apiRequest("analytics/export/", {
-      method: "GET",
-      params: { range },
-      responseType: "blob",
     });
   },
 };

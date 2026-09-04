@@ -7,6 +7,11 @@ type Props = {
   socketRef: any;
   setInput: (value: string) => void;
   saveDraft?: (value: string) => void;
+
+  startEvent?: string;
+  stopEvent?: string;
+
+  payloadKey?: string;
 };
 
 export function useTypingIndicator({
@@ -14,18 +19,32 @@ export function useTypingIndicator({
   socketRef,
   setInput,
   saveDraft,
-}: Props) {
-  const typingTimeout = useRef<NodeJS.Timeout | null>(null);
 
-  const handleTyping = (value: string) => {
+  startEvent = 'typing_start',
+  stopEvent = 'typing_stop',
+
+  payloadKey = 'chatId',
+}: Props) {
+  const typingTimeout =
+    useRef<NodeJS.Timeout | null>(
+      null
+    );
+
+  const handleTyping = (
+    value: string
+  ) => {
     setInput(value);
 
     saveDraft?.(value);
 
-    socketRef.current?.emit(
-      'typing_start',
+    if (!socketRef.current) {
+      return;
+    }
+
+    socketRef.current.emit(
+      startEvent,
       {
-        chatId,
+        [payloadKey]: chatId,
       }
     );
 
@@ -38,9 +57,9 @@ export function useTypingIndicator({
     typingTimeout.current =
       setTimeout(() => {
         socketRef.current?.emit(
-          'typing_stop',
+          stopEvent,
           {
-            chatId,
+            [payloadKey]: chatId,
           }
         );
       }, 2500);
@@ -48,9 +67,9 @@ export function useTypingIndicator({
 
   const stopTyping = () => {
     socketRef.current?.emit(
-      'typing_stop',
+      stopEvent,
       {
-        chatId,
+        [payloadKey]: chatId,
       }
     );
 
@@ -58,6 +77,9 @@ export function useTypingIndicator({
       clearTimeout(
         typingTimeout.current
       );
+
+      typingTimeout.current =
+        null;
     }
   };
 

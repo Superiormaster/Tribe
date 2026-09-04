@@ -7,6 +7,7 @@ import { useInView } from '@/components/UseInView'
 import ReelCard from '@/components/ReelCard'
 import PostCard from "@/components/PostCard"
 import RepostCard from "@/components/repost/RepostCard"
+import ShareCard from '@/components/share/SharePostCard';
 
 type Props = {
   query: string;
@@ -202,8 +203,24 @@ export default function SearchResults({
             </h2>
       
             {visiblePosts.map((p: any) => (
-              <div key={p.id}>
-                {p.feed_type === "repost" ? (
+              <div key={`${p.feed_type || p.type || "post"}-${p.id}`}>
+      
+                {/* SHARE */}
+                {(
+                  p.feed_type === "share" ||
+                  p.type === "share"
+                ) ? (
+                  <ShareCard
+                    share={p}
+                    currentUser={currentUser}
+                    context="search"
+                  />
+      
+                /* REPOST */
+                ) : (
+                  p.feed_type === "repost" ||
+                  p.type === "repost"
+                ) ? (
                   <RepostCard
                     repost={p}
                     context="search"
@@ -211,12 +228,16 @@ export default function SearchResults({
                     handlePostAction={() => {}}
                     hideStarButton
                   />
+      
+                /* REEL */
                 ) : p.content_type === "short_video" ? (
                   <ReelCard
                     post={p}
                     context="search"
                     showEntertainment
                   />
+      
+                /* NORMAL POST */
                 ) : (
                   <PostCard
                     post={p}
@@ -228,6 +249,7 @@ export default function SearchResults({
                     showManageButtons={false}
                   />
                 )}
+      
               </div>
             ))}
       

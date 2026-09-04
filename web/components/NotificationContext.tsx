@@ -1,13 +1,23 @@
-'use client'
+"use client";
 
-import { createContext, useState, useMemo, useContext, useEffect, ReactNode } from "react";
-import type { Dispatch, SetStateAction } from "react";
+import {
+  createContext,
+  useState,
+  useMemo,
+  useContext,
+  useEffect,
+  ReactNode,
+} from "react";
+
 import { apiRequest } from "@/utils/api";
 import { UserContext } from "@/components/UserContext";
 import { connectNotificationSocket } from "@/lib/notifications-socket";
-import { getMessaging, getToken, isSupported } from "firebase/messaging";
+
+import {
+  usePushNotifications,
+} from "@/utils/notifications/usePushNotifications";
+
 import { useNetwork } from "@/components/networkConnection/NetworkContext";
-import { app } from "@/lib/firebase";
 
 interface NotificationContextType {
   notifications: any[];
@@ -16,211 +26,189 @@ interface NotificationContextType {
   addNotification: (n: any) => void;
   toast: any | null;
   dismissToast: () => void;
+  refreshNotificationCount: () => Promise<void>;
 }
 
-export const NotificationContext = createContext<NotificationContextType>({
-  notifications: [],
-  count: 0,
-  setCount: () => {},
-  addNotification: () => {},
-  toast: null,
-  dismissToast: () => {},
-});
+export const NotificationContext =
+  createContext<NotificationContextType>({
+    notifications: [],
+    count: 0,
+    setCount: () => {},
+    addNotification: () => {},
+    toast: null,
+    dismissToast: () => {},
+    refreshNotificationCount: async () => {},
+  });
 
-export const NotificationProvider = ({ children }: { children: ReactNode }) => {
+export const NotificationProvider = ({
+  children,
+}: {
+  children: ReactNode;
+}) => {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [toast, setToast] = useState<any | null>(null);
   const [count, setCount] = useState(0);
-  const [socket, setSocket] = useState<WebSocket | null>(null);
+
   const { user } = useContext(UserContext) || {};
   const { isOnline } = useNetwork();
 
-  const normalizeNotifications = (data: any) => {
-    if (Array.isArray(data)) return data;
-    if (Array.isArray(data?.results)) return data.results;
-    return [];
-  };
+  usePushNotifications(user?.id);
 
-  const loadNotifications = async () => {
+  const refreshNotificationCount = async () => {
     try {
-      const data = await apiRequest("api/notifications/");
-      setNotifications(normalizeNotifications(data));
-    } catch (err) {
-      console.error(err);
+      const data = await apiRequest(
+        "api/notifications/?page=1"
+      );
+
+      if (
+        typeof data?.unread_count === "number"
+      ) {
+        setCount(data.unread_count);
+      }
+
+      if (Array.isArray(data?.results)) {
+        setNotifications(data.results);
+      }
+    } catch (error) {
+      console.error(
+        "[Notifications] Failed to refresh count:",
+        error
+      );
     }
   };
-  
-  // Add a notification safely (no duplicates)
-  const addNotification = (n: any) => {
-    setNotifications(prev => {
-      const list = Array.isArray(prev) ? prev : [];
-  
-      if (list.find(item => item.id === n.id)) return list;
-  
-      return [n, ...list];
+
+  const addNotification = (notification: any) => {
+    setNotifications((prev) => {
+      const existingIndex = prev.findIndex(
+        (item) =>
+          item.group_key &&
+          notification.group_key &&
+          item.group_key === notification.group_key
+      );
+
+      if (existingIndex !== -1) {
+        const existing = prev[existingIndex];
+
+        if (!existing.read) {
+          return prev.map((item, index) =>
+            index === existingIndex
+              ? {
+                  ...item,
+                  ...notification,
+                  read: false,
+                }
+              : item
+          );
+        }
+
+        setCount((current) => current + 1);
+
+        return prev.map((item, index) =>
+          index === existingIndex
+            ? {
+                ...item,
+                ...notification,
+                read: false,
+              }
+            : item
+        );
+      }
+
+      /*
+       * Completely new notification.
+       */
+      if (!notification.read) {
+        setCount((current) => current + 1);
+
+        setToast(notification);
+
+        setTimeout(() => {
+          setToast(null);
+        }, 4000);
+      }
+
+      return [
+        {
+          ...notification,
+          read: false,
+        },
+        ...prev,
+      ];
     });
-  
-    if (!n.read && n.actor?.id !== user?.id) {
-        setCount(prev => prev + 1);
-        setToast(n);
-        setTimeout(() => setToast(null), 4000);
-    }
   };
-  
-  const dismissToast = () => setToast(null);
+
+  const dismissToast = () => {
+    setToast(null);
+  };
 
   useEffect(() => {
-    const setupPush = async () => {
-      try {
-        if (!user) return;
-  
-        if (
-          typeof window === "undefined" ||
-          !("serviceWorker" in navigator) ||
-          !("Notification" in window)
-        ) {
-          return;
-        }
-  
-        const supported = await isSupported();
-  
-        if (!supported) {
-          console.log("Messaging not supported");
-          return;
-        }
-  
-        const permission = await Notification.requestPermission();
-  
-        console.log("Permission:", permission);
-  
-        if (permission !== "granted") {
-          return;
-        }
-  
-        const messaging = getMessaging(app);
-  
-        const registration = await navigator.serviceWorker.register(
-          "/firebase-messaging-sw.js"
-        );
-  
-        let token = null;
-  
-        try {
-          token = await getToken(messaging, {
-            vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY,
-            serviceWorkerRegistration: registration,
-          });
-  
-          console.log("FCM TOKEN:", token);
-  
-        } catch (error) {
-          console.warn("FCM token update failed:", error);
-          return;
-        }
-  
-        if (!token) {
-          console.warn("No FCM token received");
-          return;
-        }
-  
-        await apiRequest("api/users/fcm-token/", {
-          method: "POST",
-          data: {
-            token,
-          },
-        });
-  
-      } catch (error) {
-        console.warn("Push notification setup failed:", error);
-      }
-    };
-  
-    setupPush();
-  
-  }, [user]);
-  
+    if (!user || !isOnline) return;
+
+    refreshNotificationCount();
+  }, [user?.id, isOnline]);
+
   useEffect(() => {
-    if (!isOnline) return;
-  
-    const refreshNotifications = async () => {
-      try {
-        const data = await apiRequest("api/notifications/?page=1");
-  
-        const list = normalizeNotifications(data);
-  
-        setNotifications(list);
-  
-        const unread = list.filter(
-          (n: any) => !n.read
-        ).length;
-  
-        setCount(unread);
-  
-      } catch (err) {
-        console.error("Notification refresh failed", err);
-      }
-    };
-  
-    refreshNotifications();
-  
-  }, [isOnline]);
-  
-  useEffect(() => {
-    // Load first page and count unread
-    apiRequest("api/notifications/?page=1").then(data => {
-      const list = normalizeNotifications(data);
-    
-      setNotifications(list);
-    
-      const unread = list.filter((n: any) => !n.read).length;
-      setCount(unread);
-    });
-    
+    if (!user) return;
+
     let ws: WebSocket | null = null;
-  
-    const connect =
-      async () => {
-        ws =
-          await connectNotificationSocket();
-  
-        if (!ws) return;
-  
-        ws.onmessage =
-          event => {
+    let cancelled = false;
+
+    const connect = async () => {
+      try {
+        ws = await connectNotificationSocket();
+
+        if (!ws || cancelled) return;
+
+        ws.onmessage = (event) => {
+          try {
             const notification =
               JSON.parse(event.data);
-  
-            console.log(notification);
-            addNotification(
+
+            console.log(
+              "[NotificationProvider] LIVE:",
               notification
             );
-          };
-  
-        setSocket(ws);
-      };
-  
+
+            addNotification(notification);
+          } catch (error) {
+            console.error(
+              "[Notifications] Invalid socket data:",
+              error
+            );
+          }
+        };
+      } catch (error) {
+        console.error(
+          "[Notifications] Socket connection failed:",
+          error
+        );
+      }
+    };
+
     connect();
-  
+
     return () => {
+      cancelled = true;
       ws?.close();
     };
-  }, []);
-  
-  const value = useMemo(() => ({
-    notifications, 
-    count, 
-    setCount, 
-    addNotification, 
-    toast, 
-    dismissToast,
-  }), [
-    notifications, 
-    count, 
-    setCount, 
-    addNotification, 
-    toast, 
-    dismissToast,
-  ]);
+  }, [user?.id]);
+
+  const value = useMemo(
+    () => ({
+      notifications,
+      count,
+      setCount,
+      addNotification,
+      toast,
+      dismissToast,
+      refreshNotificationCount,
+    }),
+    [
+      notifications,
+      count,
+      toast,
+    ]
+  );
 
   return (
     <NotificationContext.Provider value={value}>

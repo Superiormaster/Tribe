@@ -12,11 +12,58 @@ export type MessageType =
 export type MessageStatus =
   | "pending"
   | "sending"
-  | "uploading"
   | "sent"
   | "failed"
   | "delivered"
   | "seen";
+
+export type MediaStatus =
+  | "none"
+  | "pending"
+  | "uploading"
+  | "uploaded"
+  | "failed"
+  | "paused";
+
+export interface ReplyMessage {
+  id?: number;
+  client_id?: string;
+
+  sender?: number;
+  sender_info?: UserSummary;
+  sender_username?: string;
+  sender_avatar?: string | null;
+
+  encrypted_text?: string;
+  text?: string;
+  caption?: string;
+
+  media_type?: MessageType;
+
+  media_url?: string[];
+  thumbnail?: (string | null)[];
+
+  duration?: number[];
+
+  media_asset_ids?: string[];
+
+  media_assets?: Array<{
+    media_id?: string;
+    original_url?: string | null;
+    thumbnail_url?: string | null;
+    media_type?: MessageType;
+    duration?: number | null;
+    width?: number;
+    height?: number;
+  }>;
+
+  files?: LocalFile[];
+  status?: MessageStatus;
+  external_media_urls?: string[];
+
+  is_deleted?: boolean;
+  waveform?: number[];
+}
 
 export interface MessageMedia {
   url: string;
@@ -62,6 +109,8 @@ export interface Message {
 
   sender: number;
   sender_info?: UserSummary;
+  sender_username?: string;
+  sender_avatar?: string | null;
 
   encrypted_text?: string;
   caption?: string;
@@ -74,8 +123,11 @@ export interface Message {
   duration?: number[];
 
   waveform?: number[];
+  media_asset_ids?: string[];
+  external_media_urls?: string[];
 
   status?: MessageStatus;
+  media_status?: MediaStatus;
 
   upload_progress?: number;
 
@@ -92,6 +144,7 @@ export interface Message {
   server_id?:number
 
   ownerId?:number
+  client_sequence: number;
   
   deleted_by_admin?:boolean
   
@@ -99,7 +152,13 @@ export interface Message {
   
   delivered_to?:number[]
   
-  reply_to?: Message|null
+  client_created_at?:string;
+  
+  reply_to?: ReplyMessage | null;
+
+  reply_to_id?: number | null;
+
+  reply_to_client_id?: string;
   
   is_pinned?: boolean
   
@@ -107,8 +166,11 @@ export interface Message {
   edited_at?: string
   
   forwarded_from?: Message | null
+  forwarded_from_id?: number | null;
   
-  mentions?: UserSummary
+  mentions?: UserSummary[];
+  mention_user_ids?: number[];
+  mention_all?: boolean;
   
   read_by?: number[]
 }

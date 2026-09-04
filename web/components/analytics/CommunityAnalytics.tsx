@@ -8,22 +8,13 @@ import {
   TrendingUp,
   ChevronRight,
 } from "lucide-react";
+import type { CommunityAnalytics as CommunityAnalyticsData } from "@/hooks/analytics/types";
 
 import GrowthBadge from "./GrowthBadge";
 
-interface Community {
-  id: string;
-  name: string;
-  cover?: string;
-  members: number;
-  activeMembers: number;
-  posts: number;
-  engagement: number;
-}
-
 interface CommunityAnalyticsProps {
-  communities: Community[];
-  onSelect?: (community: Community) => void;
+  communities: CommunityAnalyticsData[];
+  onSelect?: (community: CommunityAnalyticsData) => void;
 }
 
 function formatNumber(value: number) {
@@ -42,7 +33,7 @@ export default function CommunityAnalytics({
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: .35 }}
-      className="rounded-3xl border border-white/10 bg-background/70 backdrop-blur-xl p-6"
+      className="rounded-3xl border border-indigo-300 dark:border-white/10 bg-gray-200 dark:bg-gray-900/70 backdrop-blur-xl p-6"
     >
       <div className="mb-6 flex items-center justify-between">
         <div>
@@ -81,7 +72,7 @@ export default function CommunityAnalytics({
             whileHover={{
               scale: 1.01,
             }}
-            className="w-full rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-left transition hover:border-primary/30"
+            className="w-full rounded-2xl border border-gray-700/15 dark:border-white/10 bg-gray-300 dark:bg-white/[0.03] p-5 text-left transition hover:border-primary/30"
           >
             <div className="flex items-start justify-between">
 
@@ -89,11 +80,21 @@ export default function CommunityAnalytics({
 
                 <div className="flex items-center gap-3">
 
-                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
-                    <Users
-                      size={22}
-                      className="text-primary"
-                    />
+                  <div className="h-12 w-12 shrink-0 border border-gray-700/15 dark:border-white/10 overflow-hidden rounded-xl bg-primary/10">
+                    {community.cover ? (
+                      <img
+                        src={community.cover}
+                        alt={`${community.name} cover`}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center">
+                        <Users
+                          size={22}
+                          className="text-primary"
+                        />
+                      </div>
+                    )}
                   </div>
 
                   <div>
@@ -151,8 +152,11 @@ export default function CommunityAnalytics({
                     </div>
 
                     <p className="mt-2 text-lg font-semibold">
-                      {community.engagement.toFixed(1)}
-                      %
+                      {community.engagement.toFixed(1)}%
+                    </p>
+                    
+                    <p className="text-xs text-muted-foreground">
+                      {formatNumber(community.engagementCount)} interactions
                     </p>
                   </div>
 

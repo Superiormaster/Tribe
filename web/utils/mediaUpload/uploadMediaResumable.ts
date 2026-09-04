@@ -70,10 +70,12 @@ const COMPLETE_RETRY_BASE_DELAY = 1000;
 
 export async function uploadMediaResumable({
   file,
+  duration,
   onProgress,
   signal,
 }: {
   file: File;
+  duration?: number | null;
   onProgress?: (
     percent: number
   ) => void;
@@ -253,6 +255,7 @@ export async function uploadMediaResumable({
       session =
         await initializeMultipart(
           file,
+          duration,
           signal
         );
   
@@ -343,6 +346,7 @@ export async function uploadMediaResumable({
     session =
       await initializeMultipart(
         file,
+        duration,
         signal
       );
 
@@ -452,17 +456,6 @@ export async function uploadMediaResumable({
       number,
       string
     >();
-  
-  void uploadDebug({
-    event: "UPLOAD_URLS_READY",
-    media_id: session.media_id,
-    data: {
-      part_count: session.part_count,
-      urls_received: urlMap.size,
-      expected_urls: session.part_count,
-      uploaded_parts: uploadedMap.size,
-    },
-  });
 
   if (
     "parts" in session &&
@@ -509,6 +502,17 @@ export async function uploadMediaResumable({
       }
     }
   }
+  
+  void uploadDebug({
+    event: "UPLOAD_URLS_READY",
+    media_id: session.media_id,
+    data: {
+      part_count: session.part_count,
+      urls_received: urlMap.size,
+      expected_urls: session.part_count,
+      uploaded_parts: uploadedMap.size,
+    },
+  });
 
   const synchronizedParts:
     StoredUploadedPart[] =
@@ -1004,7 +1008,6 @@ export async function uploadMediaResumable({
   if (
     !completed?.success
   ) {
-
     throw new Error(
       "Multipart upload could not be completed."
     );
@@ -1028,6 +1031,7 @@ export async function uploadMediaResumable({
 
 async function initializeMultipart(
   file: File,
+  duration?: number | null,
   signal?: AbortSignal
 ): Promise<MultipartSession> {
 
@@ -1049,6 +1053,8 @@ async function initializeMultipart(
         data: {
           content_type: file.type,
           size: file.size,
+          upload_mode: "multipart",
+          duration,
         },
       }
     ) as MultipartSession;
@@ -1099,7 +1105,6 @@ function getPartSize(
 
 function delay(
   ms: number,
-
   signal?: AbortSignal
 ): Promise<void> {
 
@@ -1112,7 +1117,6 @@ function delay(
       if (
         signal?.aborted
       ) {
-
         reject(
           new DOMException(
             "Upload cancelled.",
@@ -1128,7 +1132,6 @@ function delay(
 
       const cleanup =
         () => {
-
           signal?.removeEventListener(
             "abort",
             onAbort
@@ -1139,14 +1142,12 @@ function delay(
           );
         };
 
-
       const finish =
         () => {
 
           if (
             settled
           ) {
-
             return;
           }
 
@@ -1165,7 +1166,6 @@ function delay(
           if (
             settled
           ) {
-
             return;
           }
 
@@ -1202,7 +1202,6 @@ function delay(
 
 export async function cancelMediaUpload(
   mediaId: string,
-
   uploadKey?: string
 ) {
 
@@ -1210,12 +1209,9 @@ export async function cancelMediaUpload(
     await apiRequest(
       "api/media/multipart/cancel/",
       {
-
         method:
           "POST",
-
         data: {
-
           media_id:
             mediaId,
         },

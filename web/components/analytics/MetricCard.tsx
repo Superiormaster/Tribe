@@ -30,7 +30,7 @@ export default function MetricCard({
         scale: 1.02,
       }}
       whileTap={{ scale: 0.98 }}
-      className="w-full rounded-3xl border border-white/10 bg-background/70 backdrop-blur-xl p-5 text-left transition-all hover:border-primary/30 hover:shadow-xl"
+      className="w-full rounded-3xl border border-indigo-300 dark:border-white/10 bg-gray-200 dark:bg-gray-900/70 backdrop-blur-xl p-5 text-left transition-all hover:border-primary/30 hover:shadow-xl"
     >
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-medium text-muted-foreground">

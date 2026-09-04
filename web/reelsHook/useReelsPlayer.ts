@@ -20,10 +20,11 @@ export function useReelPlayer({
 }: Props) {
     const {
       isOnline,
+      serverReachable,
     } = useNetwork();
 
     const containerRef =
-        useRef<HTMLDivElement>(null);
+      useRef<HTMLDivElement>(null);
 
     const PAGE_SIZE = 5;
     const loadedVideos = useRef(new Set<number>());
@@ -69,7 +70,9 @@ export function useReelPlayer({
                   } else {
                       video.pause();
   
-                      video.currentTime = 0;
+                      if (isOnline) {
+                        video.currentTime = 0;
+                      }
   
                       video.muted = true;
                   }
@@ -85,7 +88,7 @@ export function useReelPlayer({
       });
   
       return () => observer.disconnect();
-    }, [reels]);
+    }, [reels, isOnline]);
 
     // Infinite loading + preload next reel
     useEffect(() => {
@@ -107,25 +110,59 @@ export function useReelPlayer({
             videoRefs.current.get(
                 reels[index + 1]?.id
             );
-        
-        if (isOnline && next) {
-            next.pause();
-        
-            next.muted = true;
-        
-            next.load();
+  
+        if (
+          isOnline &&
+          serverReachable &&
+          next
+        ) {
+          next.pause();
+          next.muted = true;
+          next.load();
         }
-    }, [activeId, reels, loadMore]);
+    }, [activeId, reels, loadMore, isOnline, serverReachable]);
 
     // Resume playback after reconnect
     useEffect(() => {
       const resume = () => {
-          if (!activeId) return;
-          const video =
-              videoRefs.current.get(activeId);
-          if (video?.paused) {
-            video.play().catch(() => {});
+        if (!activeId) {
+          return;
+        }
+      
+        const video =
+          videoRefs.current.get(activeId);
+      
+        if (!video) {
+          return;
+        }
+      
+        try {
+          video.load();
+        } catch {
+          return;
+        }
+      
+        const playVideo = () => {
+          if (
+            video.readyState >= 2
+          ) {
+            video
+              .play()
+              .catch(() => {});
           }
+        };
+      
+        if (
+          video.readyState >= 1
+        ) {
+          playVideo();
+        } else {
+          video.addEventListener(
+            "loadedmetadata",
+            playVideo,
+            { once: true }
+          );
+        }
       };
   
       window.addEventListener(

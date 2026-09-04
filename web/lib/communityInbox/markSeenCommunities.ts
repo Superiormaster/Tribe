@@ -1,8 +1,10 @@
 import { apiRequest } from "@/utils/api";
 
-export async function markSeen(communityId: number) {
+export async function markCommunitySeen(
+  communityId: number
+) {
   return apiRequest(
-    "api/chats/mark-seen/",
+    "api/chats/mark-community-seen/",
     {
       method: "POST",
       data: {

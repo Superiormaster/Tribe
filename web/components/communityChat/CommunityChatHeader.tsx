@@ -47,9 +47,9 @@ export default function CommunityChatHeader({
           prefetch={false}
         >
           <div className="w-9 h-9 rounded-full overflow-hidden bg-gray-300 flex items-center justify-center">
-            {communityData?.cover_image ? (
+            {communityData?.cover_image_url ? (
               <img
-                src={communityData.cover_image}
+                src={communityData.cover_image_url}
                 className="w-9 h-9 object-cover"
               />
             ) : (

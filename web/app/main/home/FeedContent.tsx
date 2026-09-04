@@ -2,15 +2,18 @@
 import { useState, useRef, useEffect, useContext } from 'react';
 import { useNavigation } from "@/utils/useNavigation"
 import PostCard from '@/components/PostCard';
+import ShareCard from '@/components/share/SharePostCard';
 import ExploreCommunities from '@/components/ExploreCommunities';
 import { Plus } from 'lucide-react'
 import ReelCard from '@/components/ReelCard';
 import RepostCard from '@/components/repost/RepostCard';
 import LoadingScreen from '@/components/LoadingScreen';
+import { useFeedSocket } from '@/lib/useFeedSocket';
 import Skeleton from '@/components/Skeleton';
 import {
   POST_DELETED_EVENT,
   REPOST_DELETED_EVENT,
+  SHARE_DELETED_EVENT,
   emitRepostDeleted,
 } from "@/lib/postEvents";
 import {
@@ -110,7 +113,161 @@ export default function HomePage() {
     selectedTribe,
   });
   
+  const handleFeedPostStats = (
+    postId: number,
+    data: any
+  ) => {
+  
+    setPosts(prev =>
+      prev.map((item: any) => {
+  
+        if (
+          Number(item.id) === Number(postId)
+        ) {
+          return {
+            ...item,
+            likes_count:
+              data.likes_count ??
+              item.likes_count,
+  
+            comments_count:
+              data.comments_count ??
+              item.comments_count,
+  
+            shares_count:
+              data.shares_count ??
+              item.shares_count,
+  
+            views_count:
+              data.views_count ??
+              item.views_count,
+          };
+        }
+  
+        // repost
+        if (
+          item.type === "repost" ||
+          item.feed_type === "repost"
+        ) {
+  
+          const originalPostId = Number(
+            item.post?.id ??
+            item.data?.post?.id ??
+            item.post_id
+          );
+  
+          if (
+            originalPostId === Number(postId)
+          ) {
+  
+            return {
+              ...item,
+  
+              post: {
+                ...item.post,
+  
+                likes_count:
+                  data.likes_count ??
+                  item.post.likes_count,
+  
+                comments_count:
+                  data.comments_count ??
+                  item.post.comments_count,
+  
+                shares_count:
+                  data.shares_count ??
+                  item.post.shares_count,
+  
+                views_count:
+                  data.views_count ??
+                  item.post.views_count,
+              },
+            };
+          }
+        }
+  
+        // share
+        if (
+          item.type === "share" ||
+          item.feed_type === "share"
+        ) {
+  
+          const originalPostId = Number(
+            item.post?.id ??
+            item.data?.post?.id ??
+            item.post_id
+          );
+  
+          if (
+            originalPostId === Number(postId)
+          ) {
+  
+            return {
+              ...item,
+  
+              post: {
+                ...item.post,
+  
+                likes_count:
+                  data.likes_count ??
+                  item.post.likes_count,
+  
+                comments_count:
+                  data.comments_count ??
+                  item.post.comments_count,
+  
+                shares_count:
+                  data.shares_count ??
+                  item.post.shares_count,
+  
+                views_count:
+                  data.views_count ??
+                  item.post.views_count,
+              },
+            };
+          }
+        }
+  
+        return item;
+      })
+    );
+  };
+  
+  useFeedSocket({
+    type: 'global',
+  
+    onStats: (data) => {
+      handleFeedPostStats(
+        data.post_id,
+        data
+      );
+    },
+  
+    onNewComment: (data) => {
+      handleFeedPostStats(
+        data.post_id,
+        {
+          comments_count:
+            data.comments_count,
+        }
+      );
+    },
+  
+    onCommentDeleted: (data) => {
+      handleFeedPostStats(
+        data.post_id,
+        {
+          comments_count:
+            data.comments_count,
+        }
+      );
+    },
+  
+    onCommentUpdated: () => {},
+  });
+  
   const visiblePosts = posts.filter((post: any) => {
+
     if (post.content_type === "short_video") {
       return false;
     }
@@ -120,7 +277,8 @@ export default function HomePage() {
       post.post?.user?.id
     );
   
-    // Remove muted and blocked users
+    if (!userId) return true;
+  
     if (mutedUserIds.has(userId)) {
       return false;
     }
@@ -181,7 +339,7 @@ export default function HomePage() {
     check();
   }, [loadingUser, user]);
   
-  useEffect(() => {
+  {/*useEffect(() => {
     if (filter !== "tribes" || !selectedTribe) return;
   
     resetFeedState();
@@ -195,12 +353,11 @@ export default function HomePage() {
     );
   
     fetchReels();
-  }, [selectedTribe]);
+  }, [selectedTribe]);*/}
   
   useEffect(() => {
 
     const handlePostDeleted = (event: Event) => {
-
       const customEvent =
         event as CustomEvent<{
           postId: number;
@@ -218,7 +375,6 @@ export default function HomePage() {
         )
       );
   
-      // Remove from reels currently displayed
       setReels(prev =>
         prev.filter(
           (reel: any) =>
@@ -228,10 +384,7 @@ export default function HomePage() {
     };
   
   
-    const handleRepostDeleted = (
-      event: Event
-    ) => {
-  
+    const handleRepostDeleted = (event: Event) => {
       const customEvent =
         event as CustomEvent<{
           repostId: number;
@@ -246,8 +399,48 @@ export default function HomePage() {
   
       setPosts(prev =>
         prev.filter(
-          (post: any) =>
-            Number(post.id) !== repostId
+          (post: any) => {
+            const isRepost =
+              post.type === "repost" ||
+              post.feed_type === "repost";
+  
+            if (!isRepost) {
+              return true;
+            }
+  
+            return Number(post.id) !== repostId;
+          }
+        )
+      );
+    };
+  
+  
+    const handleShareDeleted = (event: Event) => {
+      const customEvent =
+        event as CustomEvent<{
+          shareId: number;
+        }>;
+  
+      const shareId =
+        Number(
+          customEvent.detail?.shareId
+        );
+  
+      if (!shareId) return;
+  
+      setPosts(prev =>
+        prev.filter(
+          (post: any) => {
+            const isShare =
+              post.type === "share" ||
+              post.feed_type === "share";
+  
+            if (!isShare) {
+              return true;
+            }
+  
+            return Number(post.id) !== shareId;
+          }
         )
       );
     };
@@ -263,6 +456,11 @@ export default function HomePage() {
       handleRepostDeleted
     );
   
+    window.addEventListener(
+      SHARE_DELETED_EVENT,
+      handleShareDeleted
+    );
+  
   
     return () => {
   
@@ -274,6 +472,11 @@ export default function HomePage() {
       window.removeEventListener(
         REPOST_DELETED_EVENT,
         handleRepostDeleted
+      );
+  
+      window.removeEventListener(
+        SHARE_DELETED_EVENT,
+        handleShareDeleted
       );
   
     };
@@ -371,6 +574,38 @@ export default function HomePage() {
       
         break;
   
+      case "delete_share":
+        try {
+          await deletePostEverywhere(
+            postId,
+            "share"
+          );
+      
+          setPosts(prev =>
+            prev.filter(
+              (post: any) => {
+                const isShare =
+                  post.type === "share" ||
+                  post.feed_type === "share";
+      
+                if (!isShare) {
+                  return true;
+                }
+      
+                return Number(post.id) !== Number(postId);
+              }
+            )
+          );
+      
+          toast.success("Share deleted");
+      
+        } catch (err) {
+          console.error(err);
+          toast.error("Failed to delete share");
+        }
+      
+        break;
+  
       // NORMAL REPOST
       case 'repost_normal':
   
@@ -401,7 +636,7 @@ export default function HomePage() {
   
       // QUOTE REPOST
       case 'repost_quote':
-  
+
         replace(`/main/repost/${postId}`);
   
         break;
@@ -415,20 +650,6 @@ export default function HomePage() {
     initialLoad &&
     loading &&
     isOnline;
-
-  console.log(
-    "POST IDS",
-    posts.map((p) => p.id)
-  );
-  
-  const duplicates = posts.filter(
-    (p, i, arr) =>
-      arr.findIndex(
-        x => x.reactKey === p.reactKey
-      ) !== i
-  );
-  
-  console.log("DUPLICATES", duplicates);
 
   return (
     <div className="mt-24 mb-14 overflow-x-hidden w-full space-y-4">
@@ -531,18 +752,29 @@ export default function HomePage() {
         <>
         {visiblePosts.map((post: any, index: number) => {
           if (post.content_type === "short_video") return null;
+  
           return (
             <div key={post.reactKey}>
               {/* REPOST */}
-              {post.feed_type === "repost" ? (
-              
-                <RepostCard
-                  repost={post}
-                  currentUser={user}
-                  handlePostAction={handlePostAction}
-                  starredUserIds={starredUsers}
-                />
-              
+              {post.feed_type === "share" ||
+                post.type === "share" ? (
+                
+                  <ShareCard
+                    share={post}
+                    currentUser={user}
+                    starredUserIds={starredUsers}
+                  />
+
+                ) : post.feed_type === "repost" ||
+                  post.type === "repost" ? (
+                
+                  <RepostCard
+                    repost={post}
+                    currentUser={user}
+                    handlePostAction={handlePostAction}
+                    starredUserIds={starredUsers}
+                  />
+
               ) : (
               
                 <PostCard
@@ -628,7 +860,10 @@ export default function HomePage() {
         </div>
       )}
   
-      {(!hasMore || reachedLimit) && (
+      {isOnline &&
+       !reconnecting &&
+       !refreshingFeed &&
+       (!hasMore || reachedLimit) && (
         <div className="flex flex-col items-center gap-3 py-8">
           <p className="text-gray-500 dark:text-gray-400 text-sm">
             {reachedLimit

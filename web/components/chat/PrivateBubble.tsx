@@ -27,6 +27,7 @@ import AudioBubble from "@/components/chat/AudioBubble";
 type MediaItem = {
   url: string | null;
   thumbnail?: string;
+  mediaType?: "image" | "video" | "gif" | "sticker" | "audio";
   duration?: number;
   blob?: Blob;
 };
@@ -53,10 +54,22 @@ export default function PrivateBubble({
   onForward,
   
   activeReaction,
+  closeReactionPicker,
   setActiveReaction,
+  jumpToMessage,
 }: any) {
 
-  const id = getMessageKey(msg);
+  const messageKey = getMessageKey(msg);
+
+  if (!messageKey) {
+    console.warn(
+      "[PrivateBubble] Message has no valid key:",
+      msg
+    );
+    return null;
+  }
+  
+  const id = messageKey;
   const isSelected = selectedMessages.has(id);
   const inSelectionMode = selectedMessages.size > 1;
   const bubbleRef = useRef<HTMLDivElement>(null);
@@ -82,15 +95,11 @@ export default function PrivateBubble({
       msg.media_type
     );
 
-  const isMediaMessage = !!(msg.media_type || msg.media_url);
-  
-  const showReactions = activeReaction === id;
-  const isMine = (reaction: any) => false; 
-  const hasValidReply =
-    msg.reply_to &&
-    (msg.reply_to.encrypted_text?.trim() ||
-     msg.reply_to.media_url ||
-     msg.reply_to.media_type);
+  const canOpenMediaPreview =
+    selectedMessages?.size === 0 &&
+    ["image", "video", "gallery"].includes(
+      msg.media_type
+    );
   
   const {
     mediaItems,
@@ -104,6 +113,54 @@ export default function PrivateBubble({
     setPreviewState,
     setReplyingTo,
   });
+  
+  const firstMedia = mediaItems[0];
+  
+  const handleMediaPreview = (index = 0) => {
+    if (selectedMessages?.size > 0) {
+      return;
+    }
+  
+    if (!canPreview) {
+      return;
+    }
+  
+    openPreview(index);
+  };
+
+  const imageSrc =
+    firstMedia?.url || null;
+  
+  const imageThumb =
+    firstMedia?.thumbnail ||
+    imageSrc ||
+    null;
+  
+  const videoSrc =
+    firstMedia?.url || null;
+  
+  const videoThumb =
+    firstMedia?.thumbnail ||
+    videoSrc ||
+    null;
+  
+  const videoDuration =
+    firstMedia?.duration || 0;
+  
+  const isMediaMessage =
+    !!(
+      msg.media_type ||
+      msg.media_url?.length ||
+      msg.media_assets?.length ||
+      msg.external_media_urls?.length
+    );
+  
+  const showReactions = activeReaction === id;
+  const isMine = (reaction: any) => false; 
+
+  const replyMessage = msg.reply_to ?? null;
+
+  const hasValidReply = Boolean(replyMessage);
   
   const {
     dragX,
@@ -120,15 +177,16 @@ export default function PrivateBubble({
     toggleSelectMessage,
     setReplyingTo,
     setActiveReaction,
-    openPreview: () => openPreview(0),
-  })
+    openPreview: canOpenMediaPreview
+      ? () => {
+          if (selectedMessages?.size > 0) {
+            return;
+          }
   
-  const media =
-    Array.isArray(msg.media_url)
-      ? msg.media_url
-      : mediaSrc
-        ? [mediaSrc]
-        : [];
+          handleMediaPreview(0);
+        }
+      : () => {},
+  })
   
   useEffect(() => {
     if (!showReactions || !bubbleRef.current) return;
@@ -161,28 +219,47 @@ export default function PrivateBubble({
       ? "max-w-[130px]"
       : "max-w-[180px]";
   
+  const reactionMessageId =
+    msg.id != null
+      ? String(msg.id)
+      : null;
+  
   const renderMedia = () => {
+ 
     switch (msg.media_type) {
-      case "image":
+  
+      case "image": {
+        const item = mediaItems[0];
+  
+        const imageSrc =
+          item?.url || null;
+  
         const localPreview =
           msg.files?.[0]?.preview;
-      
-        const serverUrl =
-          Array.isArray(msg.media_url)
-              ? msg.media_url[0]
-              : msg.media_url;
-      
-        const imageSrc =
-          msg.status === "sent" ||
-          msg.status === "delivered" ||
-          msg.status === "seen"
-              ? serverUrl
-              : localPreview || serverUrl;
-
+  
+        const imageThumb =
+          item?.thumbnail ||
+          imageSrc ||
+          localPreview ||
+          null;
+  
+        if (!imageSrc && !localPreview) {
+          return null;
+        }
+  
         return (
           <div
             data-media={imageSrc}
             data-type="image"
+            className="select-none"
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onDragStart={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
           >
             <ProgressiveImage
               src={
@@ -190,141 +267,275 @@ export default function PrivateBubble({
                 localPreview
               }
               thumb={
-                imageSrc ||
-                localPreview
+                imageThumb
               }
               priority={priority}
-              onClick={() => openPreview(0)}
-              className={`
-                w-full h-full object-cover aspect-[4/5] cursor-pointer transition-all duration-300 
-                ${canPreview ? "cursor-pointer" : "pointer-events-none opacity-80"}
-              `}
+              onClick={(e) => {
+                if (selectedMessages?.size > 0) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  return;
+                }
+              
+                handleMediaPreview(0);
+              }}
+              className="
+                w-full
+                h-full
+                object-cover
+                aspect-[4/5]
+                cursor-pointer
+                transition-all
+                duration-300
+              "
             />
           </div>
         );
+      }
   
-      case "video":
-        const videoSrc =
-          Array.isArray(msg.media_url)
-            ? msg.media_url[0]
-            : msg.media_url;
-    
-        const duration =
-          Array.isArray(msg.duration)
-            ? msg.duration[0]
-            : msg.duration;
-    
-        const localVideo =
-          msg.files?.[0]?.preview;
+      case "video": {
+        const video = mediaItems[0];
+        const [videoFailed, setVideoFailed] = useState(false);
       
-        const serverVideo =
-          Array.isArray(msg.media_url)
-              ? msg.media_url[0]
-              : msg.media_url;
+        const videoSrc =
+          typeof video?.url === "string"
+            ? video.url
+            : null;
       
         const thumbnail =
-          Array.isArray(msg.thumbnail)
-              ? msg.thumbnail[0]
-              : msg.thumbnail;
+          typeof video?.thumbnail === "string"
+            ? video.thumbnail
+            : null;
       
-        const uploaded =
-          ["sent","delivered","seen"].includes(msg.status);
-
+        const duration =
+          Number(video?.duration || 0);
+      
+        const localVideo =
+          msg.files?.[0]?.preview || null;
+      
+        const uploaded = [
+          "sent",
+          "delivered",
+          "seen",
+        ].includes(msg.status);
+      
+        const source =
+          uploaded
+            ? videoSrc
+            : localVideo || videoSrc;
+      
+        if (!source) {
+          return (
+            <div
+              className="
+                relative
+                w-full
+                aspect-[4/5]
+                bg-black
+                flex
+                items-center
+                justify-center
+              "
+            >
+              <Play
+                size={32}
+                className="text-white/70"
+              />
+            </div>
+          );
+        }
+      
         return (
           <div
             className="
-              relative w-full cursor-pointer
+              relative
+              w-full
+              aspect-[4/5]
+              overflow-hidden
+              bg-black
+              cursor-pointer
+              select-none
             "
-            onClick={() => openPreview(0)}
+            onClick={(e) => {
+              if (selectedMessages?.size > 0) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+              }
+            
+              handleMediaPreview(0);
+            }}
             data-media={videoSrc}
             data-type="video"
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onDragStart={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
           >
-            {uploaded ? (
+      
+            {uploaded && thumbnail && !videoFailed ? (
+      
               <ProgressiveImage
                 priority={priority}
-                  src={thumbnail}
-                  thumb={thumbnail}
-                  className="w-full h-full aspect-[4/5] object-cover"
+                src={thumbnail}
+                thumb={thumbnail}
+                className="
+                  absolute
+                  inset-0
+                  w-full
+                  h-full
+                  object-cover
+                "
               />
+      
             ) : (
+      
               <video
-                  src={localVideo}
-                  muted
-                  playsInline
-                  preload="metadata"
-                  className="w-full aspect-[4/5] h-full object-cover"
+                src={source}
+                muted
+                playsInline
+                preload="metadata"
+                className="
+                  absolute
+                  inset-0
+                  w-full
+                  h-full
+                  object-cover
+                  bg-black
+                "
               />
+      
             )}
       
+            {/*
+             * PLAY BUTTON
+             */}
             <div
               className="
-                absolute inset-0
-                flex items-center justify-center
+                absolute
+                inset-0
+                flex
+                items-center
+                justify-center
+                pointer-events-none
               "
             >
               <div
                 className="
-                  w-16 h-16 rounded-full
+                  w-16
+                  h-16
+                  rounded-full
                   bg-black/50
-                  flex items-center justify-center
+                  flex
+                  items-center
+                  justify-center
                 "
               >
                 <Play
                   size={32}
                   fill="white"
-                  className="text-white ml-1"
+                  className="
+                    text-white
+                    ml-1
+                  "
                 />
               </div>
             </div>
       
+            {/*
+             * DURATION
+             */}
             <div
               className="
-                absolute bottom-3 left-3
-                flex items-center gap-1
+                absolute
+                bottom-3
+                left-3
+                flex
+                items-center
+                gap-1
                 bg-black/60
-                px-2 py-1
+                px-2
+                py-1
                 rounded-full
                 text-white
+                pointer-events-none
               "
             >
               <Video size={14} />
       
               <span className="text-xs">
-                {formatDuration(
-                  duration || 0
-                )}
+                {formatDuration(duration)}
               </span>
             </div>
+      
           </div>
         );
+      }
   
-      case "gallery":
+      case "gallery": {
+        const galleryItems = mediaItems.filter(
+          (
+            item
+          ): item is typeof item & { url: string } =>
+            typeof item.url === "string" &&
+            item.url.length > 0
+        );
+      
         return (
           <MediaGrid
-            items={mediaItems
-            .filter(
-              (item): item is typeof item & { url: string } =>
-                item.url !== null
-            )
-            .map((item, index) => ({
+            items={galleryItems.map((item) => ({
               url: item.url,
-              thumb: item.thumbnail,
-              priority: priority && index < 2,
+              thumb:
+                typeof item.thumbnail === "string"
+                  ? item.thumbnail
+                  : item.url,
+              mediaType: item.mediaType,
+              duration: item.duration,
             }))}
-            onOpen={(i) => openPreview(i)}
+            onOpen={(index) => {
+              if (selectedMessages?.size > 0) {
+                return;
+              }
+      
+              handleMediaPreview(index);
+            }}
           />
         );
+      }
   
-      case "gif":
+      case "gif": {
+        const item =
+          mediaItems[0];
+  
+        if (!item?.url) {
+          return null;
+        }
+  
         return (
           <div
-            data-media={msg.media_url}
+            data-media={item.url}
             data-type="gif"
+            className="select-none"
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onDragStart={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
           >
             <ProgressiveImage
               priority={priority}
-              src={msg.media_url}
-              thumb={msg.thumbnail}
+              src={item.url}
+              thumb={
+                item.thumbnail ||
+                item.url
+              }
               className={`
                 w-full
                 max-w-[180px]
@@ -336,34 +547,71 @@ export default function PrivateBubble({
             />
           </div>
         );
-
-      case "sticker":
+      }
+  
+      case "sticker": {
+        const item =
+          mediaItems[0];
+  
+        if (!item?.url) {
+          return null;
+        }
+  
         return (
           <div
-            data-media={msg.media_url}
+            data-media={item.url}
             data-type="sticker"
+            className="select-none"
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onDragStart={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
           >
             <ProgressiveImage
               priority={priority}
-              src={msg.media_url}
-              thumb={msg.thumbnail}
+              src={item.url}
+              thumb={
+                item.thumbnail ||
+                item.url
+              }
               className={`
-                w-auto h-auto
+                w-auto
+                h-auto
                 max-w-[140px]
                 ${stickerSize}
-                max-h-[140px] rounded-xl
+                max-h-[140px]
+                rounded-xl
                 object-contain
                 drop-shadow-lg
               `}
             />
           </div>
         );
+      }
   
       default:
         return null;
     }
   };
-  console.log("reply_to", msg.reply_to);
+  
+  const canForward =
+    isVisualMedia &&
+    ["sent", "delivered", "seen"].includes(msg.status);
+  
+  const handleForwardClick = (
+    e: React.MouseEvent
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+  
+    setActiveReaction(null);
+  
+    onForward?.([msg]);
+  };
 
   return (
     <div
@@ -388,22 +636,25 @@ export default function PrivateBubble({
 
       {/* REACTIONS */}
       {mounted && canReply &&
-      showReactions &&
+      showReactions && 
+      reactionMessageId &&
       createPortal(
         <ReactionPicker
           visible={showReactions}
           top={reactionPosition.top}
           left={reactionPosition.left}
-          messageId={id}
+          messageId={reactionMessageId}
           onReact={onReaction}
           onClose={() => {
             setActiveReaction(null);
+            closeReactionPicker();
             clearSelection();
           }}
           onClearSelection={clearSelection}
           isCurrentUser={isCurrentUser}
           onOpenEmojiDrawer={() => {
             clearSelection();
+            closeReactionPicker();
             onOpenDrawer?.("emoji");
           }}
         />,
@@ -437,14 +688,19 @@ export default function PrivateBubble({
           }
         `}
       >
-        {isVisualMedia && (
-          <ForwardButton
-            isCurrentUser={isCurrentUser}
-            onClick={() => {
-                setActiveReaction(null);
-                onForward();
-            }}
-          />
+        {canForward && (
+          <div
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerUp={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <ForwardButton
+              isCurrentUser={isCurrentUser}
+              onClick={handleForwardClick}
+            />
+          </div>
         )}
 
         {/* REPLY ICON */}
@@ -462,6 +718,21 @@ export default function PrivateBubble({
           <ReplyPreview
             reply={msg.reply_to}
             isCurrentUser={isCurrentUser}
+            onClick={() => {
+              const originalId = Number(
+                msg.reply_to?.id
+              );
+        
+              if (!originalId) {
+                console.warn(
+                  "[REPLY JUMP] Original message ID missing:",
+                  msg.reply_to
+                );
+                return;
+              }
+        
+              jumpToMessage?.(originalId);
+            }}
           />
         )}
 
@@ -470,7 +741,7 @@ export default function PrivateBubble({
           <>
             <MediaContainer
               status={msg.status}
-              progress={msg.uploadProgress}
+              progress={msg.upload_progress}
               onRetry={() => {
                 console.log("RETRY CLICKED", msg);
                 resendMedia?.(msg);
@@ -497,6 +768,10 @@ export default function PrivateBubble({
               waveform={msg.waveform}
               duration={msg.duration?.[0]}
               isMe={isCurrentUser}
+              status={msg.status}
+              onRetry={() => {
+                resendMedia?.(msg);
+              }}
             />
           </div>
         )}
@@ -547,7 +822,10 @@ export default function PrivateBubble({
               <button
                 key={reaction.emoji}
                 onClick={() =>
-                  onReaction?.(id, reaction.emoji)
+                  onReaction?.(
+                    msg.server_id ?? msg.id,
+                    reaction.emoji
+                  )
                 }
                 className={`
                   px-2 py-[3px]

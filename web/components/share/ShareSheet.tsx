@@ -201,11 +201,11 @@ export default function ShareSheet({
             onClick={copyLink}
           />
   
-          {/*<Item
+          <Item
             icon={<Users />}
             label="Community"
             onClick={shareCommunity}
-          />*/}
+          />
   
           <Item
             icon={<FaWhatsapp className="text-green-500" />}

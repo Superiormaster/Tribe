@@ -22,6 +22,11 @@ export default function MessageFooter({
   retryFailedMessage,
   resendPendingMessage,
 }: Props) {
+  const displayTime =
+    isCurrentUser
+      ? msg.client_created_at ?? msg.created_at
+      : msg.created_at;
+  
   return (
     <div className="flex justify-end items-center gap-1 mt-1">
       <span
@@ -31,8 +36,8 @@ export default function MessageFooter({
             : "text-gray-700 dark:text-gray-400"
         }`}
       >
-        {msg.created_at &&
-          new Date(msg.created_at).toLocaleTimeString([], {
+        {displayTime &&
+          new Date(displayTime).toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
           })}
@@ -50,7 +55,7 @@ export default function MessageFooter({
           {msg.status === "sent" && (
             <Check
               size={14}
-              className="text-gray-500 dark:text-gray-300"
+              className="text-indigo-600 dark:text-gray-300"
             />
           )}
 

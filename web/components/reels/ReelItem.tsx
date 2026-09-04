@@ -6,6 +6,7 @@ import ReelSpinner from "@/components/Spinner";
 import { useSmartPostView } from "@/lib/useSmartPostView";
 import ReelActions from "./ReelActions";
 import ReelControls from "./ReelControls";
+import { useNetwork } from '@/components/networkConnection/NetworkContext';
 import ReelSkeleton from "./ReelSkeleton";
 import ReelCaption from "./ReelCaption";
 import ReelMenu from "./ReelMenu";
@@ -33,6 +34,10 @@ export default function ReelItem({
   const [progress, setProgress] = useState(0);
   const { back } = useNavigation();
   const loaded = player.loadedVideos.current.has(reel.id);
+  const {
+    isOnline,
+    serverReachable,
+  } = useNetwork();
   const {
     showHeart,
     handleDoubleTap,
@@ -151,7 +156,9 @@ export default function ReelItem({
     } else {
       video.pause();
   
-      video.currentTime = 0;
+      if (isOnline) {
+        video.currentTime = 0;
+      }
   
       video.muted = true;
     }
@@ -246,6 +253,7 @@ export default function ReelItem({
         reel={reel}
         muted={player.muted}
         videoRefs={player.videoRefs}
+        handleBookmark={reelsState.handleBookmark}
         handleLike={reelsState.handleLike}
         setOpenCommentsPostId={reelsState.setOpenCommentsPostId}
         onMenuClick={()=>
@@ -365,7 +373,7 @@ export default function ReelItem({
         </div>
       )}
       
-      {!loaded && showSpinner && (
+      {!loaded && showSpinner && isOnline && (
         <div className="absolute inset-0 flex items-center justify-center">
           <ReelSpinner show={showSpinner} />
         </div>

@@ -27,9 +27,9 @@ export default function LocalCommunityItem({
       chatMeta?.name ||
       "Unknown Community",
 
-    cover_image:
-      pending?.cover_image ||
-      chatMeta?.cover_image,
+    cover_image_url:
+      pending?.cover_image_url ||
+      chatMeta?.cover_image_url,
 
     unseen: 0,
     pinned: false,
@@ -48,9 +48,9 @@ export default function LocalCommunityItem({
           : "hover:bg-gray-100 dark:hover:bg-gray-800"
       }`}
     >
-      {chat.cover_image ? (
+      {chat.cover_image_url ? (
         <img
-          src={chat.cover_image}
+          src={chat.cover_image_url}
           className="w-12 h-12 rounded-full object-cover"
         />
       ) : (

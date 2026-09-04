@@ -1,8 +1,12 @@
 'use client';
 
 import React, { forwardRef } from 'react';
-import CommunityMessageBubbles from '@/components/communityChat/CommunityMessageBubble';
+import CommunityMessageBubbles, {
+  CommunityMessageBubblesHandle,
+} from '@/components/communityChat/CommunityMessageBubble';
 import { Message } from "@/utils/chat/messageContract";
+import CommunityChatSkeleton from '@/components/Com-Pri-Chat/ChatSkeleton';
+import { isRenderableMessage } from "@/utils/chat/isRenderableMessage";
 
 type Props = {
   communityId: number;
@@ -11,16 +15,22 @@ type Props = {
     id: number;
     username: string;
   };
+  currentUserId: number;
+  closeReactionPicker: () => void;
 
   showDrawer: boolean;
   setShowDrawer: (value: boolean) => void;
   setDrawerMode: (
     mode: 'plus' | 'emoji' | null
   ) => void;
+  loadMessageWindow: (
+    messageId: number
+  ) => Promise<void>;
 
   page: number;
   hasMore: boolean;
   hasNewer: boolean;
+  initializing: boolean;
   loadMore: () => void;
   loadNewer: () => void;
 
@@ -65,7 +75,7 @@ type Props = {
 };
 
 const CommunityChatBody = forwardRef<
-  HTMLDivElement,
+  CommunityMessageBubblesHandle,
   Props
 >(
   (
@@ -73,10 +83,14 @@ const CommunityChatBody = forwardRef<
       communityId,
       messages,
       currentUser,
+      currentUserId,
       showDrawer,
       setShowDrawer,
       setDrawerMode,
       page,
+      closeReactionPicker,
+      initializing,
+      loadMessageWindow,
       hasMore,
       hasNewer,
       loadMore,
@@ -98,7 +112,6 @@ const CommunityChatBody = forwardRef<
   ) => {
     return (
       <div
-        ref={ref}
         className={`
           flex-1
           min-h-0
@@ -111,37 +124,44 @@ const CommunityChatBody = forwardRef<
           }
         `}
       >
-        <CommunityMessageBubbles
-          communityId={communityId}
-          messages={messages}
-          currentUserId={currentUser.id}
-          loadMore={loadMore}
-          loadNewer={loadNewer}
-          onOpenDrawer={(mode) => {
-            setDrawerMode(mode);
-            setShowDrawer(true);
-          }}
-          onForward={onForward}
-          selectedMessages={selectedMessages}
-          previewState={previewState}
-          setPreviewState={setPreviewState}
-          resendPendingMessage={
-            resendPendingMessage
-          }
-          retryFailedMessage={
-            retryFailedMessage
-          }
-          resendMedia={resendMedia}
-          toggleSelectMessage={
-            toggleSelectMessage
-          }
-          clearSelection={clearSelection}
-          replyingTo={replyingTo}
-          onReply={setReplyingTo}
-          hasMore={hasMore}
-          hasNewer={hasNewer}
-          onReaction={onReaction}
-        />
+        {initializing && messages.length === 0 ? (
+          <CommunityChatSkeleton />
+        ) : (
+          <CommunityMessageBubbles
+            ref={ref}
+            communityId={communityId}
+            messages={messages.filter(isRenderableMessage)}
+            currentUserId={currentUser.id}
+            onCloseReactionPicker={closeReactionPicker}
+            loadMore={loadMore}
+            loadNewer={loadNewer}
+            onOpenDrawer={(mode) => {
+              setDrawerMode(mode);
+              setShowDrawer(true);
+            }}
+            onForward={onForward}
+            selectedMessages={selectedMessages}
+            previewState={previewState}
+            setPreviewState={setPreviewState}
+            resendPendingMessage={
+              resendPendingMessage
+            }
+            retryFailedMessage={
+              retryFailedMessage
+            }
+            resendMedia={resendMedia}
+            toggleSelectMessage={
+              toggleSelectMessage
+            }
+            loadMessageWindow={loadMessageWindow}
+            clearSelection={clearSelection}
+            replyingTo={replyingTo}
+            onReply={setReplyingTo}
+            hasMore={hasMore}
+            hasNewer={hasNewer}
+            onReaction={onReaction}
+          />
+        )}
       </div>
     );
   }

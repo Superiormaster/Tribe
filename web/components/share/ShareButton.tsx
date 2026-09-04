@@ -44,11 +44,11 @@ export default function ShareButton({
             : undefined
         }
       >
-        <Share2 className={vertical ? "w-7 h-7" : "mr-2"} />
+        <Share2 className={vertical ? "w-7 h-7" : "mr-2 w-4 h-4"} />
       </div>
 
       {sharesCount > 0 && (
-        <span className={vertical ? "text-xs" : ""}>
+        <span className={vertical ? "text-xs" : "text-xs"}>
           {formatCount(sharesCount)}
         </span>
       )}

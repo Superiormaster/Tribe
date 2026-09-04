@@ -4,8 +4,7 @@ import { useEffect, useState, useMemo, useContext } from "react";
 import { UserContext } from "@/components/UserContext";
 import { useNavigation } from "@/utils/useNavigation"
 import AppLink from '@/components/AppLink';
-import { usePostSocket } from '@/hooks/usePostSocket'
-
+import { useFeedSocket } from '@/lib/useFeedSocket';
 import CommunityHeader from "@/components/community/CommunityHeader";
 import CommunityTabs from "@/components/community/CommunityTabs";
 import CommunityPosts from "@/components/community/CommunityPosts";
@@ -18,7 +17,9 @@ import toast from 'react-hot-toast';
 import {
   POST_DELETED_EVENT,
   REPOST_DELETED_EVENT,
-} from "@/lib/postEvents";import {
+  SHARE_DELETED_EVENT,
+} from "@/lib/postEvents";
+import {
   removePostFromState,
 } from "@/lib/removePostFromState";
 import { apiRequest } from "@/utils/api";
@@ -28,6 +29,11 @@ type Post = {
   id: number;
   community_pinned?: boolean
   community_pin_order?: number | null
+};
+
+type PendingItem = {
+  type: "post" | "share";
+  id: number;
 };
 
 export default function CommunityPage({
@@ -52,7 +58,7 @@ export default function CommunityPage({
   const [showMenuModal, setShowMenuModal] = useState(false);
 
   const [selectMode, setSelectMode] = useState(false);
-  const [selectedPosts, setSelectedPosts] = useState<number[]>([]);
+  const [selectedPosts, setSelectedPosts] = useState<PendingItem[]>([]);
   const { mutedUserIds, blockedUserIds } =
     useContext(UserContext)!;
   const [starredUsers, setStarredUsers] =
@@ -101,7 +107,6 @@ export default function CommunityPage({
   useEffect(() => {
 
     const handlePostDeleted = (event: Event) => {
-
       const customEvent =
         event as CustomEvent<{
           postId: number;
@@ -118,29 +123,65 @@ export default function CommunityPage({
           deletedPostId
         )
       );
+    };
   
-      setPendingPosts(prev =>
-        removePostFromState(
-          prev,
-          deletedPostId
+    const handleRepostDeleted = (event: Event) => {
+      const customEvent =
+        event as CustomEvent<{
+          repostId: number;
+        }>;
+  
+      const repostId =
+        Number(
+          customEvent.detail?.repostId
+        );
+  
+      if (!repostId) return;
+  
+      setPosts(prev =>
+        prev.filter(
+          (post: any) => {
+            const isRepost =
+              post.type === "repost" ||
+              post.feed_type === "repost";
+  
+            if (!isRepost) {
+              return true;
+            }
+  
+            return Number(post.id) !== repostId;
+          }
         )
       );
     };
   
   
-    const handleRepostDeleted = (event: Event) => {
-      const customEvent = event as CustomEvent<{
-        repostId: number;
-      }>;
+    const handleShareDeleted = (event: Event) => {
+      const customEvent =
+        event as CustomEvent<{
+          shareId: number;
+        }>;
   
-      const deletedRepostId =
-        Number(customEvent.detail?.repostId);
+      const shareId =
+        Number(
+          customEvent.detail?.shareId
+        );
   
-      if (!deletedRepostId) return;
+      if (!shareId) return;
   
       setPosts(prev =>
-        prev.filter(post =>
-          Number(post.id) !== deletedRepostId
+        prev.filter(
+          (post: any) => {
+            const isShare =
+              post.type === "share" ||
+              post.feed_type === "share";
+  
+            if (!isShare) {
+              return true;
+            }
+  
+            return Number(post.id) !== shareId;
+          }
         )
       );
     };
@@ -156,6 +197,11 @@ export default function CommunityPage({
       handleRepostDeleted
     );
   
+    window.addEventListener(
+      SHARE_DELETED_EVENT,
+      handleShareDeleted
+    );
+  
   
     return () => {
   
@@ -169,9 +215,168 @@ export default function CommunityPage({
         handleRepostDeleted
       );
   
+      window.removeEventListener(
+        SHARE_DELETED_EVENT,
+        handleShareDeleted
+      );
+  
     };
   
   }, []);
+  
+  const handleFeedPostStats = (
+    postId: number,
+    data: any
+  ) => {
+  
+    setPosts(prev =>
+      prev.map((item: any) => {
+  
+        if (
+          Number(item.id) === Number(postId)
+        ) {
+          return {
+            ...item,
+            likes_count:
+              data.likes_count ??
+              item.likes_count,
+  
+            comments_count:
+              data.comments_count ??
+              item.comments_count,
+  
+            shares_count:
+              data.shares_count ??
+              item.shares_count,
+  
+            views_count:
+              data.views_count ??
+              item.views_count,
+          };
+        }
+  
+        // repost
+        if (
+          item.type === "repost" ||
+          item.feed_type === "repost"
+        ) {
+  
+          const originalPostId = Number(
+            item.post?.id ??
+            item.data?.post?.id ??
+            item.post_id
+          );
+  
+          if (
+            originalPostId === Number(postId)
+          ) {
+  
+            return {
+              ...item,
+  
+              post: {
+                ...item.post,
+  
+                likes_count:
+                  data.likes_count ??
+                  item.post.likes_count,
+  
+                comments_count:
+                  data.comments_count ??
+                  item.post.comments_count,
+  
+                shares_count:
+                  data.shares_count ??
+                  item.post.shares_count,
+  
+                views_count:
+                  data.views_count ??
+                  item.post.views_count,
+              },
+            };
+          }
+        }
+  
+        // share
+        if (
+          item.type === "share" ||
+          item.feed_type === "share"
+        ) {
+  
+          const originalPostId = Number(
+            item.post?.id ??
+            item.data?.post?.id ??
+            item.post_id
+          );
+  
+          if (
+            originalPostId === Number(postId)
+          ) {
+  
+            return {
+              ...item,
+  
+              post: {
+                ...item.post,
+  
+                likes_count:
+                  data.likes_count ??
+                  item.post.likes_count,
+  
+                comments_count:
+                  data.comments_count ??
+                  item.post.comments_count,
+  
+                shares_count:
+                  data.shares_count ??
+                  item.post.shares_count,
+  
+                views_count:
+                  data.views_count ??
+                  item.post.views_count,
+              },
+            };
+          }
+        }
+  
+        return item;
+      })
+    );
+  };
+  
+  useFeedSocket({
+    type: 'community',
+    communityId: Number(communityId),
+  
+    onStats: (data) => {
+      handleFeedPostStats(
+        data.post_id,
+        data
+      );
+    },
+  
+    onNewComment: (data) => {
+      handleFeedPostStats(
+        data.post_id,
+        {
+          comments_count:
+            data.comments_count,
+        }
+      );
+    },
+  
+    onCommentDeleted: (data) => {
+      handleFeedPostStats(
+        data.post_id,
+        {
+          comments_count:
+            data.comments_count,
+        }
+      );
+    },
+  
+    onCommentUpdated: () => {},
+  });
 
   useEffect(() => {
     (async () => {
@@ -207,6 +412,33 @@ export default function CommunityPage({
   
   const mapCommunityPost = (item: any) => {
 
+    // SHARE
+    if (item.type === "share") {
+      return {
+        ...item,
+        type: "share",
+        created_at: item.created_at,
+        community_pinned:
+          item.community_pinned || false,
+        community_pin_order:
+          item.community_pin_order || 0,
+        post: item.post
+          ? {
+              ...item.post,
+              likes_count:
+                item.post.likes_count || 0,
+              comments_count:
+                item.post.comments_count || 0,
+              shares_count:
+                item.post.shares_count || 0,
+              media_files:
+                item.post.media_files || [],
+            }
+          : null,
+      };
+    }
+  
+    // REPOST
     if (item.type === "repost") {
       return {
         ...item,
@@ -220,16 +452,12 @@ export default function CommunityPage({
         post: item.post
           ? {
               ...item.post,
-  
               likes_count:
                 item.post.likes_count || 0,
-  
               comments_count:
                 item.post.comments_count || 0,
-  
               shares_count:
                 item.post.shares_count || 0,
-  
               media_files:
                 item.post.media_files || [],
             }
@@ -239,24 +467,17 @@ export default function CommunityPage({
   
     return {
       ...item,
-  
       type: "post",
-  
       community_pinned:
         item.community_pinned || false,
-  
       community_pin_order:
         item.community_pin_order || 0,
-  
       likes_count:
         item.likes_count || 0,
-  
       comments_count:
         item.comments_count || 0,
-  
       shares_count:
         item.shares_count || 0,
-  
       media_files:
         item.media_files || [],
     };
@@ -411,6 +632,29 @@ export default function CommunityPage({
       
         break;
   
+      case "delete_share":
+        try {
+          await deletePostEverywhere(
+            postId,
+            "share"
+          );
+      
+          setPosts(prev =>
+            prev.filter(
+              (post: any) =>
+                Number(post.id) !== Number(postId)
+            )
+          );
+      
+          toast.success("Share deleted");
+      
+        } catch (err) {
+          console.error(err);
+          toast.error("Failed to delete share");
+        }
+      
+        break;
+  
       // NORMAL REPOST
       case 'repost_normal':
   
@@ -473,7 +717,7 @@ export default function CommunityPage({
   const visiblePosts = useMemo(() => {
     return posts.filter((post: any) => {
       const postUserId =
-        post.type === "repost"
+        post.type === "repost" || post.type === "share"
           ? post.post?.user?.id
           : post.user?.id;
   
@@ -486,12 +730,33 @@ export default function CommunityPage({
     });
   }, [posts, mutedUserIds, blockedUserIds]);
 
-  const toggleSelect = (id: number) => {
-    setSelectedPosts((prev: any) =>
-      prev.includes(id)
-        ? prev.filter((p: any) => p !== id)
-        : [...prev, id]
-    );
+  const toggleSelect = (
+    item: PendingItem
+  ) => {
+  
+    setSelectedPosts(prev => {
+  
+      const exists = prev.some(
+        selected =>
+          selected.type === item.type &&
+          Number(selected.id) === Number(item.id)
+      );
+  
+      if (exists) {
+        return prev.filter(
+          selected =>
+            !(
+              selected.type === item.type &&
+              Number(selected.id) === Number(item.id)
+            )
+        );
+      }
+  
+      return [
+        ...prev,
+        item,
+      ];
+    });
   };
   
   const applyJoinStatus = (status: string) => {
@@ -643,27 +908,55 @@ export default function CommunityPage({
     }
   }
 
-  const handleModeration = async (action: "approve" | "reject", ids?: number[]) => {
-    const targetIds = ids || selectedPosts;
+  const handleModeration = async (
+    action: "approve" | "reject",
+    items?: PendingItem[]
+  ) => {
+  
+    const targetItems =
+      items || selectedPosts;
+  
+    if (!targetItems.length) {
+      return;
+    }
   
     try {
-      await apiRequest(`api/communities/moderate/`, {
-        method: "POST",
-        data: {
-          post_ids: targetIds,
-          action,
-        },
-      });
+      await apiRequest(
+        `api/communities/moderate/`,
+        {
+          method: "POST",
+          data: {
+            items: targetItems,
+            action,
+          },
+        }
+      );
   
       setPendingPosts(prev =>
-        prev.filter(p => !targetIds.includes(p.id))
+        prev.filter(item =>
+          !targetItems.some(
+            selected =>
+              selected.type === item.type &&
+              Number(selected.id) === Number(item.id)
+          )
+        )
       );
   
       setSelectedPosts([]);
       setSelectMode(false);
   
+      toast.success(
+        action === "approve"
+          ? "Approved successfully"
+          : "Rejected successfully"
+      );
+  
     } catch (err) {
       console.error(err);
+  
+      toast.error(
+        `Failed to ${action} item`
+      );
     }
   };
   
@@ -744,7 +1037,9 @@ export default function CommunityPage({
           toggleSelect={toggleSelect}
           handleModeration={handleModeration}
           setSelectMode={setSelectMode}
-          canModerate={canModerate} 
+          canModerate={canModerate}
+          currentUser={user}
+          starredUserIds={starredUsers}
         />
       )}
 
@@ -771,6 +1066,11 @@ export default function CommunityPage({
         onRejected={() =>
           push(
             `/main/community/${communityId}/rejected`
+          )
+        }
+        onInfo={() =>
+          push(
+            `/main/community/${communityId}/info`
           )
         }
         onApproved={() =>

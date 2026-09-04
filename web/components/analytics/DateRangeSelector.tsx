@@ -28,7 +28,7 @@ export default function DateRangeSelector({
       transition={{
         duration: 0.35,
       }}
-      className="rounded-3xl border border-white/10 bg-background/70 p-4 backdrop-blur-xl"
+      className="rounded-3xl border border-indigo-300 dark:border-white/10 bg-gray-200 dark:bg-gray-900/70 p-4 backdrop-blur-xl"
     >
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-2">
@@ -65,7 +65,7 @@ export default function DateRangeSelector({
                   transition-all
                   ${
                     active
-                      ? "bg-primary text-white shadow-lg shadow-primary/30"
+                      ? "bg-gray-300 dark:bg-gray-700 text-gray-700 dark:text-white shadow-lg shadow-primary/30"
                       : "bg-white/5 text-muted-foreground hover:bg-white/10"
                   }
                 `}

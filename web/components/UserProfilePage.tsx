@@ -3,7 +3,7 @@ import { useState, useEffect, useMemo, useContext } from 'react';
 import { useParams } from 'next/navigation';
 import { useNavigation } from "@/utils/useNavigation"
 import AppLink from '@/components/AppLink';
-import { usePostSocket } from '@/hooks/usePostSocket'
+import { useFeedSocket } from '@/lib/useFeedSocket';
 import { uploadProfileMedia } from "@/utils/r2";
 import { deletePostEverywhere } from '@/utils/deletePost';
 import { UserContext } from '@/components/UserContext';
@@ -25,10 +25,12 @@ import {
 import Skeleton from '@/components/Skeleton';
 import PostCard from '@/components/PostCard';
 import ReelCard from '@/components/ReelCard';
+import ShareCard from '@/components/share/SharePostCard';
 import RepostCard from '@/components/repost/RepostCard';
 import {
   POST_DELETED_EVENT,
   REPOST_DELETED_EVENT,
+  SHARE_DELETED_EVENT,
 } from "@/lib/postEvents";
 import {
   removePostFromState,
@@ -177,9 +179,163 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
   
   }, [posts])
   
+  const handleFeedPostStats = (
+    postId: number,
+    data: any
+  ) => {
+  
+    setPosts(prev =>
+      prev.map((item: any) => {
+  
+        if (
+          Number(item.id) === Number(postId)
+        ) {
+          return {
+            ...item,
+            likes_count:
+              data.likes_count ??
+              item.likes_count,
+  
+            comments_count:
+              data.comments_count ??
+              item.comments_count,
+  
+            shares_count:
+              data.shares_count ??
+              item.shares_count,
+  
+            views_count:
+              data.views_count ??
+              item.views_count,
+          };
+        }
+  
+        // repost
+        if (
+          item.type === "repost" ||
+          item.feed_type === "repost"
+        ) {
+  
+          const originalPostId = Number(
+            item.post?.id ??
+            item.data?.post?.id ??
+            item.post_id
+          );
+  
+          if (
+            originalPostId === Number(postId)
+          ) {
+  
+            return {
+              ...item,
+  
+              post: {
+                ...item.post,
+  
+                likes_count:
+                  data.likes_count ??
+                  item.post.likes_count,
+  
+                comments_count:
+                  data.comments_count ??
+                  item.post.comments_count,
+  
+                shares_count:
+                  data.shares_count ??
+                  item.post.shares_count,
+  
+                views_count:
+                  data.views_count ??
+                  item.post.views_count,
+              },
+            };
+          }
+        }
+  
+        // share
+        if (
+          item.type === "share" ||
+          item.feed_type === "share"
+        ) {
+  
+          const originalPostId = Number(
+            item.post?.id ??
+            item.data?.post?.id ??
+            item.post_id
+          );
+  
+          if (
+            originalPostId === Number(postId)
+          ) {
+  
+            return {
+              ...item,
+  
+              post: {
+                ...item.post,
+  
+                likes_count:
+                  data.likes_count ??
+                  item.post.likes_count,
+  
+                comments_count:
+                  data.comments_count ??
+                  item.post.comments_count,
+  
+                shares_count:
+                  data.shares_count ??
+                  item.post.shares_count,
+  
+                views_count:
+                  data.views_count ??
+                  item.post.views_count,
+              },
+            };
+          }
+        }
+  
+        return item;
+      })
+    );
+  };
+  
+  useFeedSocket({
+    type: 'profile',
+    userId: profileUserId ?? undefined,
+  
+    onStats: (data) => {
+      handleFeedPostStats(
+        data.post_id,
+        data
+      );
+    },
+  
+    onNewComment: (data) => {
+      handleFeedPostStats(
+        data.post_id,
+        {
+          comments_count:
+            data.comments_count,
+        }
+      );
+    },
+  
+    onCommentDeleted: (data) => {
+      handleFeedPostStats(
+        data.post_id,
+        {
+          comments_count:
+            data.comments_count,
+        }
+      );
+    },
+  
+    onCommentUpdated: () => {},
+  });
+  
   useEffect(() => {
-    const handlePostDeleted = (event: Event) => {
 
+    const handlePostDeleted = (event: Event) => {
       const customEvent =
         event as CustomEvent<{
           postId: number;
@@ -196,25 +352,70 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
           deletedPostId
         )
       );
-  
     };
   
+  
     const handleRepostDeleted = (event: Event) => {
-      const customEvent = event as CustomEvent<{
-        repostId: number;
-      }>;
+      const customEvent =
+        event as CustomEvent<{
+          repostId: number;
+        }>;
   
-      const deletedRepostId =
-        Number(customEvent.detail?.repostId);
+      const repostId =
+        Number(
+          customEvent.detail?.repostId
+        );
   
-      if (!deletedRepostId) return;
+      if (!repostId) return;
   
       setPosts(prev =>
-        prev.filter(post =>
-          Number(post.id) !== deletedRepostId
+        prev.filter(
+          (post: any) => {
+            const isRepost =
+              post.type === "repost" ||
+              post.feed_type === "repost";
+  
+            if (!isRepost) {
+              return true;
+            }
+  
+            return Number(post.id) !== repostId;
+          }
         )
       );
     };
+  
+  
+    const handleShareDeleted = (event: Event) => {
+      const customEvent =
+        event as CustomEvent<{
+          shareId: number;
+        }>;
+  
+      const shareId =
+        Number(
+          customEvent.detail?.shareId
+        );
+  
+      if (!shareId) return;
+  
+      setPosts(prev =>
+        prev.filter(
+          (post: any) => {
+            const isShare =
+              post.type === "share" ||
+              post.feed_type === "share";
+  
+            if (!isShare) {
+              return true;
+            }
+  
+            return Number(post.id) !== shareId;
+          }
+        )
+      );
+    };
+  
   
     window.addEventListener(
       POST_DELETED_EVENT,
@@ -226,7 +427,14 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
       handleRepostDeleted
     );
   
+    window.addEventListener(
+      SHARE_DELETED_EVENT,
+      handleShareDeleted
+    );
+  
+  
     return () => {
+  
       window.removeEventListener(
         POST_DELETED_EVENT,
         handlePostDeleted
@@ -236,7 +444,14 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
         REPOST_DELETED_EVENT,
         handleRepostDeleted
       );
+  
+      window.removeEventListener(
+        SHARE_DELETED_EVENT,
+        handleShareDeleted
+      );
+  
     };
+  
   }, []);
   
   const filteredPosts = useMemo(() => {
@@ -850,7 +1065,6 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
     input.click();
   };
   
-  
   const handleChangeCover = () => {
     const input = document.createElement("input");
   
@@ -1056,6 +1270,29 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
         } catch (err) {
           console.error(err);
           toast.error("Failed to delete repost");
+        }
+      
+        break;
+  
+      case "delete_share":
+        try {
+          await deletePostEverywhere(
+            postId,
+            "share"
+          );
+      
+          setPosts(prev =>
+            prev.filter(
+              (post: any) =>
+                Number(post.id) !== Number(postId)
+            )
+          );
+      
+          toast.success("Share deleted");
+      
+        } catch (err) {
+          console.error(err);
+          toast.error("Failed to delete share");
         }
       
         break;
@@ -1355,13 +1592,10 @@ export default function UserProfilePage({ videoRef }: { videoRef?: (el: HTMLVide
             <>
               {/* CONNECTED */}
               {relationship.is_connected && (
-                <button className="px-4 py-2 bg-green-600 text-white rounded-lg">
-                  Connected
+                <button onClick={handleOpenChat} className="px-4 py-2 bg-indigo-600 text-white rounded-lg">
+                  <Send />
                 </button>
               )}
-               {/* <button onClick={handleOpenChat} className="px-4 py-2 bg-indigo-600 text-white rounded-lg">
-                  <Send />
-                </button>*/}
           
               {/* REQUEST SENT */}
               {!relationship.is_connected && relationship.request_sent && (

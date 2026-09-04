@@ -6,7 +6,6 @@ import type {
   UserSummary,
 } from "@/utils/chat/messageContract";
 
-import type { ChatMeta } from "@/hooks/inbox/usePendingMessages";
 import {
   getAllCommunityDrafts,
   getCommunityPendingMessages,
@@ -56,6 +55,12 @@ interface Draft {
   updated_at: string;
 }
 
+export interface CommunityChatMeta {
+  communityId: number;
+  communityName?: string;
+  cover_image_url?: string | null;
+}
+
 export function useCommunityPendingMessages(
   userId?: number
 ) {
@@ -65,8 +70,7 @@ export function useCommunityPendingMessages(
   const [pendingMap, setPendingMap] =
     useState<Record<number, PendingMessage>>({});
 
-  const [chatMeta, setChatMeta] =
-    useState<Record<number, ChatMeta>>({});
+  const [chatMeta, setChatMeta] = useState<Record<number, CommunityChatMeta>>({});
 
   const [loaded, setLoaded] =
     useState(false);
@@ -90,7 +94,7 @@ export function useCommunityPendingMessages(
         number,
         PendingMessage
       > = {};
-      const meta: Record<number, ChatMeta> = {};
+      const meta: Record<number, CommunityChatMeta> = {};
 
       draftsData.forEach((d: any) => {
           const id = d.communityId;
@@ -124,8 +128,9 @@ export function useCommunityPendingMessages(
 
       metaData.forEach((m: any) => {
         meta[m.communityId] = {
-          ...m,
+          communityId: m.communityId,
           communityName: m.name,
+          cover_image_url: m.cover_image_url ?? null,
         };
       });
 

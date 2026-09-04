@@ -2,10 +2,10 @@
 
 import { motion } from "framer-motion";
 import {
-  Users,
-  UserPlus,
-  UserMinus,
-  UserCheck,
+  Star,
+  Plus,
+  Minus,
+  Activity,
   TrendingUp,
 } from "lucide-react";
 
@@ -37,35 +37,83 @@ export default function AudienceSection({
     {
       title: "Total Stars",
       value: stars,
-      icon: <Users size={22} />,
+      icon: <Star size={22} />,
       color: "text-primary",
     },
     {
       title: "New Stars",
       value: newStars,
-      icon: <UserPlus size={22} />,
+      icon: (
+        <span className="relative inline-flex">
+          <Star size={22} />
+          <Plus
+            size={11}
+            strokeWidth={3}
+            className="
+              absolute
+              -right-2
+              -top-2
+              rounded-full
+              bg-background
+            "
+          />
+        </span>
+      ),
       color: "text-green-500",
     },
     {
       title: "Lost Stars",
       value: lostStars,
-      icon: <UserMinus size={22} />,
+      icon: (
+        <span className="relative inline-flex">
+          <Star size={22} />
+          <Minus
+            size={11}
+            strokeWidth={3}
+            className="
+              absolute
+              -right-2
+              -top-2
+              rounded-full
+              bg-background
+            "
+          />
+        </span>
+      ),
       color: "text-red-500",
     },
     {
       title: "Active Stars",
       value: activeStars,
-      icon: <UserCheck size={22} />,
+      icon: (
+        <span className="relative inline-flex">
+          <Star size={22} />
+          <Activity
+            size={11}
+            strokeWidth={3}
+            className="
+              absolute
+              -right-2
+              -top-2
+              rounded-full
+              bg-background
+            "
+          />
+        </span>
+      ),
       color: "text-yellow-500",
     },
   ];
+  
+  const activePercentage =
+    (activeStars / Math.max(stars, 1)) * 100;
 
   return (
     <motion.section
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: .35 }}
-      className="rounded-3xl border border-white/10 bg-background/70 backdrop-blur-xl p-6"
+      className="rounded-3xl border border-indigo-300 dark:border-white/10 bg-gray-200 dark:bg-gray-900/70 backdrop-blur-xl p-6"
     >
       <div className="flex items-center justify-between mb-8">
         <div>
@@ -74,7 +122,7 @@ export default function AudienceSection({
           </h2>
 
           <p className="mt-1 text-sm text-muted-foreground">
-            Your audience growth and engagement.
+            Your Star growth and engagement.
           </p>
         </div>
 
@@ -106,7 +154,7 @@ export default function AudienceSection({
             transition={{
               delay: index * .08,
             }}
-            className="rounded-2xl border border-white/10 bg-white/[0.03] p-5"
+            className="rounded-2xl border border-gray-700/15 dark:border-white/10 bg-gray-300 dark:bg-white/[0.03] p-5"
           >
             <div
               className={`mb-4 ${card.color}`}
@@ -127,17 +175,15 @@ export default function AudienceSection({
 
       <div className="mt-8">
         <h3 className="mb-3 text-sm font-medium text-muted-foreground">
-          Audience Health
+          Star Health
         </h3>
 
-        <div className="h-3 overflow-hidden rounded-full bg-white/10">
+        <div className="h-3 overflow-hidden rounded-full bg-gray-300 dark:bg-white/10">
           <motion.div
             initial={{ width: 0 }}
             animate={{
               width: `${Math.min(
-                (activeStars /
-                  Math.max(stars, 1)) *
-                  100,
+                activePercentage,
                 100
               )}%`,
             }}
@@ -150,12 +196,7 @@ export default function AudienceSection({
 
         <div className="mt-2 flex justify-between text-xs text-muted-foreground">
           <span>
-            {(
-              (activeStars /
-                Math.max(stars, 1)) *
-              100
-            ).toFixed(1)}
-            % Active
+            {activePercentage.toFixed(1)}% Active
           </span>
 
           <span>

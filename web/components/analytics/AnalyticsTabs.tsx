@@ -47,7 +47,7 @@ export default function AnalyticsTabs({
       transition={{
         duration: 0.35,
       }}
-      className="rounded-3xl border border-white/10 bg-background/70 backdrop-blur-xl p-2"
+      className="rounded-3xl border border-indigo-300 dark:border-white/10 bg-gray-200 dark:bg-gray-900/70 backdrop-blur-xl p-2"
     >
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
         {ANALYTICS_TABS.map((tab) => {
@@ -77,15 +77,15 @@ export default function AnalyticsTabs({
                 transition-all
                 ${
                   active
-                    ? "bg-primary text-white shadow-lg shadow-primary/30"
-                    : "text-muted-foreground hover:bg-white/5"
+                    ? "bg-primary text-gray-700 dark:text-white shadow-lg shadow-primary/30"
+                    : "text-muted-foreground hover:bg-gray-500 dark:hover:bg-white/5"
                 }
               `}
             >
               {active && (
                 <motion.div
                   layoutId="analytics-tab"
-                  className="absolute inset-0 rounded-2xl bg-primary -z-10"
+                  className="absolute inset-0 rounded-2xl bg-gray-300 dark:bg-gray-800 -z-10"
                   transition={{
                     type: "spring",
                     stiffness: 350,

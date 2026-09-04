@@ -5,6 +5,7 @@ import PostCard from "@/components/PostCard";
 import ReelCard from '@/components/ReelCard';
 import Skeleton from '@/components/Skeleton';
 import RepostCard from '@/components/repost/RepostCard';
+import ShareCard from '@/components/share/SharePostCard';
 import AppLink from "@/components/AppLink";
 import { Users } from "lucide-react";
 
@@ -114,6 +115,15 @@ export default function CommunityPosts({
               currentUser={currentUser}
             />
         
+          ) : item.type === "share" ? (
+
+            <ShareCard
+              share={item}
+              currentUser={currentUser}
+              handlePostAction={handlePostAction}
+              starredUserIds={starredUserIds}
+            />
+
           ) : item.content_type === "short_video" ? (
             <ReelCard
               post={item}

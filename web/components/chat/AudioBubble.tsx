@@ -1,6 +1,6 @@
 'use client';
 
-import { Play, Pause, Mic } from 'lucide-react';
+import { Play, Upload, Pause, Mic } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import AudioWaveform from '@/components/AudioWaveform';
 
@@ -10,6 +10,8 @@ type Props = {
   duration?: number;
   isMe?: boolean;
   priority?: boolean;
+  status?: string;
+  onRetry?: () => void;
 };
 
 export default function AudioBubble({
@@ -18,6 +20,8 @@ export default function AudioBubble({
   duration,
   isMe,
   priority,
+  status,
+  onRetry,
 }: Props) {
   const audioRef = useRef<HTMLAudioElement>(null);
 
@@ -104,7 +108,7 @@ export default function AudioBubble({
       className={`
         flex
         items-center
-        gap-3
+        gap-1
         rounded-2xl
         px-3
         py-2
@@ -124,32 +128,95 @@ export default function AudioBubble({
         preload={priority ? "auto" : "metadata"}
       />
 
-      {/* Play */}
-      <button
-        onClick={toggle}
-        className="
-          w-11
-          h-11
-          rounded-full
-          bg-white/15
-          flex
-          items-center
-          justify-center
-          shrink-0
-        "
-      >
-        {playing ? (
-          <Pause
-            size={18}
-            className="text-white"
+      {/* Controls */}
+      <div className="flex items-center gap-2 shrink-0">
+      
+        {/* Play */}
+        <button
+          type="button"
+          onClick={toggle}
+          className="
+            w-11
+            h-11
+            rounded-full
+            bg-white/15
+            flex
+            items-center
+            justify-center
+            shrink-0
+          "
+          aria-label={playing ? "Pause voice message" : "Play voice message"}
+        >
+          {playing ? (
+            <Pause
+              size={18}
+              className="text-white"
+            />
+          ) : (
+            <Play
+              size={18}
+              className="text-white ml-0.5"
+            />
+          )}
+        </button>
+      
+      </div>
+  
+      {/* UPLOAD STATUS */}
+      {(status === "uploading" ||
+        status === "sending") && (
+        <div
+          className="
+            w-11
+            h-11
+            rounded-full
+            flex
+            items-center
+            justify-center
+            shrink-0
+          "
+          aria-label="Uploading"
+        >
+          <div
+            className="
+              w-6
+              h-6
+              border-3
+              border-white/30
+              border-t-white
+              rounded-full
+              animate-spin
+            "
           />
-        ) : (
-          <Play
+        </div>
+      )}
+  
+      {/* RETRY */}
+      {(status === "pending" ||
+        status === "failed") && (
+        <button
+          type="button"
+          onClick={onRetry}
+          className="
+            w-11
+            h-11
+            rounded-full
+            flex
+            items-center
+            justify-center
+            shrink-0
+            transition
+            active:scale-95
+          "
+          aria-label="Retry upload"
+          title="Retry upload"
+        >
+          <Upload
             size={18}
-            className="text-white ml-0.5"
+            className="text-red-500"
           />
-        )}
-      </button>
+        </button>
+      )}
 
       {/* Waveform */}
       <div className="flex-1">

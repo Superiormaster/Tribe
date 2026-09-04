@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Avatar from '@/components/Avatar'
 import Skeleton from '@/components/Skeleton'
+import toast from "react-hot-toast";
 import CommentList from '@/components/CommentList'
 import Linkify from "linkify-react";
 import CommentInput from '@/components/CommentInput'
@@ -19,7 +20,8 @@ import {
   Repeat,
   ThumbsUp,
   MessageCircle,
-  ChartNoAxesColumn
+  ChartNoAxesColumn, 
+  Bookmark,
 } from 'lucide-react'
 
 type ReplyTarget = {
@@ -36,6 +38,7 @@ export default function RepostDetailPage() {
   const { showShare } = useShareSheet();
     const [comments, setComments] = useState<any[]>([]);
   const [currentUser, setCurrentUser] = useState<any>(null)
+  const [bookmarked, setBookmarked] = useState(false)
 
   const [liked, setLiked] = useState(false)
   const [likes, setLikes] = useState(0)
@@ -233,6 +236,7 @@ export default function RepostDetailPage() {
 
       setLiked(data.post?.liked_by_user || false)
       setLikes(data.post?.likes_count || 0)
+      setBookmarked(data.post?.is_bookmarked || false)
 
     } catch (err) {
       console.error(err)
@@ -255,6 +259,47 @@ export default function RepostDetailPage() {
 
     } catch (err) {
       console.error(err)
+    }
+  }
+  
+  const handleBookmark = async () => {
+    const repostId = repost?.id;
+
+    if (!repostId) return;
+
+    const previousState = bookmarked;
+    setBookmarked(!previousState);
+  
+    try {
+      const result = await apiRequest(
+        `api/bookmarks/toggle/`,
+        {
+          method: "POST",
+          data: {
+            type: "repost",
+            repost_id: repostId,
+          },
+        }
+      );
+  
+      setBookmarked(result.bookmarked)
+
+      setRepost((prev: any) =>
+        prev
+          ? {
+              ...prev,
+              is_bookmarked: result.bookmarked,
+              post: {
+                ...prev.post,
+                is_bookmarked: result.bookmarked,
+              },
+            }
+          : prev
+      );
+  
+    } catch (err) {
+      setBookmarked(previousState);
+      console.error("Bookmark failed:", err)
     }
   }
   
@@ -393,19 +438,19 @@ export default function RepostDetailPage() {
 
           <button
             onClick={handleLike}
-            className={`flex items-center gap-1 text-gray-500 font-medium ${
+            className={`flex items-center gap-1 text-xs text-gray-500 font-medium ${
               liked ? 'text-blue-600' : ''
             }`}
           >
-            <ThumbsUp className="mr-2" />
+            <ThumbsUp className="w-4 h-4 mr-2" />
 
             {likes > 0 && (
               <span>{likes}</span>
             )}
           </button>
 
-          <button className="flex items-center gap-1 text-gray-500 font-medium">
-            <MessageCircle className="mr-2" />
+          <button className="flex items-center text-xs gap-1 text-gray-500 font-medium">
+            <MessageCircle className="mr-2 w-4 h-4" />
 
             {post.comments_count > 0 && (
               <span>{post.comments_count}</span>
@@ -416,11 +461,31 @@ export default function RepostDetailPage() {
             post={post}
             onOpen={(post) => showShare(post)}
           />
+  
+          <button
+            onClick={handleBookmark}
+            className={`flex items-center gap-1 text-xs font-medium transition ${
+              bookmarked
+                ? "text-blue-600"
+                : "text-gray-500"
+            }`}
+            aria-label={
+              bookmarked
+                ? "Remove bookmark"
+                : "Bookmark post"
+            }
+          >
+            <Bookmark
+              className={`mr-2 h-4 w-4 ${
+                bookmarked ? "fill-current" : ""
+              }`}
+            />
+          </button>
 
           {post.views_count !== undefined && (
-            <span className="ml-auto flex items-center text-gray-400">
+            <span className="ml-auto flex text-xs items-center text-gray-400">
 
-              <ChartNoAxesColumn className="mr-2" />
+              <ChartNoAxesColumn className="mr-2 w-4 h-4" />
 
               {post.views_count}
 
@@ -461,27 +526,42 @@ export default function RepostDetailPage() {
             onRemoveComment={onRemoveComment}
             onNewComment={(newComment) => {
               setComments(prev => {
-                  if (!newComment.parent) {
-                      return [newComment, ...prev];
-                  }
-          
-                  const addReply = (list: any[]): any[] =>
-                      list.map(c => {
-                          if (c.id === newComment.root_parent_id) {
-                              return {
-                                  ...c,
-                                  replies: [...(c.replies ?? []), newComment],
-                              };
-                          }
-          
-                          return {
-                              ...c,
-                              replies: c.replies ? addReply(c.replies) : [],
-                          };
-                      });
-          
-                  return addReply(prev);
-              });
+                const exists = prev.some(
+                  comment =>
+                    Number(comment.id) === Number(newComment.id)
+                )
+            
+                if (exists) return prev
+            
+                if (!newComment.parent) {
+                  return [newComment, ...prev]
+                }
+            
+                const addReply = (list: any[]): any[] =>
+                  list.map(comment => {
+                    if (
+                      Number(comment.id) ===
+                      Number(newComment.root_parent_id)
+                    ) {
+                      return {
+                        ...comment,
+                        replies: [
+                          ...(comment.replies ?? []),
+                          newComment,
+                        ],
+                      }
+                    }
+            
+                    return {
+                      ...comment,
+                      replies: comment.replies
+                        ? addReply(comment.replies)
+                        : [],
+                    }
+                  })
+            
+                return addReply(prev)
+              })
             }}
           />
 

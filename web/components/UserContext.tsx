@@ -9,6 +9,7 @@ import { isSessionExpired, startActivityTracking } from "@/lib/activity";
 import { useNavigation } from "@/utils/useNavigation"
 import { REFRESH_HOME_EVENT } from "@/lib/authEvents";
 import { saveCachedUser, getCachedUser } from "@/lib/userCache";
+import { updateSocketAccessToken } from "@/lib/globalSocket/updateSocketAccessToken";
 import { useNetwork } from "@/components/networkConnection/NetworkContext";
 
 interface UserContextType {
@@ -170,6 +171,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
         // 3. Restore access token in memory
         setAccessToken(res.access);
+        updateSocketAccessToken(
+          res.access
+        );
         
         console.log("refresh success");
   
@@ -357,6 +361,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
         );
   
         setAccessToken(res.access);
+        updateSocketAccessToken(
+          res.access
+        );
         localStorage.setItem(
           "last_seen",
           Date.now().toString()
@@ -419,6 +426,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
               });
   
           setAccessToken(token.access);
+          updateSocketAccessToken(
+            token.access
+          );
   
           const profile =
               await apiRequest("api/users/me/");

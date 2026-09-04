@@ -1,287 +1,706 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { reconnectSocket } from "@/lib/socket";
+import {
+  useEffect,
+  useState,
+  useRef,
+} from 'react';
+
+import type { Socket } from 'socket.io-client';
+
 import {
   mergeMessages,
-  sortMessages
+  sortMessages,
 } from '@/utils/chat/messageMerger';
-import type { Message } from "@/utils/chat/messageContract";
-import type { Dispatch, SetStateAction } from "react";
+
+import type { Message } from '@/utils/chat/messageContract';
+
+import type {
+  Dispatch,
+  SetStateAction,
+} from 'react';
 
 type CurrentUser = {
   id: number;
 };
 
-export function useChatSocket(
-  chatIdNum: number | null,
-  currentUser: CurrentUser | null,
-  handlers?: {
-    onSeen?: (data: any) => void;
-    onDelivered?: (data: any) => void;
-  }
-) {
-  const socketRef = useRef<any>(null);
-  const mountedRef = useRef(true);
+type PrivateChatHandlerMap = Map<
+  number,
+  PrivateChatHandlers
+>;
 
-  const {
-    onSeen,
-    onDelivered,
-  } = handlers || {};
-  
+type TribeSocket = Socket & {
+  __privateChatHandlers?: PrivateChatHandlerMap;
+
+  onTyping?: (data: any) => void;
+
+  onStopTyping?: (data: any) => void;
+
+  onMessage?: (
+    message: Message
+  ) => void;
+
+  setPrivateChatMessages?: (
+    chatId: number,
+    updater: (
+      setMessages: Dispatch<
+        SetStateAction<Message[]>
+      >
+    ) => void
+  ) => void;
+};
+
+type Props = {
+  chatId: number | null;
+  currentUser: CurrentUser | null;
+
+  // THIS MUST BE THE GLOBAL SOCKET REF.
+  socketRef: React.MutableRefObject<TribeSocket | null>;
+
+  setIsTyping: Dispatch<
+    SetStateAction<boolean>
+  >;
+
+  setChatUser?: Dispatch<
+    SetStateAction<any | null>
+  >;
+};
+
+type PrivateChatHandlers = {
+  handleConnect: () => void;
+  handleTyping: (data: any) => void;
+  handleDisconnect: (reason: string) => void;
+  handleStopTyping: (data: any) => void;
+  handleErr: (err: any) => void;
+  handleError: (err: any) => void;
+  handleReceiveMessage: (message: Message) => void;
+  handleUserStatus: (data: any) => void;
+};
+
+export function useChatSocket({
+  chatId,
+  currentUser,
+  socketRef,
+  setIsTyping,
+  setChatUser,
+}: Props) {
+  const mountedRef = useRef(false);
+
+  const [socketReady, setSocketReady] =
+    useState(false);
+
   useEffect(() => {
-    console.log("MOUNT useChatSocket", chatIdNum);
-    if (!chatIdNum) return;
+    if (!chatId || !currentUser?.id) {
+      setSocketReady(false);
+      return;
+    }
+
+    const id = Number(chatId);
 
     mountedRef.current = true;
 
-    const init = async () => {
-      try {
-        const socket = await reconnectSocket();
-        console.log(socket.id);
-
-        if (!mountedRef.current) {
-          return;
-        }
-  
-        socketRef.current = socket;
-
-        // ======================
-        // CONNECT
-        // ======================
-        const handleConnect = () => {
-          console.log("✅ socket connected:", socket.id);
-  
-          socket.emit(
-            "user_online"
-          );
-
-          socket.emit("join_chat", {
-            chatId: chatIdNum,
-          });
-
-          socket.emit("mark_seen", {
-            chatId: chatIdNum,
-          });
-        };
-
-        socket.on("connect", handleConnect);
-
-        // ======================
-        // RECEIVE MESSAGE
-        // ======================
-        const handleMessage = (message: Message) => {
-          if (Number(message.chat) !== Number(chatIdNum)) return;
-        
-          socketRef.current?.onMessage?.(message);
-        };
-
-        const handleReceiveMessage = (msg:any) => {
-          if (
-            Number(msg.chat ?? msg.chatId) !== Number(chatIdNum)
-          ) {
-            return;
-          }
-      
-          handleMessage(msg);
-        };
-      
-        socket.on(
-          "receive_message",
-          handleReceiveMessage
-        );
-  
-        const handleTyping =
-          (data: any) => {
-            socketRef.current?.onTyping?.(
-              data
-            );
-          };
-
-        const handleStopTyping =
-          (data: any) => {
-            socketRef.current?.onStopTyping?.(
-              data
-            );
-          };
-  
-        const handleReaction =
-          (data: any) => {
-            socketRef.current?.onReaction?.(
-              data
-            );
-          };
-  
-        const handleDelivered =
-          (data: any) => {
-            onDelivered?.(data);
-        
-            window.dispatchEvent(
-              new CustomEvent(
-                "message-delivered",
-                {
-                  detail: data,
-                }
-              )
-            );
-          };
-
-        const handleSeen =
-          (data: any) => {
-            onSeen?.(data);
-        
-            window.dispatchEvent(
-              new CustomEvent(
-                "message-seen",
-                {
-                  detail: data,
-                }
-              )
-            );
-          };
-  
-        const handleUserStatus =
-          (data: any) => {
-            socketRef.current?.onUserStatus?.(
-              data
-            );
-          };
-
-        socket.on("typing", handleTyping);
-        socket.on("stop_typing", handleStopTyping);
-        socket.on("reaction", handleReaction);
-        socket.on("delivered", handleDelivered);
-        socket.on("seen", handleSeen);
-        socket.on("user_status", handleUserStatus);
-
-        socketRef.current.setHandlers = ({
-          setMessages,
-          setIsTyping,
-        }: {
-          setMessages: Dispatch<SetStateAction<Message[]>>;
-          setIsTyping: Dispatch<SetStateAction<boolean>>;
-        }) => {
-          if (!socketRef.current) return;
-        
-          socketRef.current.onTyping = (
-            { userId }: { userId: number }
-          ) => {
-        
-            if (userId === currentUser?.id)
-              return;
-        
-            setIsTyping(true);
-          };
-        
-          socketRef.current.onStopTyping = (
-            { userId }: { userId: number }
-          ) => {
-              if (userId === currentUser?.id)
-                return;
-        
-              setIsTyping(false);
-            };
-  
-          socketRef.current.onMessage = (message: Message) => {
-            setMessages((prev: Message[]) =>
-              sortMessages(
-                mergeMessages(prev, [message])
-              )
-            );
-          };
-        };
-
-        // ======================
-        // STORE CLEANUP
-        // ======================
-        socketRef.current.__handlers = {
-          handleConnect,
-          handleTyping,
-          handleStopTyping,
-          handleReaction,
-          handleDelivered,
-          handleSeen,
-          handleReceiveMessage,
-          handleUserStatus,
-        };
-
-      } catch (err) {
-        console.error("Socket init failed:", err);
+    console.log(
+      '🔵 [PRIVATE] MOUNT',
+      {
+        chatId: id,
+        userId: currentUser.id,
       }
+    );
+
+    let socket: TribeSocket | null = null;
+
+    const getGlobalSocket = (): TribeSocket | null => {
+      const current =
+        socketRef.current;
+
+      if (!current) {
+        console.log(
+          '⏳ [PRIVATE] Global socket not available yet',
+          id
+        );
+
+        return null;
+      }
+
+      socket = current;
+
+      return current;
     };
 
-    init();
+    const handleConnect = () => {
+      if (!mountedRef.current) {
+        return;
+      }
 
-    // ======================
-    // CLEANUP
-    // ======================
-    return () => {
-      console.log("UNMOUNT useChatSocket", chatIdNum);
-      mountedRef.current = false;
-    
-      const socket = socketRef.current;
-      const h = socket?.__handlers;
-    
-      if (!socket || !h) {
+      if (!socket) {
+        return;
+      }
+
+      console.log(
+        '🟢 [PRIVATE] SOCKET CONNECTED',
+        {
+          chatId: id,
+          socketId: socket.id,
+        }
+      );
+
+      setSocketReady(false);
+
+      // Rejoin ONLY this chat.
+      socket.emit(
+        'join_chat',
+        {
+          chatId: id,
+        }
+      );
+
+      socket.emit(
+        'mark_seen',
+        {
+          chatId: id,
+        }
+      );
+
+      setSocketReady(true);
+    };
+
+    const handleReceiveMessage = (
+      message: Message
+    ) => {
+      if (!mountedRef.current) {
         return;
       }
     
+      const messageChatId =
+        Number(
+          (message as any)?.chat ??
+          (message as any)?.chatId
+        );
+    
       if (
-        socket.connected &&
-        chatIdNum
+        messageChatId !== id
       ) {
-        socket.emit("leave_chat", {
-          chatId: chatIdNum,
-        });
+        return;
       }
     
-      socket.off(
-        "connect",
-        h.handleConnect
+      socket?.setPrivateChatMessages?.(
+        id,
+        (setMessages:
+          Dispatch<
+            SetStateAction<Message[]>
+          >) => {
+          setMessages(
+            prev =>
+              sortMessages(
+                mergeMessages(
+                  prev,
+                  [message]
+                )
+              )
+          );
+        }
       );
-    
-      socket.off(
-        "receive_message",
-        h.handleReceiveMessage
-      );
-    
-      socket.off(
-        "typing",
-        h.handleTyping
-      );
-    
-      socket.off(
-        "stop_typing",
-        h.handleStopTyping
-      );
-    
-      socket.off(
-        "reaction",
-        h.handleReaction
-      );
-    
-      socket.off(
-        "delivered",
-        h.handleDelivered
-      );
-    
-      socket.off(
-        "seen",
-        h.handleSeen
-      );
-    
-      socket.off(
-        "user_status",
-        h.handleUserStatus
-      );
-    
-      socket.__handlers = undefined;
-      socketRef.current = null;
     };
-  }, [
-      chatIdNum,
-      currentUser?.id,
-    ]);
 
-  return socketRef;
+    const handleTyping = (
+      data: any
+    ) => {
+      if (
+        Number(
+          data?.chatId ??
+          data?.chat
+        ) !== id
+      ) {
+        return;
+      }
+
+      socket?.onTyping?.(
+        data
+      );
+    };
+
+    const handleStopTyping = (
+      data: any
+    ) => {
+      if (
+        Number(
+          data?.chatId ??
+          data?.chat
+        ) !== id
+      ) {
+        return;
+      }
+
+      socket?.onStopTyping?.(
+        data
+      );
+    };
+
+    const handleUserStatus = ({
+      userId,
+      status,
+      last_seen,
+    }: {
+      userId: number;
+      status: string;
+      last_seen: string | null;
+    }) => {
+      if (
+        Number(userId) ===
+        Number(currentUser.id)
+      ) {
+        return;
+      }
+
+      if (!mountedRef.current) {
+        return;
+      }
+
+      setChatUser?.(
+        (prev: any) =>
+          prev
+            ? {
+                ...prev,
+                status,
+                last_seen:
+                  last_seen ??
+                  undefined,
+              }
+            : prev
+      );
+    };
+
+    const handleDisconnect = (
+      reason: string
+    ) => {
+      if (!mountedRef.current) {
+        return;
+      }
+
+      console.log(
+        '🟠 [PRIVATE] SOCKET DISCONNECTED',
+        {
+          chatId: id,
+          reason,
+        }
+      );
+
+      setSocketReady(false);
+    };
+
+    const handleError = (
+      err: any
+    ) => {
+      console.error(
+        '🔴 [PRIVATE] CONNECT ERROR',
+        {
+          chatId: id,
+          error: err,
+        }
+      );
+
+      if (
+        mountedRef.current
+      ) {
+        setSocketReady(false);
+      }
+    };
+
+    const handleErr = (
+      err: any
+    ) => {
+      console.error(
+        '🔴 [PRIVATE] SOCKET ERROR',
+        {
+          chatId: id,
+          error: err,
+        }
+      );
+    };
+
+    const attach = (
+      globalSocket: TribeSocket
+    ) => {
+      if (!mountedRef.current) {
+        return;
+      }
+
+      socket =
+        globalSocket;
+
+      globalSocket.__privateChatHandlers =
+        globalSocket.__privateChatHandlers ||
+        new Map();
+
+      // Prevent duplicate registration.
+      const existing =
+        globalSocket.__privateChatHandlers.get(
+          id
+        );
+
+      if (existing) {
+        console.warn(
+          '⚠️ [PRIVATE] Existing handlers found, cleaning first',
+          id
+        );
+
+        globalSocket.off(
+          'connect',
+          existing.handleConnect
+        );
+
+        globalSocket.off(
+          'typing',
+          existing.handleTyping
+        );
+
+        globalSocket.off(
+          'stop_typing',
+          existing.handleStopTyping
+        );
+
+        globalSocket.off(
+          'disconnect',
+          existing.handleDisconnect
+        );
+
+        globalSocket.off(
+          'connect_error',
+          existing.handleError
+        );
+
+        globalSocket.off(
+          'error',
+          existing.handleErr
+        );
+
+        globalSocket.off(
+          'receive_message',
+          existing.handleReceiveMessage
+        );
+
+        globalSocket.off(
+          'user_status',
+          existing.handleUserStatus
+        );
+      }
+
+      globalSocket.__privateChatHandlers.set(
+        id,
+        {
+          handleConnect,
+          handleTyping,
+          handleDisconnect,
+          handleStopTyping,
+          handleErr,
+          handleError,
+          handleReceiveMessage,
+          handleUserStatus,
+        }
+      );
+
+      globalSocket.on(
+        'connect',
+        handleConnect
+      );
+
+      globalSocket.on(
+        'typing',
+        handleTyping
+      );
+
+      globalSocket.on(
+        'stop_typing',
+        handleStopTyping
+      );
+
+      globalSocket.on(
+        'disconnect',
+        handleDisconnect
+      );
+
+      globalSocket.on(
+        'connect_error',
+        handleError
+      );
+
+      globalSocket.on(
+        'error',
+        handleErr
+      );
+
+      globalSocket.on(
+        'receive_message',
+        handleReceiveMessage
+      );
+
+      globalSocket.on(
+        'user_status',
+        handleUserStatus
+      );
+
+      globalSocket.onTyping = (
+        data: any
+      ) => {
+        if (
+          Number(
+            data?.userId
+          ) ===
+          Number(
+            currentUser.id
+          )
+        ) {
+          return;
+        }
+
+        setIsTyping(true);
+      };
+
+      globalSocket.onStopTyping = (
+        data: any
+      ) => {
+        if (
+          Number(
+            data?.userId
+          ) ===
+          Number(
+            currentUser.id
+          )
+        ) {
+          return;
+        }
+
+        setIsTyping(false);
+      };
+
+      globalSocket.onMessage = (
+        message: Message
+      ) => {
+        if (!mountedRef.current) {
+          return;
+        }
+
+        if (
+          Number(
+            (message as any)?.chat ??
+            (message as any)?.chatId
+          ) !== id
+        ) {
+          return;
+        }
+
+        globalSocket.setPrivateChatMessages?.(
+          id,
+          (setMessages:
+            Dispatch<
+              SetStateAction<Message[]>
+            >) => {
+              setMessages(
+                prev =>
+                  sortMessages(
+                    mergeMessages(
+                      prev,
+                      [message]
+                    )
+                  )
+              );
+            }
+        );
+      };
+
+      if (
+        globalSocket.connected
+      ) {
+        handleConnect();
+      }
+    };
+
+    const initialSocket =
+      getGlobalSocket();
+
+    if (
+      initialSocket
+    ) {
+      attach(
+        initialSocket
+      );
+    }
+
+    const handleGlobalSocketConnected =
+      () => {
+        if (
+          !mountedRef.current
+        ) {
+          return;
+        }
+
+        const globalSocket =
+          socketRef.current;
+
+        if (
+          !globalSocket
+        ) {
+          return;
+        }
+
+        // Avoid duplicate attachment.
+        if (
+          socket ===
+          globalSocket &&
+          globalSocket.__privateChatHandlers?.has(
+            id
+          )
+        ) {
+          handleConnect();
+          return;
+        }
+
+        attach(
+          globalSocket
+        );
+      };
+
+    const handleGlobalSocketDisconnected =
+      () => {
+        if (
+          !mountedRef.current
+        ) {
+          return;
+        }
+
+        console.log(
+          '🟠 [PRIVATE] GLOBAL SOCKET DISCONNECTED',
+          id
+        );
+
+        setSocketReady(false);
+      };
+
+    window.addEventListener(
+      'socket-connected',
+      handleGlobalSocketConnected
+    );
+
+    window.addEventListener(
+      'socket-disconnected',
+      handleGlobalSocketDisconnected
+    );
+
+    return () => {
+      console.log(
+        '🧹 [PRIVATE] CLEANUP',
+        {
+          chatId: id,
+        }
+      );
+
+      mountedRef.current =
+        false;
+
+      window.removeEventListener(
+        'socket-connected',
+        handleGlobalSocketConnected
+      );
+
+      window.removeEventListener(
+        'socket-disconnected',
+        handleGlobalSocketDisconnected
+      );
+
+      const cleanupSocket =
+        socket;
+
+      if (
+        !cleanupSocket
+      ) {
+        setSocketReady(false);
+        return;
+      }
+
+      const handlers =
+        cleanupSocket
+          .__privateChatHandlers
+          ?.get(id);
+
+      if (
+        cleanupSocket.connected
+      ) {
+        cleanupSocket.emit(
+          'leave_chat',
+          {
+            chatId: id,
+          }
+        );
+      }
+
+      if (
+        handlers
+      ) {
+        cleanupSocket.off(
+          'connect',
+          handlers.handleConnect
+        );
+
+        cleanupSocket.off(
+          'typing',
+          handlers.handleTyping
+        );
+
+        cleanupSocket.off(
+          'stop_typing',
+          handlers.handleStopTyping
+        );
+
+        cleanupSocket.off(
+          'disconnect',
+          handlers.handleDisconnect
+        );
+
+        cleanupSocket.off(
+          'connect_error',
+          handlers.handleError
+        );
+
+        cleanupSocket.off(
+          'error',
+          handlers.handleErr
+        );
+
+        cleanupSocket.off(
+          'receive_message',
+          handlers.handleReceiveMessage
+        );
+
+        cleanupSocket.off(
+          'user_status',
+          handlers.handleUserStatus
+        );
+
+        cleanupSocket
+          .__privateChatHandlers
+          ?.delete(id);
+      }
+
+      delete cleanupSocket.setPrivateChatMessages;
+
+      setSocketReady(false);
+
+      console.log(
+        '✅ [PRIVATE] CLEANED',
+        id
+      );
+    };
+
+  }, [
+    chatId,
+    currentUser?.id,
+    socketRef,
+    setIsTyping,
+    setChatUser,
+  ]);
+
+  return {
+    socketRef,
+    socketReady,
+  };
 }

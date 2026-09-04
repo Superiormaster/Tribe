@@ -4,6 +4,10 @@ import { useEffect, useContext, useMemo, useState, useCallback, useRef } from 'r
 import { useParams, useSearchParams } from 'next/navigation';
 import ForwardDrawer from '@/components/chat/ForwardDrawer';
 import ChatHeader from '@/components/chat/ChatHeader';
+import {
+  useGlobalSocketContext,
+} from "@/components/GlobalSocketProvider";
+import ReportMessage from '@/components/Com-Pri-Chat/ReportMessage';
 import MuteModal from '@/components/chat/MuteModal';
 import ChatOptionsModal from '@/components/chat/ChatOptionsModal';
 import ChatBody from '@/components/chat/ChatBody';
@@ -35,6 +39,9 @@ import {
 import type { ChatUser } from "@/components/chat/chat";
 import { useChatSocket } from '@/lib/useChatSocket';
 import { useVoiceRecorder } from '@/lib/useVoiceRecorder';
+import type {
+  MessageBubblesHandle
+} from '@/components/MessageBubbles';
 import VoiceRecorderUI from '@/components/VoiceRecorder';
 import { useNetwork } from '@/components/networkConnection/NetworkContext';
 import { useCallManager } from '@/lib/useCallManager';
@@ -42,7 +49,7 @@ import { getLivekitToken, startCall } from "@/lib/calls";
 import CallUI from '@/components/CallUI';
 import ChatInput from '@/components/ChatInput';
 import { useNavigation } from "@/utils/useNavigation";
-import { Message } from "@/utils/chat/messageContract";
+import { Message, ReplyMessage } from "@/utils/chat/messageContract";
 
 type voiceState =
   | "idle"
@@ -54,8 +61,9 @@ type voiceState =
 export default function ChatPage() {
   const { user } = useContext(UserContext)!;
   const { canCommunicate } = useNetwork();
-  const { replace } = useNavigation();
+  const { replace, push } = useNavigation();
   const [activeReaction, setActiveReaction] = useState<string | null>(null);
+  const [showReportModal, setShowReportModal] = useState(false);
 
   useEffect(() => {
     console.log("Chat page mounted");
@@ -86,6 +94,10 @@ export default function ChatPage() {
   >(null);
   const [isTyping, setIsTyping] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const {
+    socketRef,
+  } = useGlobalSocketContext();
+  const messageBodyRef = useRef<MessageBubblesHandle | null>(null);
   
   const [showChatOptions, setShowChatOptions] = useState(false);
   const [showMuteModal, setShowMuteModal] = useState(false);
@@ -94,7 +106,7 @@ export default function ChatPage() {
     useState<string | null>(null);
 
   const [page, setPage] = useState(1);
-  const [replyingTo, setReplyingTo] = useState<any | null>(null);
+  const [replyingTo, setReplyingTo] = useState<ReplyMessage | null>(null);
   if (chatIdNum === null) {
     return null; 
   }
@@ -160,6 +172,73 @@ export default function ChatPage() {
   
   const getSenderId = (m: any) => m.sender;
   
+  const isBackendMessage = (message: any) => {
+    if (!message) return false;
+  
+    // Explicit local/pending states
+    if (
+      message.pending === true ||
+      message.is_pending === true ||
+      message.local === true ||
+      message.is_local === true
+    ) {
+      return false;
+    }
+  
+    if (
+      message.status === "pending" ||
+      message.status === "sending" ||
+      message.status === "failed" ||
+      message.status === "queued"
+    ) {
+      return false;
+    }
+  
+    return (
+      typeof message.id === "number" &&
+      message.id > 0
+    );
+  };
+  
+  const handleReportChat = async (
+    reason: string,
+    details: string
+  ) => {
+    if (!chatIdNum) return;
+  
+    try {
+      const response = await apiRequest(
+        `api/chats/${chatIdNum}/report/`,
+        {
+          method: "POST",
+          data: {
+            reason,
+            details,
+          },
+        }
+      );
+  
+      console.log(
+        "[Report] Chat reported successfully:",
+        response
+      );
+  
+      setShowReportModal(false);
+  
+      alert("Reported successfully");
+    } catch (error: any) {
+      console.error(
+        "[Report] Failed to report chat:",
+        error
+      );
+  
+      alert(
+        error?.message ||
+        "Failed to report chat"
+      );
+    }
+  };
+  
   const {
     callState,
     connectRoom,
@@ -183,6 +262,16 @@ export default function ChatPage() {
       chatId: chatIdNum,
       currentUser: currentUser.id,
   });
+  
+  const {
+    socketReady,
+  } = useChatSocket({
+    chatId: chatIdNum,
+    currentUser,
+    socketRef,
+    setIsTyping,
+    setChatUser,
+  });
 
   const {
     messages,
@@ -195,13 +284,16 @@ export default function ChatPage() {
     loadNewer,
     hasMore,
     hasNewer,
-    setSocketRef,
+    initializing,
+    loadMessageWindow,
   } = useChatMessages({
     chatId: chatIdNum,
     currentUser,
     chatUser,
     input,
     setInput,
+    socketRef,
+    socketReady,
     replyingTo,
     setReplyingTo,
     clearDraft,
@@ -217,17 +309,29 @@ export default function ChatPage() {
     setMessages,
   });
   
-  const socketRef = useChatSocket(
-    chatIdNum,
-    currentUser,
-    {
-      onSeen: handleSeen,
-      onDelivered: handleDelivered,
+  useEffect(() => {
+    if (!socketReady || !socketRef.current) {
+      return;
     }
-  );
+  
+    const socket = socketRef.current;
+  
+    socket.on("seen", handleSeen);
+    socket.on("delivered", handleDelivered);
+  
+    return () => {
+      socket.off("seen", handleSeen);
+      socket.off("delivered", handleDelivered);
+    };
+  }, [
+    socketReady,
+    handleSeen,
+    handleDelivered,
+  ]);
   
   const {
     handleTyping,
+    stopTyping,
   } = useTypingIndicator({
     chatId: chatIdNum,
     socketRef,
@@ -244,11 +348,11 @@ export default function ChatPage() {
     });
   }, [socketRef, setMessages]);
   
-  useEffect(() => {
-    if (socketRef.current) {
-        setSocketRef(socketRef.current);
-    }
-  }, [socketRef, setSocketRef]);
+  const jumpToMessage = async (messageId: number) => {
+    await messageBodyRef.current?.jumpToMessage(
+      messageId
+    );
+  };
   
   const {
     isRecording,
@@ -262,7 +366,25 @@ export default function ChatPage() {
     sendRecording,
     isPaused,
     togglePause,
-  } = useVoiceRecorder(socketRef, chatIdNum, currentUser, setMessages);
+  } = useVoiceRecorder(
+    socketRef,
+    chatIdNum,
+    currentUser,
+    setMessages,
+    replyingTo,
+    setReplyingTo,
+    "private"
+  );
+  
+  const handleViewProfile = () => {
+    if (!chatUser?.username) return;
+  
+    setShowChatOptions(false);
+  
+    push(
+      `/main/profile/${encodeURIComponent(chatUser.username)}`
+    );
+  };
   
   const {
     selectedMessages,
@@ -298,6 +420,10 @@ export default function ChatPage() {
     setActiveReaction(null);
     clearSelection();
   };
+  
+  const closeReactionPickerOnly = () => {
+    setActiveReaction(null);
+  };
 
   const {
     files,
@@ -312,6 +438,9 @@ export default function ChatPage() {
     currentUser,
     socketRef,
     setMessages,
+    replyingTo,
+    setReplyingTo,
+    chatType: "private",
   });
   
   const {
@@ -347,6 +476,8 @@ export default function ChatPage() {
     handleDeleteForEveryone,
   } = useDeleteMessages({
     chatId: chatIdNum,
+    chatType: "private",
+    socketRef,
     messages,
     setMessages,
     selectedMessages,
@@ -402,6 +533,32 @@ export default function ChatPage() {
       }
     };
   }, [chatUser?.id]);
+  
+  const selectedCommunityMessages =
+    getSelectedMessages();
+  
+  const selectedMessage =
+    selectedCommunityMessages.length === 1
+      ? selectedCommunityMessages[0]
+      : null;
+  
+  const selectedAreBackendMessages =
+    selectedCommunityMessages.length > 0 &&
+    selectedCommunityMessages.every(
+      isBackendMessage
+    );
+  
+  const canReplyToSelection =
+    selectedCommunityMessages.length === 1 &&
+    isBackendMessage(selectedMessage);
+  
+  const canForwardSelection =
+    selectedCommunityMessages.length > 0 &&
+    selectedAreBackendMessages;
+  
+  const selectedMessageIsPinned =
+    selectedCommunityMessages.length === 1 &&
+    Boolean(selectedMessage?.is_pinned);
   
   const voice = useVoiceGestures({
     startRecording,
@@ -464,6 +621,7 @@ export default function ChatPage() {
       <ChatBody
         chatId={chatIdNum}
         messages={messages}
+        closeReactionPicker={closeReactionPicker}
         currentUser={currentUser}
       
         showDrawer={showDrawer}
@@ -490,6 +648,8 @@ export default function ChatPage() {
       
         previewState={previewState}
         setPreviewState={setPreviewState}
+        loadMessageWindow={loadMessageWindow}
+        initializing={initializing}
       
         resendPendingMessage={resendPendingMessage}
         retryFailedMessage={retryFailedMessage}
@@ -562,8 +722,13 @@ export default function ChatPage() {
         blocked={
           !!chatUser?.is_message_blocked
         }
+        onProfile={handleViewProfile}
         muted={isMuted}
         onBlock={handleBlock}
+        onReport={() => {
+          setShowChatOptions(false);
+          setShowReportModal(true);
+        }}
         onMute={() => {
           if (isMuted) {
             handleUnmute();
@@ -588,6 +753,8 @@ export default function ChatPage() {
           closeReactionPicker();
           clearSelection();
         }}
+        canReply={canReplyToSelection}
+        canForward={canForwardSelection}
         onReply={() => {
           closeReactionPicker();
           setReplyingTo(getSelectedMessages()[0]);
@@ -597,7 +764,7 @@ export default function ChatPage() {
           openForward(getSelectedMessages());
         }}
         onDelete={() => {
-          closeReactionPicker();
+          messageBodyRef.current?.closeReactionPicker();
           setShowDeleteModal(true);
         }}
       />
@@ -625,7 +792,10 @@ export default function ChatPage() {
         }
         handleScroll={handleScroll}
     
-        getMessageKey={getMessageKey}
+        getMessageKey={(msg) =>
+          getMessageKey(msg) ??
+          `message-${msg?.id ?? msg?.client_id ?? "unknown"}`
+        }
     
         onClose={closeForward}
         onSend={sendForward}
@@ -645,17 +815,31 @@ export default function ChatPage() {
         }
       />
 
+      <ReportMessage
+        open={showReportModal}
+        username={chatUser?.username}
+        onClose={() => {
+          setShowReportModal(false);
+        }}
+        onSubmit={handleReportChat}
+      />
+
       {previewState && (
         <PreviewViewer
           files={previewState.files}
           index={previewState.index}
-          setIndex={(value: number) => {
+          setIndex={(value) => {
             setPreviewState(prev => {
               if (!prev) return null;
           
+              const nextIndex =
+                typeof value === "function"
+                  ? value(prev.index)
+                  : value;
+          
               return {
                 ...prev,
-                index: value,
+                index: nextIndex,
               };
             });
           }}

@@ -1,12 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import type { MouseEvent } from "react";
 
 type Props = {
   src?: string;
   thumb?: string;
   className?: string;
-  onClick?: () => void;
+  onClick?: (
+    event: React.MouseEvent<HTMLImageElement>
+  ) => void;  
   priority?: boolean;
 };
 

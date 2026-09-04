@@ -7,6 +7,7 @@ import {
     Volume2,
     MoreVertical,
     VolumeX,
+    Bookmark,
 } from "lucide-react";
 
 import ShareButton from "@/components/share/ShareButton";
@@ -20,6 +21,7 @@ interface ReelActionsProps {
         Map<number, HTMLVideoElement>
     >;
     handleLike: (reel: any) => void;
+    handleBookmark: (reel: any) => void;
     setOpenCommentsPostId: (
         id: number
     ) => void;
@@ -31,6 +33,7 @@ export default function ReelActions({
     muted,
     videoRefs,
     handleLike,
+    handleBookmark,
     setOpenCommentsPostId,
     onMenuClick,
 }: ReelActionsProps) {
@@ -146,6 +149,33 @@ export default function ReelActions({
                 onOpen={showShare}
                 sharesCount={reel.shares_count}
             />
+  
+            <button
+                onClick={(e) => {
+                    e.stopPropagation();
+                    handleBookmark(reel);
+                }}
+
+                className={`flex flex-col items-center gap-1 font-medium ${
+                    reel.bookmarked
+                        ? "text-blue-600"
+                        : ""
+                }`}
+            >
+
+              <div className="rounded-full bg-black/25 backdrop-blur-sm p-2"
+              style={{
+                filter: "drop-shadow(0 2px 6px rgba(0,0,0,.8))",
+              }}>
+                <Bookmark
+                    className={`w-7 h-7 ${
+                        reel.bookmarked
+                            ? "fill-blue-600"
+                            : ""
+                    }`}
+                />
+              </div>
+            </button>
 
             {/* Mute */}
             <button

@@ -13,6 +13,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useTheme } from "next-themes";
 
 import { motion } from "framer-motion";
 
@@ -40,6 +41,13 @@ export default function AnalyticsChart({
       notation: "compact",
     }).format(value),
 }: AnalyticsChartProps) {
+  const { resolvedTheme } = useTheme();
+
+  const gridColor =
+    resolvedTheme === "dark"
+      ? "rgba(255,255,255,0.08)"
+      : "rgba(0,0,0,0.08)";
+  
   if (loading) {
     return (
       <div className="h-[340px] animate-pulse rounded-3xl bg-white/5" />
@@ -59,7 +67,7 @@ export default function AnalyticsChart({
       transition={{
         duration: .35,
       }}
-      className="rounded-3xl border border-white/10 bg-background/70 p-6 backdrop-blur-xl"
+      className="rounded-3xl border border-indigo-300 dark:border-white/10 bg-gray-200 dark:bg-gray-900/70 p-6 backdrop-blur-xl"
     >
       <ResponsiveContainer
         width="100%"
@@ -69,7 +77,7 @@ export default function AnalyticsChart({
           <LineChart data={data}>
             <CartesianGrid
               strokeDasharray="4 4"
-              stroke="rgba(255,255,255,.08)"
+              stroke={gridColor}
             />
 
             <XAxis
@@ -110,7 +118,7 @@ export default function AnalyticsChart({
           <BarChart data={data}>
             <CartesianGrid
               strokeDasharray="4 4"
-              stroke="rgba(255,255,255,.08)"
+              stroke={gridColor}
             />
 
             <XAxis
@@ -167,7 +175,7 @@ export default function AnalyticsChart({
 
             <CartesianGrid
               strokeDasharray="4 4"
-              stroke="rgba(255,255,255,.08)"
+              stroke={gridColor}
             />
 
             <XAxis

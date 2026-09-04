@@ -6,6 +6,7 @@ import AppLink from '@/components/AppLink';
 import { usePathname } from "next/navigation";
 import { useNetwork } from "@/components/networkConnection/NetworkContext";
 import { apiRequest } from '@/utils/api';
+import { motion } from "framer-motion";
 import { useTheme } from "next-themes";
 import Image from "next/image";
 import { useAccountSwitcher } from "@/components/AccountSwitcherContext";
@@ -26,6 +27,8 @@ import {
   Repeat,
   Handshake,
   ChevronDown,
+  Bookmark,
+  Trophy,
   Mail
 } from "lucide-react";
 
@@ -46,6 +49,8 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
   const { openSwitcher } = useAccountSwitcher();
   const { push, replace } = useNavigation();
   const pathname = usePathname();
+  const isActive = (path: string) =>
+  pathname === path || pathname.startsWith(`${path}/`);
   const { theme, setTheme } = useTheme();
   const { showInvite } = useInviteSheet();
   const context = useContext(UserContext);
@@ -59,7 +64,7 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
   const { user } = context; 
 
   const links = [
-    { name: "Dashboard", path: "/main/analytics", icon: LayoutDashboard },
+    { name: "Dashboard", path: "/main/dashboard", icon: LayoutDashboard },
   ];
   
   useEffect(() => {
@@ -122,9 +127,28 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
 
         <ul className="space-y-2">
           {/* Search Button */}
-          <AppLink prefetch={false} onClick={closeMenu} className={navItem} href={"/main/search"}>
+          <AppLink prefetch={false} onClick={closeMenu} className={`${navItem} ${
+              isActive("/main/search")
+                ? "bg-indigo-600 text-white"
+                : ""
+            }`} href={"/main/search"}>
             <Search size={20} />
             <span>Search</span>
+          </AppLink>
+
+          {/* Bookmarks */}
+          <AppLink
+            prefetch={false}
+            onClick={closeMenu}
+            className={`${navItem} ${
+              isActive("/main/bookmarks")
+                ? "bg-indigo-600 text-white"
+                : ""
+            }`}
+            href="/main/bookmarks"
+          >
+            <Bookmark size={20} />
+            <span>Bookmarks</span>
           </AppLink>
 
           {/* Switch Account */}
@@ -154,27 +178,67 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
             </button>
           </li>
 
-          {/*{links.map(({ name, path, icon: Icon }) => {
-
-            const active = pathname === path;
+          {links.map(({ name, path, icon: Icon }) => {
 
             return (
-              <AppLink key={name} href={path} prefetch={false} onClick={closeMenu}>
-                <li className={`${navItem} ${active ? "bg-indigo-600 text-white" : ""}`}>
-                  <Icon size={20} />
-                  {name}
-                </li>
+              <AppLink
+                key={name}
+                href={path}
+                prefetch={false}
+                onClick={closeMenu}
+                className={`relative ${navItem} ${
+                  isActive(path)
+                    ? "bg-indigo-600 text-white"
+                    : ""
+                }`}
+              >
+                {isActive(path) && (
+                  <motion.div
+                    layoutId="sidebar-active-line"
+                    className="absolute left-0 top-2 bottom-2 w-1 rounded-full bg-white"
+                    transition={{
+                      type: "spring",
+                      stiffness: 500,
+                      damping: 35,
+                    }}
+                  />
+                )}
+              
+                <Icon size={20} />
+                <span>{name}</span>
               </AppLink>
             );
-          })}*/}
+          })}
 
-          <AppLink href="/main/settings" prefetch={false} onClick={closeMenu} className={navItem}>
+          <AppLink href="/main/settings" prefetch={false} onClick={closeMenu} className={`${navItem} ${
+              isActive("/main/settings")
+                ? "bg-indigo-600 text-white"
+                : ""
+            }`}>
               <Settings size={20} />
               Settings
           </AppLink>
+  
+          {/*}<AppLink
+            href="/sports"
+            prefetch={false}
+            onClick={closeMenu}
+            className={`${navItem} ${
+              isActive("/sports")
+                ? "bg-indigo-600 text-white"
+                : ""
+            }`}
+          >
+            <Trophy size={20} />
+            <span>Live Sports</span>
+          </AppLink>*/}
 
           {/* Tribe Dropdown */}
-          <li className={navItem} onClick={() => setTribeOpen(!tribeOpen)}>
+          <li className={`${navItem} ${
+            pathname.startsWith("/main/tribe/")
+              ? "bg-indigo-600 text-white"
+              : ""
+          }`} onClick={() => setTribeOpen(!tribeOpen)}>
             <Users size={20} />
             Tribe
           </li>
@@ -212,7 +276,11 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
   
           <AppLink
             prefetch={false}
-            className={navItem}
+            className={`${navItem} ${
+              isActive("/main/requests")
+                ? "bg-indigo-600 text-white"
+                : ""
+            }`}
             onClick={closeMenu}
             href={"/main/requests"}
           >
@@ -220,7 +288,11 @@ export default function Sidebar({ closeMenu }: SidebarProps) {
             Connections
           </AppLink>
           <AppLink
-            className={`${navItem} relative`}
+            className={`${navItem} relative ${
+              isActive("/main/invitation")
+                ? "bg-indigo-600 text-white"
+                : ""
+            }`}
             prefetch={false}
             onClick={closeMenu}
             href={`/main/invitation`}

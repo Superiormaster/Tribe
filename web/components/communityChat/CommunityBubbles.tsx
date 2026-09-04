@@ -31,13 +31,26 @@ type MediaItem = {
   blob?: Blob;
 };
 
+type ReactionUser = {
+  id: number;
+  username: string;
+};
+
+type Reaction = {
+  emoji: string;
+  count: number;
+  users: ReactionUser[];
+};
+
 export default function CommunityBubbles({
   msg,
   isCurrentUser,
+  currentUserId,
   sameUser,
   resendPendingMessage,
   retryFailedMessage,
   resendMedia,
+  closeReactionPicker,
   priority = false,
 
   selectedMessages,
@@ -54,9 +67,20 @@ export default function CommunityBubbles({
   
   activeReaction,
   setActiveReaction,
+  jumpToMessage,
 }: any) {
 
-  const id = getMessageKey(msg);
+  const messageKey = getMessageKey(msg);
+
+  if (!messageKey) {
+    console.warn(
+      "[PrivateBubble] Message has no valid key:",
+      msg
+    );
+    return null;
+  }
+  
+  const id = messageKey;
   const isSelected = selectedMessages.has(id);
   const inSelectionMode = selectedMessages.size > 1;
   const bubbleRef = useRef<HTMLDivElement>(null);
@@ -81,17 +105,18 @@ export default function CommunityBubbles({
     ["image", "video", "gif", "sticker", "gallery"].includes(
       msg.media_type
     );
+  
+  const canOpenMediaPreview =
+    selectedMessages?.size === 0 &&
+    ["image", "video", "gallery"].includes(
+      msg.media_type
+    );
+  
+  const reactionMessageId =
+    msg.id != null
+      ? String(msg.id)
+      : null;
 
-  const isMediaMessage = !!(msg.media_type || msg.media_url);
-  
-  const showReactions = activeReaction === id;
-  const isMine = (reaction: any) => false; 
-  const hasValidReply =
-    msg.reply_to &&
-    (msg.reply_to.text?.trim() ||
-     msg.reply_to.media_url ||
-     msg.reply_to.media_type);
-  
   const {
     mediaItems,
     mediaSrc,
@@ -104,6 +129,89 @@ export default function CommunityBubbles({
     setPreviewState,
     setReplyingTo,
   });
+  
+  const firstMedia = mediaItems[0];
+  
+  const handleMediaPreview = (index = 0) => {
+    if (selectedMessages?.size > 0) {
+      return;
+    }
+  
+    const item = mediaItems[index];
+  
+    if (
+      !item ||
+      typeof item.url !== "string" ||
+      !item.url.trim()
+    ) {
+      console.warn(
+        "[MEDIA PREVIEW] Invalid media item",
+        {
+          messageId: msg.id,
+          index,
+          mediaItems,
+        }
+      );
+  
+      return;
+    }
+  
+    openPreview(index);
+  };
+
+  const imageSrc =
+    firstMedia?.url || null;
+  
+  const imageThumb =
+    firstMedia?.thumbnail ||
+    imageSrc ||
+    null;
+  
+  const videoSrc =
+    firstMedia?.url || null;
+  
+  const videoThumb =
+    firstMedia?.thumbnail ||
+    videoSrc ||
+    null;
+  
+  const videoDuration =
+    firstMedia?.duration || 0;
+
+  const isMediaMessage =
+    !!(
+      msg.media_type ||
+      msg.media_url?.length ||
+      msg.media_assets?.length ||
+      msg.external_media_urls?.length
+    );
+  
+  const showReactions = activeReaction === id;
+  const userReactionEmojis = useMemo(() => {
+    const userId = Number(currentUserId);
+  
+    return new Set(
+      (msg.reactions || [])
+        .filter((reaction: Reaction) =>
+          Array.isArray(reaction.users) &&
+          reaction.users.some(
+            (user) =>
+              Number(user.id) === userId
+          )
+        )
+        .map(
+          (reaction: Reaction) =>
+            reaction.emoji
+        )
+    );
+  }, [
+    msg.reactions,
+    currentUserId,
+  ]);
+  
+  const replyMessage = msg.reply_to ?? null;
+
+  const hasValidReply = Boolean(replyMessage);
   
   const {
     dragX,
@@ -120,15 +228,16 @@ export default function CommunityBubbles({
     toggleSelectMessage,
     setReplyingTo,
     setActiveReaction,
-    openPreview: () => openPreview(0),
-  });
+    openPreview: canOpenMediaPreview
+      ? () => {
+          if (selectedMessages?.size > 0) {
+            return;
+          }
   
-  const media =
-    Array.isArray(msg.media_url)
-      ? msg.media_url
-      : mediaSrc
-        ? [mediaSrc]
-        : [];
+          handleMediaPreview(0);
+        }
+      : () => {},
+  });
   
   useEffect(() => {
     if (!showReactions || !bubbleRef.current) return;
@@ -162,27 +271,41 @@ export default function CommunityBubbles({
       : "max-w-[180px]";
   
   const renderMedia = () => {
+
     switch (msg.media_type) {
-      case "image":
+  
+      case "image": {
+        const item = mediaItems[0];
+  
+        const imageSrc =
+          item?.url || null;
+  
         const localPreview =
           msg.files?.[0]?.preview;
-      
-        const serverUrl =
-          Array.isArray(msg.media_url)
-              ? msg.media_url[0]
-              : msg.media_url;
-      
-        const imageSrc =
-          msg.status === "sent" ||
-          msg.status === "delivered" ||
-          msg.status === "seen"
-              ? serverUrl
-              : localPreview || serverUrl;
-
+  
+        const imageThumb =
+          item?.thumbnail ||
+          imageSrc ||
+          localPreview ||
+          null;
+  
+        if (!imageSrc && !localPreview) {
+          return null;
+        }
+  
         return (
           <div
             data-media={imageSrc}
             data-type="image"
+            className="select-none"
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onDragStart={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
           >
             <ProgressiveImage
               src={
@@ -190,141 +313,156 @@ export default function CommunityBubbles({
                 localPreview
               }
               thumb={
-                imageSrc ||
-                localPreview
+                imageThumb
               }
               priority={priority}
-              onClick={() => openPreview(0)}
-              className={`
-                w-full h-full object-cover aspect-[4/5] cursor-pointer transition-all duration-300 
-                ${canPreview ? "cursor-pointer" : "pointer-events-none opacity-80"}
-              `}
+              onClick={(e) => {
+                if (selectedMessages?.size > 0) {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  return;
+                }
+              
+                handleMediaPreview(0);
+              }}
+              className="
+                w-full
+                h-full
+                object-cover
+                aspect-[4/5]
+                cursor-pointer
+                transition-all
+                duration-300
+              "
             />
           </div>
         );
+      }
   
-      case "video":
-        const videoSrc =
-          Array.isArray(msg.media_url)
-            ? msg.media_url[0]
-            : msg.media_url;
-    
-        const duration =
-          Array.isArray(msg.duration)
-            ? msg.duration[0]
-            : msg.duration;
-    
-        const localVideo =
-          msg.files?.[0]?.preview;
+      case "video": {
+        const video = mediaItems[0];
       
-        const serverVideo =
-          Array.isArray(msg.media_url)
-              ? msg.media_url[0]
-              : msg.media_url;
+        const videoSrc =
+          typeof video?.url === "string"
+            ? video.url
+            : null;
       
         const thumbnail =
-          Array.isArray(msg.thumbnail)
-              ? msg.thumbnail[0]
-              : msg.thumbnail;
+          typeof video?.thumbnail === "string" &&
+          video.thumbnail.length > 0
+            ? video.thumbnail
+            : null;
       
-        const uploaded =
-          ["sent","delivered","seen"].includes(msg.status);
-
-        return (
-          <div
-            className="
-              relative w-full cursor-pointer
-            "
-            onClick={() => openPreview(0)}
-            data-media={videoSrc}
-            data-type="video"
-          >
-            {uploaded ? (
-              <ProgressiveImage
-                priority={priority}
-                  src={thumbnail}
-                  thumb={thumbnail}
-                  className="w-full h-full aspect-[4/5] object-cover"
-              />
-            ) : (
-              <video
-                  src={localVideo}
-                  muted
-                  playsInline
-                  preload="metadata"
-                  className="w-full aspect-[4/5] h-full object-cover"
-              />
-            )}
+        const duration =
+          Number(video?.duration || 0);
       
+        const localVideo =
+          msg.files?.[0]?.preview || null;
+      
+        const actualVideoSrc =
+          localVideo || videoSrc;
+      
+        if (!actualVideoSrc) {
+          return (
             <div
               className="
-                absolute inset-0
-                flex items-center justify-center
+                w-full
+                aspect-[4/5]
+                bg-black
+                flex
+                items-center
+                justify-center
               "
-            >
-              <div
-                className="
-                  w-16 h-16 rounded-full
-                  bg-black/50
-                  flex items-center justify-center
-                "
-              >
-                <Play
-                  size={32}
-                  fill="white"
-                  className="text-white ml-1"
-                />
-              </div>
-            </div>
+            />
+          );
+        }
       
-            <div
-              className="
-                absolute bottom-3 left-3
-                flex items-center gap-1
-                bg-black/60
-                px-2 py-1
-                rounded-full
-                text-white
-              "
-            >
-              <Video size={14} />
+        const uploaded = [
+          "sent",
+          "delivered",
+          "seen",
+        ].includes(msg.status);
       
-              <span className="text-xs">
-                {formatDuration(
-                  duration || 0
-                )}
-              </span>
-            </div>
-          </div>
-        );
-  
-      case "gallery":
         return (
-          <MediaGrid
-            items={mediaItems
-            .filter(
-              (item): item is typeof item & { url: string } =>
-                item.url !== null
-            )
-            .map((item, index) => ({
-              url: item.url,
-              thumb: item.thumbnail,
-              priority: priority && index < 2,
-            }))}
-            onOpen={(i) => openPreview(i)}
+          <VideoBubble
+            videoSrc={actualVideoSrc}
+            thumbnail={thumbnail}
+            uploaded={uploaded}
+            duration={duration}
+            priority={priority}
+            onClick={(e) => {
+              if (selectedMessages?.size > 0) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+              }
+            
+              handleMediaPreview(0);
+            }}
           />
         );
+      }
   
-      case "gif":
+      case "gallery": {
+        const galleryItems = mediaItems.filter(
+          (
+            item
+          ): item is typeof item & { url: string } =>
+            typeof item.url === "string" &&
+            item.url.length > 0
+        );
+      
+        return (
+          <MediaGrid
+            items={galleryItems.map((item) => ({
+              url: item.url,
+              thumb:
+                typeof item.thumbnail === "string"
+                  ? item.thumbnail
+                  : item.url,
+              mediaType: item.mediaType,
+              duration: item.duration,
+            }))}
+            onOpen={(index) => {
+              if (selectedMessages?.size > 0) {
+                return;
+              }
+      
+              handleMediaPreview(index);
+            }}
+          />
+        );
+      }
+  
+      case "gif": {
+        const item =
+          mediaItems[0];
+  
+        if (!item?.url) {
+          return null;
+        }
+  
         return (
           <div
-            data-media={msg.media_url}
+            data-media={item.url}
             data-type="gif"
+            className="select-none"
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onDragStart={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
           >
             <ProgressiveImage
               priority={priority}
-              src={msg.media_url}
-              thumb={msg.thumbnail}
+              src={item.url}
+              thumb={
+                item.thumbnail ||
+                item.url
+              }
               className={`
                 w-full
                 max-w-[180px]
@@ -336,49 +474,176 @@ export default function CommunityBubbles({
             />
           </div>
         );
-
-      case "sticker":
+      }
+  
+      case "sticker": {
+        const item =
+          mediaItems[0];
+  
+        if (!item?.url) {
+          return null;
+        }
+  
         return (
           <div
-            data-media={msg.media_url}
+            data-media={item.url}
             data-type="sticker"
+            className="select-none"
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onDragStart={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
           >
             <ProgressiveImage
               priority={priority}
-              src={msg.media_url}
-              thumb={msg.thumbnail}
+              src={item.url}
+              thumb={
+                item.thumbnail ||
+                item.url
+              }
               className={`
-                w-auto h-auto
+                w-auto
+                h-auto
                 max-w-[140px]
                 ${stickerSize}
-                max-h-[140px] rounded-xl
+                max-h-[140px]
+                rounded-xl
                 object-contain
                 drop-shadow-lg
               `}
             />
           </div>
         );
+      }
   
       default:
         return null;
     }
   };
   
-  const grouped = useMemo(() => {
-    const map = new Map<string, number>();
-  
-    for (const reaction of msg.reactions || []) {
-      map.set(
-        reaction.emoji,
-        (map.get(reaction.emoji) || 0) + 1
+  const reactionSummary = useMemo<[string, number][]>(() => {
+    return (msg.reactions || [])
+      .map(
+        (reaction: Reaction): [string, number] => [
+          reaction.emoji,
+          Number(reaction.count || 0),
+        ]
+      )
+      .filter(
+        (item: [string, number]) => item[1] > 0
+      )
+      .sort(
+        (a: [string, number], b: [string, number]) =>
+          b[1] - a[1]
       );
-    }
-  
-    return [...map.entries()].sort((a, b) => b[1] - a[1]);
   }, [msg.reactions]);
   
-  const reactionSummary = grouped.slice(0, 4);
-  const hiddenReactionTypes = grouped.length - reactionSummary.length;
+  const visibleReactionSummary =
+    reactionSummary.slice(0, 4);
+  
+  const hiddenReactionTypes =
+    Math.max(
+      0,
+      reactionSummary.length -
+        visibleReactionSummary.length
+    );
+  
+  const renderMessageText = () => {
+    const text = msg.encrypted_text || "";
+  
+    if (!text) return null;
+  
+    const mentions = msg.mentions || [];
+  
+    // @all / @All / @ALL
+    const allMentionRegex = /@all\b/gi;
+  
+    // Build username lookup
+    const mentionUsernames = new Set(
+      mentions
+        .map((mention: any) => {
+          // Local optimistic mention
+          if (mention?.username) {
+            return mention.username;
+          }
+    
+          // Backend mention
+          if (mention?.user?.username) {
+            return mention.user.username;
+          }
+    
+          return null;
+        })
+        .filter(Boolean)
+    );
+  
+    // Match @username OR @all
+    const parts = text.split(/(@[a-zA-Z0-9_]+)\b/g);
+  
+    return parts.map((part: string, index: number) => {
+      if (!part.startsWith("@")) {
+        return (
+          <span key={index}>
+            {part}
+          </span>
+        );
+      }
+  
+      const value = part.slice(1);
+  
+      // @all should always be highlighted
+      if (msg.mention_all && value.toLowerCase() === "all") {
+        return (
+          <span
+            key={index}
+            className="text-indigo-600 dark:text-indigo-400 font-semibold"
+          >
+            {part}
+          </span>
+        );
+      }
+  
+      // User mention
+      if (mentionUsernames.has(value)) {
+        return (
+          <span
+            key={index}
+            className="text-indigo-600 dark:text-indigo-400 font-semibold"
+          >
+            {part}
+          </span>
+        );
+      }
+  
+      return (
+        <span key={index}>
+          {part}
+        </span>
+      );
+    });
+  };
+  
+  const showSenderName =
+  !isCurrentUser && !sameUser;
+  
+  const canForward =
+    isVisualMedia &&
+    ["sent", "delivered", "seen"].includes(msg.status);
+  
+  const handleForwardClick = (
+    e: React.MouseEvent
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+  
+    setActiveReaction(null);
+  
+    onForward?.([msg]);
+  };
   
   return (
     <div
@@ -398,6 +663,7 @@ export default function CommunityBubbles({
       `}
 
       {...bindBubble}
+      id={`message-${msg.id}`}
       data-message-id={msg.id}
       data-client-id={msg.client_id}
     >
@@ -405,62 +671,155 @@ export default function CommunityBubbles({
       {/* REACTIONS */}
       {mounted && canReply &&
       showReactions &&
+      reactionMessageId &&
       createPortal(
         <ReactionPicker
           top={reactionPosition.top}
           left={reactionPosition.left}
           visible={showReactions}
-          messageId={id}
+          messageId={reactionMessageId}
           onReact={onReaction}
           isCurrentUser={isCurrentUser}
           onClose={() => {
             setActiveReaction(null);
+            closeReactionPicker?.();
             clearSelection();
           }}
           onClearSelection={clearSelection}
           onOpenEmojiDrawer={() => {
             clearSelection();
+            closeReactionPicker?.();
             onOpenDrawer?.("emoji");
           }}
         />,
         document.body
       )}
 
+      {/* FIXED AVATAR COLUMN */}
+      {!isCurrentUser && (
+        <div className="w-8 shrink-0 mr-2">
+          {showSenderName ? (
+            <div className="w-8 h-8 border rounded-full dark:border-indigo-500/5 border-gray-400 mt-1">
+              {msg.sender_avatar ? (
+                <img
+                  src={msg.sender_avatar}
+                  alt={
+                    msg.sender_username ||
+                    msg.sender_name ||
+                    "User"
+                  }
+                  className="
+                    w-8
+                    h-8
+                    rounded-full
+                    object-cover
+                    border
+                    border-gray-300
+                    dark:border-gray-700
+                  "
+                />
+              ) : (
+                <div
+                  className="
+                    w-8
+                    h-8
+                    rounded-full
+                    bg-gray-300
+                    dark:bg-gray-700
+                    flex
+                    items-center
+                    justify-center
+                    text-xs
+                    border
+                    font-semibold
+                    text-gray-600
+                    dark:text-gray-300
+                  "
+                >
+                  {(
+                    msg.sender_username ||
+                    msg.sender_name ||
+                    "?"
+                  )
+                    .charAt(0)
+                    .toUpperCase()}
+                </div>
+              )}
+            </div>
+          ) : (
+            // Keep the exact same space for grouped messages
+            <div className="w-8 h-8" />
+          )}
+        </div>
+      )}
+  
       <div
         ref={bubbleRef}
         style={{
           transform: isCurrentUser
             ? `translateX(-${dragX}px)`
             : `translateX(${dragX}px)`,
-
+      
           transition: dragging
             ? 'none'
             : 'transform 0.35s cubic-bezier(0.2,0.8,0.2,1)',
         }}
-
+      
         className={`
-          relative px-3 py-2 rounded-2xl shadow-sm
+          relative
+          px-3
+          py-2 ml-2
+          shadow-sm
           w-auto
           max-w-[78%]
           min-w-[80px]
-
+      
           ${
             ["sticker", "gif"].includes(msg.media_type)
-              ? 'bg-transparent shadow-none p-0'
+              ? "bg-transparent shadow-none p-0"
               : isCurrentUser
-                ? 'bg-gray-200 dark:bg-indigo-900 text-white rounded-br-md'
-                : 'bg-gray-400 dark:bg-indigo-500/5 text-white rounded-bl-md'
+                ? `
+                  rounded-2xl
+                  rounded-br-md
+                  bg-gray-200
+                  dark:bg-indigo-900
+                  text-white
+                `
+                : `
+                  bg-gray-400
+                  dark:bg-indigo-500/5
+                  text-white
+                
+                  rounded-tr-2xl
+                  rounded-br-2xl
+                  rounded-bl-md
+                  rounded-tl-[10px]
+                `
           }
         `}
       >
-        {isVisualMedia && (
-          <ForwardButton
-            isCurrentUser={isCurrentUser}
-            onClick={() => {
-                setActiveReaction(null);
-                onForward();
-            }}
-          />
+        {showSenderName && (
+          <div className="mb-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400">
+            {msg.sender_username ||
+              msg.sender_name ||
+              msg.sender?.username ||
+              "Unknown"}
+          </div>
+        )}
+  
+        {canForward && (
+          <div
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerUp={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <ForwardButton
+              isCurrentUser={isCurrentUser}
+              onClick={handleForwardClick}
+            />
+          </div>
         )}
 
         {/* REPLY ICON */}
@@ -478,6 +837,21 @@ export default function CommunityBubbles({
           <ReplyPreview
             reply={msg.reply_to}
             isCurrentUser={isCurrentUser}
+            onClick={() => {
+              const originalId = Number(
+                msg.reply_to?.id
+              );
+        
+              if (!originalId) {
+                console.warn(
+                  "[REPLY JUMP] Original message ID missing:",
+                  msg.reply_to
+                );
+                return;
+              }
+        
+              jumpToMessage?.(originalId);
+            }}
           />
         )}
 
@@ -486,7 +860,7 @@ export default function CommunityBubbles({
           <>
             <MediaContainer
               status={msg.status}
-              progress={msg.uploadProgress}
+              progress={msg.upload_progress}
               onRetry={() => {
                 console.log("RETRY CLICKED", msg);
                 resendMedia?.(msg);
@@ -513,6 +887,10 @@ export default function CommunityBubbles({
               waveform={msg.waveform}
               duration={msg.duration?.[0]}
               isMe={isCurrentUser}
+              status={msg.status}
+              onRetry={() => {
+                resendMedia?.(msg);
+              }}
             />
           </div>
         )}
@@ -527,12 +905,13 @@ export default function CommunityBubbles({
         ) : (
           msg.encrypted_text && (
             <p className="text-sm whitespace-pre-wrap break-all text-gray-700 dark:text-white overflow-hidden break-words overflow-wrap-anywhere
-            "
-            style={{
-              overflowWrap: "anywhere",
-              wordBreak: "break-word",
-            }}>
-              {msg.encrypted_text}
+              "
+              style={{
+                overflowWrap: "anywhere",
+                wordBreak: "break-word",
+              }}
+            >
+              {renderMessageText()}
             </p>
           )
         )}
@@ -558,29 +937,57 @@ export default function CommunityBubbles({
               }
             `}
           >
-            {reactionSummary.map(([emoji, count]) => (
-              <button
-                key={emoji}
-                onClick={() => onReaction?.(id, emoji)}
-                className={`
-                  flex items-center gap-1
-                  px-2.5 py-1
-                  rounded-full
-                  text-xs transition-colors
-                  ${
-                    isCurrentUser
-                      ? "bg-gray-300 dark:bg-indigo-800 text-white"
-                      : "bg-gray-300 dark:bg-indigo-500/10 text-white"
-                  }
-                `}
-              >
-                <span>{emoji}</span>
-        
-                <span className="text-[11px] font-medium opacity-90">
-                  {formatCount(count)}
-                </span>
-              </button>
-            ))}
+            {visibleReactionSummary.map(
+              ([emoji, count]) => {
+                const isMine =
+                  userReactionEmojis.has(emoji);
+            
+                return (
+                  <button
+                    key={emoji}
+                    onClick={() => {
+                      if (!reactionMessageId) return;
+                  
+                      onReaction?.(reactionMessageId, emoji);
+                    }}
+                    className={`
+                      flex
+                      items-center
+                      gap-1
+                      px-2.5
+                      py-1
+                      rounded-full
+                      text-xs
+                      transition-all
+                      active:scale-95
+            
+                      ${
+                        isMine
+                          ? `
+                            bg-gray-300 dark:bg-indigo-800 text-white
+                          `
+                          : `
+                            bg-gray-300 dark:bg-indigo-500/10 text-white
+                          `
+                      }
+            
+                      text-gray-800
+                      dark:text-white
+                    `}
+                  >
+                    <span>{emoji}</span>
+            
+                    {count > 1 && (
+                      <span
+                        className="text-[11px] font-medium text-gray-600 dark:text-white opacity-90"
+                      >
+                        {formatCount(count)}
+                      </span>
+                    )}
+                  </button>
+                );
+              }
+            )}
         
             {hiddenReactionTypes > 0 && (
               <button
@@ -602,4 +1009,191 @@ export default function CommunityBubbles({
       </div>
     </div>
   );
+}
+
+function VideoBubble({
+  videoSrc,
+  thumbnail,
+  uploaded,
+  duration,
+  priority,
+  onClick,
+}: {
+  videoSrc: string;
+  thumbnail: string | null;
+  uploaded: boolean;
+  duration: number;
+  priority?: boolean;
+  onClick: (event: React.MouseEvent<HTMLDivElement>) => void;
+}) {
+  const [thumbnailFailed, setThumbnailFailed] =
+    useState(false);
+
+  const [videoFailed, setVideoFailed] =
+    useState(false);
+
+  const showThumbnail =
+    uploaded &&
+    !!thumbnail &&
+    !thumbnailFailed;
+
+  const showVideo =
+    !showThumbnail &&
+    !videoFailed;
+
+  return (
+    <div
+      className="
+        relative
+        w-full
+        aspect-[4/5]
+        overflow-hidden
+        bg-black
+        cursor-pointer
+        select-none
+      "
+      onClick={onClick}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      onDragStart={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+    >
+
+      {/* THUMBNAIL */}
+      {showThumbnail && (
+        <img
+          src={thumbnail}
+          alt=""
+          className="
+            absolute
+            inset-0
+            w-full
+            h-full
+            object-cover
+          "
+          loading={
+            priority
+              ? "eager"
+              : "lazy"
+          }
+          onError={() => {
+            console.warn(
+              "[VIDEO THUMBNAIL] Failed:",
+              thumbnail
+            );
+
+            setThumbnailFailed(true);
+          }}
+        />
+      )}
+
+      {/* VIDEO FALLBACK */}
+      {showVideo && (
+        <video
+          src={videoSrc}
+          muted
+          playsInline
+          preload="metadata"
+          className="
+            absolute
+            inset-0
+            w-full
+            h-full
+            object-cover
+          "
+          onError={() => {
+            console.warn(
+              "[VIDEO FALLBACK] Failed:",
+              videoSrc
+            );
+
+            setVideoFailed(true);
+          }}
+        />
+      )}
+
+      {/* BLACK FALLBACK */}
+      {videoFailed && (
+        <div
+          className="
+            absolute
+            inset-0
+            bg-black
+          "
+        />
+      )}
+
+      {/* PLAY BUTTON */}
+      {!videoFailed && (
+        <div
+          className="
+            absolute
+            inset-0
+            flex
+            items-center
+            justify-center
+          "
+        >
+          <div
+            className="
+              w-16
+              h-16
+              rounded-full
+              bg-black/50
+              flex
+              items-center
+              justify-center
+            "
+          >
+            <Play
+              size={32}
+              fill="white"
+              className="
+                text-white
+                ml-1
+              "
+            />
+          </div>
+        </div>
+      )}
+
+      {/* DURATION */}
+      <div
+        className="
+          absolute
+          bottom-3
+          left-3
+          flex
+          items-center
+          gap-1
+          bg-black/60
+          px-2
+          py-1
+          rounded-full
+          text-white
+        "
+      >
+        <Video size={14} />
+
+        <span className="text-xs">
+          {formatVideoDuration(duration)}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function formatVideoDuration(
+  seconds: number
+) {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+
+  return `${mins}:${secs
+    .toString()
+    .padStart(2, "0")}`;
 }

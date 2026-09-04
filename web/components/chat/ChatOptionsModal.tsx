@@ -7,6 +7,8 @@ type Props = {
   muted: boolean;
   onBlock: () => void;
   onMute: () => void;
+  onReport: () => void;
+  onProfile: () => void;
 };
 
 export default function ChatOptionsModal({
@@ -16,6 +18,8 @@ export default function ChatOptionsModal({
   muted,
   onBlock,
   onMute,
+  onReport,
+  onProfile,
 }: Props) {
   if (!open) return null;
 
@@ -32,7 +36,7 @@ export default function ChatOptionsModal({
           right-2
           top-9
           mt-2
-          w-20
+          w-36
           bg-white
           dark:bg-[#111b21]
           text-gray-700
@@ -46,6 +50,20 @@ export default function ChatOptionsModal({
           overflow-hidden
         "
       >
+        <button
+          onClick={onProfile}
+          className="
+            w-full
+            text-left
+            px-4
+            py-3
+            hover:bg-gray-100
+            dark:hover:bg-gray-800
+          "
+        >
+          User Info
+        </button>
+  
         <button
           onClick={onBlock}
           className="
@@ -76,6 +94,20 @@ export default function ChatOptionsModal({
           {muted
             ? "Unmute"
             : "Mute"}
+        </button>
+  
+        <button
+          onClick={onReport}
+          className="
+            w-full
+            text-left
+            px-4
+            py-3
+            hover:bg-gray-100
+            dark:hover:bg-gray-800
+          "
+        >
+          Report
         </button>
       </div>
     </>

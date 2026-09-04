@@ -4,7 +4,6 @@ import BottomWrapper from "@/components/BottomWrapper";
 import ProtectedRoute from "@/components/ProtectedRoute"
 import { NotificationProvider } from "@/components/NotificationContext"
 import NotificationToast from "@/components/NotificationToast";
-import GlobalSocketProvider from "@/components/GlobalSocketProvider";
 import { AccountSwitcherProvider } from "@/components/AccountSwitcherContext";
 import { ShareProvider } from "@/components/share/ShareContext";
 import Providers from "@/components/providers";
@@ -15,7 +14,6 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   return (
     <ProtectedRoute>
       <NotificationProvider>
-        <GlobalSocketProvider />
 
           <ShareProvider>
             <InviteProvider>

@@ -2,7 +2,7 @@
 
 export default function MessagesSkeleton() {
   return (
-    <div className="flex flex-col my-20 h-full p-4">
+    <div className="flex flex-col my-14 h-full p-4">
       <div className="h-8 w-32 bg-gray-200 dark:bg-gray-800 rounded animate-pulse mb-6" />
 
       <div className="space-y-4">

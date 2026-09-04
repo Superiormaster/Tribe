@@ -4,7 +4,6 @@ export const STATUS_PRIORITY: Record<MessageStatus, number> = {
   pending: 0,
   sending: 0,
   failed: 0,
-  uploading: 1,
   sent: 1,
   delivered: 2,
   seen: 3,

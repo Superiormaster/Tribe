@@ -7,7 +7,7 @@ import AppLink from '@/components/AppLink';
 import { connectCommentsSocket } from "@/lib/comment-socket";
 import { apiRequest } from '@/utils/api';  
 import { starCreator } from '@/lib/api'
-import { Share2, ThumbsUp, AlarmClock, MessageCircle, ChartNoAxesColumn, Edit, Trash2, Repeat, MoreHorizontal } from 'lucide-react';  
+import { Share2, ThumbsUp, AlarmClock, MessageCircle, Bookmark, ChartNoAxesColumn, Edit, Trash2, Repeat, MoreHorizontal, Play } from 'lucide-react';  
 import { timeAgo } from '@/utils/timeAgo'  
 import { emitPostDeleted } from "@/lib/postEvents";
 import CommentsModal from "@/components/CommentsModal";
@@ -65,6 +65,7 @@ type PostCardProps = {
     shares_count?: number;
     created_at: string  
     is_starred_by_user: boolean
+    is_bookmarked?: boolean
   }
   setPosts?: React.Dispatch<
       React.SetStateAction<any[]>
@@ -98,9 +99,12 @@ type PostCardProps = {
   onReject?: (id: number) => void;
   
   isRepostContext?: boolean;
+  isShareContext?: boolean;
   isPending?: boolean;
   repostId?: number;
+  shareId?: number;
   repostOwnerId?: number;
+  shareOwnerId?: number;
   shouldHideStar?: boolean;
 
   canBulkSelect?: boolean;
@@ -112,6 +116,7 @@ type PostCardProps = {
 
   handlePostAction?: (action: string, postId: number) => void
   onDelete?: (id: number) => void
+  onBookmarkRemoved?: (postId: number) => void;
   currentUser?: any
   videoRef?: any
   isPinnedDraggable?: boolean
@@ -129,7 +134,7 @@ type PostCardProps = {
   showPinnedLabel?: boolean
 }  
   
-function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyProfile, canPin, setSelectMode, isPinnedDraggable, onToggleProfilePin, onLongPress, onToggleCommunityPin, canBulkSelect, canEdit, canRepost, canReport, onApprove, onReject, canDelete, onSelect, isSelected, isPending = false, isEmbedded, isRepostContext, repostId, setPosts, updateFeedPost, removeFeedPost, repostOwnerId, starredUserIds, setStarredUsers, context = "feed",
+function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyProfile, canPin, setSelectMode, isPinnedDraggable, onToggleProfilePin, onLongPress, isShareContext, shareOwnerId, shareId, onToggleCommunityPin, canBulkSelect, canEdit, canRepost, canReport, onApprove, onReject, canDelete, onBookmarkRemoved, onSelect, isSelected, isPending = false, isEmbedded, isRepostContext, repostId, setPosts, updateFeedPost, removeFeedPost, repostOwnerId, starredUserIds, setStarredUsers, context = "feed",
   handlePostAction, hideCommunityName = false, hideStarButton = false, showJoinButton = false, showManageButtons = false, showPinnedLabel=true }: PostCardProps) {
   const [liked, setLiked] = useState(!!post.is_liked || !!post.liked_by_user)
   const { user: currentUser, addBlockedUser, mutedUserIds, blockedUserIds, removeMutedUser } = useContext(UserContext)!
@@ -137,6 +142,9 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
   const isStarred =
     starredUserIds?.has(post.user.id) ||
     post.is_starred_by_user;
+  const [bookmarked, setBookmarked] = useState(
+    !!post.is_bookmarked
+  )
   const isMuted = mutedUserIds?.has(post.user.id) ?? false;
   const isBlocked = blockedUserIds?.has(post.user.id) ?? false;
   const isSearch = context === "search";
@@ -170,9 +178,25 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
   const videoRefs = useRef<(HTMLVideoElement | null)[]>([]);
  
   useEffect(() => {
-    setLiked(!!post.is_liked || !!post.liked_by_user)
-    setLikes(post.likes_count || 0)
-  }, [post.id])
+    setLiked(
+      !!post.is_liked ||
+      !!post.liked_by_user
+    )
+  
+    setLikes(
+      post.likes_count || 0
+    )
+  
+    setBookmarked(
+      !!post.is_bookmarked
+    )
+  }, [
+    post.id,
+    post.is_liked,
+    post.liked_by_user,
+    post.likes_count,
+    post.is_bookmarked,
+  ])
   
   useSmartPostView({
     post,
@@ -348,6 +372,126 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
   
       // rollback
       setStarredUsers(previous);
+    }
+  };
+  
+  const isSameBookmarkTarget = (p: any) => {
+    if (isRepostContext && repostId) {
+      return p.repost_id === repostId;
+    }
+  
+    if (isShareContext && shareId) {
+      return p.share_id === shareId;
+    }
+  
+    return (
+      !p.repost_id &&
+      !p.share_id &&
+      p.id === post.id
+    );
+  };
+
+  const handleBookmark = async () => {
+    const previousBookmarked = bookmarked;
+  
+    let bookmarkPayload: Record<string, any>;
+  
+    if (isRepostContext && repostId) {
+      bookmarkPayload = {
+        type: "repost",
+        repost_id: repostId,
+      };
+    } else if (isShareContext && shareId) {
+      bookmarkPayload = {
+        type: "share",
+        share_id: shareId,
+      };
+    } else {
+      bookmarkPayload = {
+        type:
+          post.content_type === "short_video"
+            ? "reel"
+            : "post",
+        post_id: post.id,
+      };
+    }
+  
+    setBookmarked(!previousBookmarked);
+  
+    setPosts?.(prev =>
+      prev.map(p =>
+        isSameBookmarkTarget(p)
+          ? {
+              ...p,
+              is_bookmarked: !previousBookmarked,
+            }
+          : p
+      )
+    );
+  
+    await updateFeedPost?.(post.id, {
+      is_bookmarked: !previousBookmarked,
+    });
+  
+    try {
+      const result = await apiRequest(
+        `api/bookmarks/toggle/`,
+        {
+          method: "POST",
+          data: bookmarkPayload,
+        }
+      );
+  
+      console.log("🔖 BOOKMARK RESPONSE:", result);
+  
+      const nextBookmarked = !!result.bookmarked;
+  
+      setBookmarked(nextBookmarked);
+  
+      setPosts?.(prev =>
+        prev.map(p =>
+          isSameBookmarkTarget(p)
+            ? {
+                ...p,
+                is_bookmarked: nextBookmarked,
+              }
+            : p
+        )
+      );
+  
+      await updateFeedPost?.(post.id, {
+        is_bookmarked: nextBookmarked,
+      });
+  
+      if (!nextBookmarked) {
+        onBookmarkRemoved?.(post.id);
+      }
+  
+    } catch (error) {
+  
+      setBookmarked(previousBookmarked);
+  
+      setPosts?.(prev =>
+        prev.map(p =>
+          isSameBookmarkTarget(p)
+            ? {
+                ...p,
+                is_bookmarked: previousBookmarked,
+              }
+            : p
+        )
+      );
+  
+      await updateFeedPost?.(post.id, {
+        is_bookmarked: previousBookmarked,
+      });
+  
+      toast.error("Failed to update bookmark");
+  
+      console.error(
+        "❌ Bookmark error:",
+        error
+      );
     }
   };
 
@@ -767,7 +911,7 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
 
         {menuOpen && (
           <div className="absolute right-0 top-full mt-2 w-40 bg-white max-h-64 overflow-y-auto dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg shadow-lg z-50 flex flex-col">
-            {canReport && (
+            {canReport && !isPostOwner && (
               <button
                 onClick={() => setReportOpen(true)}
                 className="text-left px-3 py-2 text-gray-700 dark:text-gray-400 hover:bg-gray-100 hover:rounded-lg dark:hover:bg-gray-700"
@@ -983,11 +1127,11 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
             e.stopPropagation();
             handleLike();
           }}  
-          className={`flex items-center gap-1 font-medium ${  
+          className={`flex items-center gap-1 text-xs font-medium ${  
             isLikedByUser ? "text-blue-600" : "text-gray-500"  
           }`}  
         >
-          <ThumbsUp className="mr-2" /> 
+          <ThumbsUp className="w-4 h-4 mr-2" /> 
           {likes > 0 && (
             <span>{formatCount(likes)}</span>
           )}  
@@ -998,9 +1142,9 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
             e.stopPropagation();
             handleMediaClick();
           }}  
-          className="flex items-center gap-1 text-gray-500 font-medium"  
+          className="flex items-center gap-1 text-xs text-gray-500 font-medium"  
         >  
-          <MessageCircle className="mr-2" />
+          <MessageCircle className="mr-2 w-4 h-4" />
           {post.comments_count > 0 && (
             <span>{formatCount(commentsCount)}</span>
           )}
@@ -1012,7 +1156,33 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
             sharesCount={sharesCount}
         />
 
-        <span className="flex items-center text-gray-500"> <ChartNoAxesColumn className="mr-2" />
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            handleBookmark()
+          }}
+          className={`flex items-center gap-1 text-xs font-medium transition ${
+            bookmarked
+              ? "text-blue-600"
+              : "text-gray-500"
+          }`}
+          aria-label={
+            bookmarked
+              ? "Remove bookmark"
+              : "Bookmark post"
+          }
+        >
+          <Bookmark
+            className={`mr-2 h-4 w-4 ${
+              bookmarked
+                ? "fill-current"
+                : ""
+            }`}
+          />
+        </button>
+
+        <span className="flex items-center text-xs text-gray-500"> <ChartNoAxesColumn className="mr-2 w-4 h-4" />
           {post.views_count && post.views_count > 0 && (
             <span>{formatCount(viewsCount)}</span>
           )}
@@ -1102,12 +1272,12 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
       )}
     </div>  
   )  
-}  
+}
 
 interface MediaItemProps {
   media: {
-    file_url: string;
-    thumbnail_url?: string;
+    file_url?: string | null;
+    thumbnail_url?: string | null;
     media_type: "image" | "video";
   };
   index: number;
@@ -1123,17 +1293,55 @@ const MediaItem = ({
 }: MediaItemProps) => {
   const { ref, isVisible } = useInView();
 
+  // URLs are strings, NOT functions.
+  const fileUrl =
+    typeof media.file_url === "string"
+      ? media.file_url.trim()
+      : "";
+
+  const thumbnailUrl =
+    typeof media.thumbnail_url === "string"
+      ? media.thumbnail_url.trim()
+      : "";
+
   if (media.media_type === "image") {
+ 
+    const imageUrl =
+      thumbnailUrl || fileUrl;
+
     return (
-      <img
-        src={media.file_url}
-        onClick={(e) => {
-          e.stopPropagation();
-          onOpen(index);
-        }}
-        fetchPriority={index < 2 ? "high" : "auto"}
-        className="rounded-xl w-full aspect-square max-h-96 object-cover"
-      />
+      <div
+        className="
+          rounded-xl
+          w-full
+          aspect-square
+          max-h-96
+          overflow-hidden
+          bg-gray-300
+          dark:bg-gray-700
+        "
+      >
+        {imageUrl ? (
+          <img
+            src={imageUrl}
+            alt=""
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpen(index);
+            }}
+            fetchPriority={
+              index < 2 ? "high" : "auto"
+            }
+            className="
+              rounded-xl
+              w-full
+              h-full
+              object-cover
+              cursor-pointer
+            "
+          />
+        ) : null}
+      </div>
     );
   }
 
@@ -1145,19 +1353,86 @@ const MediaItem = ({
             e.stopPropagation();
             onOpen(index);
           }}
-          className="relative cursor-pointer"
+          className="
+            relative
+            cursor-pointer
+            rounded-xl
+            overflow-hidden
+            bg-gray-300
+            dark:bg-gray-700
+          "
         >
-          <img
-            src={media.thumbnail_url || media.file_url}
-            className="rounded-xl w-full aspect-video max-h-96 object-cover"
-          />
+          {thumbnailUrl ? (
+            <img
+              src={thumbnailUrl}
+              alt=""
+              className="
+                rounded-xl
+                w-full
+                aspect-video
+                max-h-96
+                object-cover
+              "
+            />
+          ) : (
+            <div
+              className="
+                rounded-xl
+                w-full
+                aspect-video
+                max-h-96
+                bg-gray-300
+                dark:bg-gray-700
+              "
+            />
+          )}
 
-          <div className="absolute inset-0 flex items-center justify-center text-white text-4xl">
-            ▶
-          </div>
+          {thumbnailUrl && (
+            <div
+              className="
+                absolute
+                inset-0
+                flex
+                items-center
+                justify-center
+                pointer-events-none
+              "
+            >
+              <div
+                className="
+                  flex
+                  h-14
+                  w-14
+                  items-center
+                  justify-center
+                  rounded-full
+                  bg-black/50
+                  backdrop-blur-md
+                  shadow-lg
+                  ring-1
+                  ring-white/30
+                "
+              >
+                <Play
+                  className="ml-0.5 h-6 w-6 fill-white text-white"
+                  strokeWidth={2.5}
+                />
+              </div>
+            </div>
+          )}
         </div>
       ) : (
-        <div className="rounded-xl w-full aspect-video max-h-96 bg-gray-300 dark:bg-gray-700 animate-pulse" />
+        <div
+          className="
+            rounded-xl
+            w-full
+            aspect-video
+            max-h-96
+            bg-gray-300
+            dark:bg-gray-700
+            animate-pulse
+          "
+        />
       )}
     </div>
   );

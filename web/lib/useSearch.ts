@@ -117,8 +117,19 @@ export default function useSearch() {
 
     try {
 
+      const searchType =
+        activeTab === "people"
+          ? "users"
+          : activeTab === "communities"
+          ? "communities"
+          : activeTab === "tribes"
+          ? "tribes"
+          : activeTab === "posts"
+          ? "posts"
+          : "all";
+      
       const data = await apiRequest(
-        `api/search/?q=${q}&page=${pageNumber}`
+        `api/search/?q=${encodeURIComponent(q)}&page=${pageNumber}&type=${searchType}`
       );
 
       setHasMore(Boolean(data.next));
@@ -126,13 +137,20 @@ export default function useSearch() {
       setResults(prev => {
         if (!append) return data;
       
-        const mergeUnique = (oldArr: any[], newArr: any[]) => {
+        const mergeUnique = (
+          oldArr: any[],
+          newArr: any[]
+        ) => {
           const map = new Map();
-      
+        
           [...oldArr, ...newArr].forEach(item => {
-            map.set(item.id, item);
+        
+            const key =
+              `${item.feed_type || item.type || "post"}-${item.id}`;
+        
+            map.set(key, item);
           });
-      
+        
           return Array.from(map.values());
         };
       

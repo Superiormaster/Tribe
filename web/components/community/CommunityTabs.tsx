@@ -12,28 +12,32 @@ export default function CommunityTabs({
   onChat,
 }: Props) {
   return (
-    <div className="flex justify-center overflow-x-auto gap-3">
+    <div className="flex items-center justify-center gap-3 overflow-x-auto">
 
-      {["posts", "pending", "members"].map((tab) => (
-        <button
-          key={tab}
-          onClick={() => setActiveTab(tab)}
-          className={`px-3 py-1 rounded ${
-            activeTab === tab
-              ? "bg-indigo-600 text-white"
-              : "bg-gray-200 text-gray-700 dark:text-gray-200 dark:bg-gray-800"
-          }`}
-        >
-          {tab}
-        </button>
-      ))}
+      {/* Main Tabs */}
+      <div className="flex gap-2">
+        {["posts", "pending", "members"].map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`px-3 py-1.5 rounded-lg text-sm font-medium capitalize transition ${
+              activeTab === tab
+                ? "bg-indigo-600 text-white"
+                : "bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-200"
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
 
-      {/*<button
+      {/* Special Chat Button */}
+      <button
         onClick={onChat}
-        className="px-3 py-1 bg-indigo-600 text-white rounded"
+        className="px-4 py-1.5 rounded-lg text-sm font-semibold bg-indigo-500 text-white shadow-sm hover:bg-indigo-600 transition"
       >
         Chat
-      </button>*/}
+      </button>
 
     </div>
   );

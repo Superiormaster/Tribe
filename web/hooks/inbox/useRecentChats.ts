@@ -75,27 +75,9 @@ export function useRecentChats({
 
   const mergePendingChats = useCallback(
     (serverChats: Chat[]) => {
-      return serverChats.map(chat => {
-        const pending = pendingMap[chat.chat_id];
-
-        if (!pending) {
-          return chat;
-        }
-
-        return {
-          ...chat,
-          text:
-            pending.encrypted_text ??
-            pending.text ??
-            chat.text,
-          created_at: pending.created_at,
-          last_sender_id: pending.sender,
-          last_media_type: pending.media_type,
-          status: pending.status,
-        };
-      });
+      return serverChats;
     },
-    [pendingMap]
+    []
   );
 
   const fetchRecent = useCallback(

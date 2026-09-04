@@ -2,7 +2,7 @@ import { Forward } from "lucide-react";
 
 type Props = {
   isCurrentUser: boolean;
-  onClick?: () => void;
+  onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
 };
 
 export default function ForwardButton({
@@ -12,8 +12,21 @@ export default function ForwardButton({
   return (
     <button
       onClick={(e) => {
+        e.preventDefault();
         e.stopPropagation();
-        onClick?.();
+        onClick?.(e);
+      }}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+      }}
+      onPointerUp={(e) => {
+        e.stopPropagation();
+      }}
+      onTouchStart={(e) => {
+        e.stopPropagation();
+      }}
+      onTouchEnd={(e) => {
+        e.stopPropagation();
       }}
       className={`
         absolute top-1/2 -translate-y-1/2

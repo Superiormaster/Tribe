@@ -45,7 +45,8 @@ function Select({
         w-full
         rounded-xl
         border
-        border-white/10
+        border-indigo-700/15
+        dark:border-white/10
         bg-white/5
         px-4
         text-sm
@@ -84,8 +85,10 @@ export default function AnalyticsFilters({
       className="
         rounded-3xl
         border
-        border-white/10
-        bg-background/70
+        border-indigo-300 
+        dark:border-white/10 
+        bg-gray-200
+        dark:bg-gray-900/70
         p-5
         backdrop-blur-xl
       "

@@ -1,4 +1,5 @@
 'use client';
+import { Info } from 'lucide-react';
 
 type Props = {
   isOpen: boolean;
@@ -11,6 +12,7 @@ type Props = {
   onApproved: () => void;
   onRejected: () => void;
   onJoinRequests: () => void;
+  onInfo: () => void;
 };
 
 export default function CommunityMenuModal({
@@ -24,6 +26,7 @@ export default function CommunityMenuModal({
   onApproved,
   onRejected,
   onJoinRequests,
+  onInfo,
 }: Props) {
   if (!isOpen) return null;
 
@@ -66,6 +69,13 @@ export default function CommunityMenuModal({
           </button>
         )}
 
+        <button 
+          onClick={onInfo}
+          className="w-full flex text-gray-700 dark:text-gray-200 text-left p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+           <Info size={20} className="mr-1" />
+           Community Info
+        </button>
+  
         <button 
           onClick={onApproved}
           className="w-full text-gray-700 dark:text-gray-200 text-left p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">

@@ -270,6 +270,19 @@ export async function apiRequest(
         url: endpoint,
         ...options,
       });
+  
+    {/*console.log("🌐 API REQUEST:", {
+      url: endpoint,
+      method: options.method,
+      data: options.data,
+    });
+    
+    console.log("🌐 API RESPONSE:", response.data);
+    console.log("🌐 RESPONSE TYPE:", typeof response.data);
+    console.log(
+      "🌐 RESPONSE IS ARRAY:",
+      Array.isArray(response.data)
+    );*/}
 
     return response.data;
 
