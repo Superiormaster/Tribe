@@ -44,15 +44,6 @@ async function ensureCommunityPermissions(socket, communityId) {
     return existing;
   }
 
-  console.log(
-    "🔄 Loading community permissions:",
-    {
-      socketId: socket.id,
-      userId: socket.user.id,
-      communityId,
-    }
-  );
-
   const res = await socket.api.get(
     `chats/communities/${communityId}/community-detail/`
   );
@@ -95,26 +86,10 @@ async function ensureCommunityPermissions(socket, communityId) {
   socket.communityPermissions[communityId] =
     permissions;
 
-  console.log(
-    "🔐 COMMUNITY PERMISSIONS LOADED:",
-    {
-      socketId: socket.id,
-      communityId,
-      userId: socketUserId,
-      permissions,
-    }
-  );
-
   return permissions;
 }
 
 module.exports = function communitySocket(io, socket) {
-  
-  console.log(
-    "🔥 COMMUNITY SOCKET HANDLER ATTACHED:",
-    socket.id,
-    socket.user?.id
-  );
   
   socket.onAny((event, ...args) => {
     console.log(
@@ -138,16 +113,6 @@ module.exports = function communitySocket(io, socket) {
   socket.on(
     "join_community",
     async ({ communityId }, callback) => {
-  
-      console.log(
-        "🔥🔥 JOIN HANDLER ENTERED",
-        {
-          socketId: socket.id,
-          userId: socket.user?.id,
-          communityId,
-          callbackType: typeof callback,
-        }
-      );
   
       const normalizedCommunityId =
         Number(communityId);
@@ -318,15 +283,6 @@ module.exports = function communitySocket(io, socket) {
       data.communityId;
     const clientId = data.client_id;
 
-    console.log(
-      "🏘️ COMMUNITY MESSAGE RECEIVED:",
-      {
-        communityId,
-        client_id: clientId,
-        encrypted_text: data.encrypted_text,
-      }
-    );
-
     if (!communityId) {
       console.error(
         "❌ Community message rejected: missing communityId",
@@ -385,11 +341,6 @@ module.exports = function communitySocket(io, socket) {
               ? data.reply_to
               : data.reply_to?.id ?? null
           );
-  
-    console.log("🔥 RAW MEDIA SOURCE:", data.media_source);
-    console.log("🔥 RAW MEDIA URL:", data.media_url);
-    console.log("🔥 RAW MEDIA ASSETS:", data.media_asset_ids);
-    console.log("🔥 COMPUTED MEDIA SOURCE:", mediaSource);
 
     try {
       const payload = {
@@ -442,32 +393,12 @@ module.exports = function communitySocket(io, socket) {
         payload.reply_to_id = data.reply_to.id;
       }
 
-      console.log(
-        "🔥 FINAL MEDIA PAYLOAD:",
-        JSON.stringify({
-          media_source: payload.media_source,
-          media_asset_ids: payload.media_asset_ids,
-          media_url: payload.media_url,
-        }, null, 2)
-      );
-      console.log(
-        "📤 COMMUNITY API PAYLOAD:",
-        JSON.stringify(payload, null, 2)
-      );
       const res = await socket.api.post(
         `chats/chats/${data.communityId}/community-messages/`,
         payload
       );
 
       const savedMessage = res.data;
-      console.log(
-        "✅ COMMUNITY MESSAGE SAVED:",
-        {
-          server_id: savedMessage.id,
-          client_id: savedMessage.client_id,
-          encrypted_text: savedMessage.encrypted_text,
-        }
-      );
 
       savedMessage.sender = socket.user.id;
       savedMessage.sender_username = socket.user.username;
@@ -715,11 +646,6 @@ module.exports = function communitySocket(io, socket) {
             emoji,
           }
         );
-        
-        console.log(
-          "🔥 REACTION API RESPONSE:",
-          JSON.stringify(res.data, null, 2)
-        );
   
         const reactionEvent = {
           communityId,
@@ -733,11 +659,6 @@ module.exports = function communitySocket(io, socket) {
             ? res.data.reactions
             : [],
         };
-        
-        console.log(
-          "🔥 REACTIONS FROM SERVER:",
-          JSON.stringify(res.data.reactions, null, 2)
-        );
   
         io.to(
           `community_${communityId}`
@@ -835,8 +756,6 @@ module.exports = function communitySocket(io, socket) {
       console.log(
         "📡 COMMUNITY PIN BROADCAST:",
         {
-          socketId: socket.id,
-          userId: socket.user?.id,
           communityId:
             normalizedCommunityId,
           messageId:

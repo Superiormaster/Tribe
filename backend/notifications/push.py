@@ -32,9 +32,6 @@ def send_to_device(
             },
             timeout=10,
         )
-        print("Node status:", response.status_code)
-        print("Node response:", response.text)
-        print("================================")
 
     except requests.RequestException as exc:
 
@@ -96,20 +93,6 @@ def send_chat_to_device(
                 "notification": notification,
             },
             timeout=10,
-        )
-
-        print(
-            "Node status:",
-            response.status_code,
-        )
-
-        print(
-            "Node response:",
-            response.text,
-        )
-
-        print(
-            "======================================"
         )
 
     except requests.RequestException as exc:

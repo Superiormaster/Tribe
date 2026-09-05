@@ -62,11 +62,6 @@ module.exports = function privateChatSocket(
       socket.updateAccessToken(
         accessToken
       );
-  
-      console.log(
-        "🔐 Socket token refreshed for user:",
-        socket.user.id
-      );
     }
   );
 
@@ -159,18 +154,6 @@ module.exports = function privateChatSocket(
   
         }
   
-        console.log(
-          "📡 user_online:",
-          {
-            userId:
-              socket.user.id,
-            hasAccessToken:
-              Boolean(
-                socket.accessToken
-              ),
-          }
-        );
-  
         const res =
           await socket.api.post(
             "chats/mark-all-delivered/"
@@ -236,25 +219,6 @@ module.exports = function privateChatSocket(
     'send_message',
     async (data, callback) => {
   
-      console.log("");
-      console.log("========================================");
-      console.log("🔥🔥🔥 NODE RECEIVED send_message 🔥🔥🔥");
-      console.log("========================================");
-  
-      console.log("Socket ID:", socket.id);
-      console.log("User:", socket.user?.id);
-      console.log("Username:", socket.user?.username);
-      console.log("Callback:", typeof callback);
-  
-      console.log("DATA:");
-      console.dir(data, {
-        depth: null,
-      });
-  
-      console.log(
-        "========================================"
-      );
-  
       try {
   
         const {
@@ -291,11 +255,6 @@ module.exports = function privateChatSocket(
           await socket.api.get(
             `chats/${chatId}/detail/`
           );
-  
-        console.log(
-          "✅ [NODE] Chat detail response:",
-          detail.data
-        );
   
         const recipient =
           detail.data.other_user;
@@ -341,11 +300,6 @@ module.exports = function privateChatSocket(
                   ? data.reply_to
                   : data.reply_to?.id ?? null
               );
-  
-        console.log("🔥 RAW MEDIA SOURCE:", data.media_source);
-        console.log("🔥 RAW MEDIA URL:", data.media_url);
-        console.log("🔥 RAW MEDIA ASSETS:", data.media_asset_ids);
-        console.log("🔥 COMPUTED MEDIA SOURCE:", mediaSource);
 
         const payload = {
           chat: chatId,
@@ -385,22 +339,6 @@ module.exports = function privateChatSocket(
           client_created_at:
             data.client_created_at ?? null,
         };
-  
-        console.log(
-          "🔥 FINAL MEDIA PAYLOAD:",
-          JSON.stringify({
-            media_source: payload.media_source,
-            media_asset_ids: payload.media_asset_ids,
-            media_url: payload.media_url,
-          }, null, 2)
-        );
-        console.log(
-          "📤 [NODE] Django payload:"
-        );
-  
-        console.dir(payload, {
-          depth: null,
-        });
   
         if (
           socket.chatPermissions?.[

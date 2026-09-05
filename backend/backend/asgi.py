@@ -16,6 +16,12 @@ from channels.routing import ProtocolTypeRouter, URLRouter
 
 import backend.routing
 
+print("🔥🔥 ASGI ROUTING LOADED")
+print("🔥 WEBSOCKET ROUTES:")
+
+for route in backend.routing.websocket_urlpatterns:
+    print("🔥 ROUTE:", route)
+
 django_asgi_app = get_asgi_application()
 
 from backend.middleware import JWTAuthMiddleware
