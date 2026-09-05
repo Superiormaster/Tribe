@@ -98,6 +98,7 @@ export default function HomePage() {
     
     setStarredUsers,
     starredUsers,
+    protectedPostIdsRef,
 
     refreshFeed,
     loadMore,
@@ -300,6 +301,7 @@ export default function HomePage() {
     hasCacheRef,
     fetchPosts,
     fetchReels,
+    protectedPostIdsRef,
   });
   
   useImagePreloader({

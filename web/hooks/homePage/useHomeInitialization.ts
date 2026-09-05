@@ -21,6 +21,9 @@ interface UseHomeInitializationProps {
   setLoading: React.Dispatch<
     React.SetStateAction<boolean>
   >;
+  
+  protectedPostIdsRef:
+  React.MutableRefObject<Set<number>>;
 
   setInitialLoad: React.Dispatch<
     React.SetStateAction<boolean>
@@ -49,6 +52,7 @@ export function useHomeInitialization({
   hasCacheRef,
   fetchPosts,
   fetchReels,
+  protectedPostIdsRef,
 }: UseHomeInitializationProps) {
   useEffect(() => {
     let cancelled = false;
@@ -74,38 +78,19 @@ export function useHomeInitialization({
           cachedPosts.length > 0;
 
         if (cachedPosts.length) {
+          cachedPosts.forEach((post: any) => {
+            if (post?._local_created) {
+              const id = Number(post.id);
+        
+              if (id) {
+                protectedPostIdsRef.current.add(id);
+              }
+            }
+          });
+        
           setPosts(cachedPosts);
           setInitialLoad(false);
           setLoading(false);
-        }
-
-        const saved =
-          sessionStorage.getItem(
-            "new_post"
-          );
-
-        if (saved) {
-          const localPost =
-            JSON.parse(saved);
-
-          setPosts(prev => {
-            if (
-              prev.some(
-                p => p.id === localPost.id
-              )
-            ) {
-              return prev;
-            }
-
-            return [
-              localPost,
-              ...prev,
-            ];
-          });
-
-          sessionStorage.removeItem(
-            "new_post"
-          );
         }
 
         if (cachedReels.length) {

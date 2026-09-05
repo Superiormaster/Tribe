@@ -147,91 +147,6 @@ export function useHomeFeed({
     );
   }, [starredUsers]);
 
-  const getSessionPost = useCallback(() => {
-    if (typeof window === "undefined") {
-      return null;
-    }
-
-    try {
-      const saved =
-        sessionStorage.getItem("new_post");
-
-      if (!saved) return null;
-
-      const post = JSON.parse(saved);
-
-      if (!post?.id) {
-        sessionStorage.removeItem("new_post");
-        return null;
-      }
-
-      return post;
-    } catch (err) {
-      console.error(
-        "Failed to read session post",
-        err
-      );
-
-      sessionStorage.removeItem("new_post");
-
-      return null;
-    }
-  }, []);
-
-  const clearSessionPost = useCallback(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    sessionStorage.removeItem("new_post");
-  }, []);
-
-  const mergeSessionPost = useCallback(
-    (items: any[]) => {
-      const sessionPost = getSessionPost();
-
-      if (!sessionPost) {
-        return items;
-      }
-
-      const exists = items.some(
-        post =>
-          Number(post.id) === Number(sessionPost.id)
-      );
-
-      if (exists) {
-        clearSessionPost();
-
-        return items;
-      }
-
-      return [
-        {
-          ...sessionPost,
-
-          reactKey:
-            sessionPost.reactKey ??
-            `post-${sessionPost.id}`,
-
-          feed_type:
-            sessionPost.feed_type ?? "post",
-
-          is_starred_by_user:
-            starredUsers.has(
-              sessionPost.user?.id
-            ),
-        },
-
-        ...items,
-      ];
-    },
-    [
-      getSessionPost,
-      clearSessionPost,
-      starredUsers,
-    ]
-  );
-
   const resetFeedState = useCallback(() => {
     pagesCache.current = {};
     reelsCache.current = [];
@@ -388,11 +303,44 @@ export function useHomeFeed({
           }
         );
 
+        let itemsToSave = newItems;
+
+        if (pageNumber === 1) {
+          const cached =
+            await getFeed(
+              currentFilter,
+              currentTribe,
+              1
+            );
+        
+          const protectedLocalPosts =
+            cached.filter(
+              (post: any) =>
+                post?._local_created === true &&
+                protectedPostIdsRef.current.has(
+                  Number(post.id)
+                )
+            );
+        
+          const serverItems =
+            newItems.filter(
+              (post: any) =>
+                !protectedPostIdsRef.current.has(
+                  Number(post.id)
+                )
+            );
+        
+          itemsToSave = [
+            ...protectedLocalPosts,
+            ...serverItems,
+          ];
+        }
+        
         await saveFeed(
           currentFilter,
           currentTribe,
           pageNumber,
-          newItems
+          itemsToSave
         );
 
         pagesCache.current[
@@ -414,9 +362,6 @@ export function useHomeFeed({
         if (pageNumber === 1) {
           let firstPage =
             [...newItems];
-
-          firstPage =
-            mergeSessionPost(firstPage);
 
           setPosts(prev => {
             const map =
@@ -520,33 +465,42 @@ export function useHomeFeed({
           if (cached.length) {
             hasCacheRef.current = true;
 
-            const cachedItems =
-              pageNumber === 1
-                ? mergeSessionPost(cached)
-                : cached;
-
             setPosts(prev => {
-              if (pageNumber === 1) {
-                return cachedItems;
-              }
-
               const map =
                 new Map<string, any>();
-
-              prev.forEach(post => {
+            
+              prev.forEach((post: any) => {
+                if (post?.reactKey) {
+                  map.set(
+                    post.reactKey,
+                    post
+                  );
+                }
+              });
+            
+              cached.forEach((post: any) => {
+                if (!post?.reactKey) {
+                  return;
+                }
+            
+                const postId =
+                  Number(post.id);
+            
+                if (
+                  postId &&
+                  protectedPostIdsRef.current.has(
+                    postId
+                  )
+                ) {
+                  return;
+                }
+            
                 map.set(
                   post.reactKey,
                   post
                 );
               });
-
-              cachedItems.forEach((post: any) => {
-                map.set(
-                  post.reactKey,
-                  post
-                );
-              });
-
+            
               return [...map.values()];
             });
           }
@@ -579,7 +533,6 @@ export function useHomeFeed({
       filter,
       selectedTribe,
       starredUsers,
-      mergeSessionPost,
     ]
   );
 
@@ -599,6 +552,8 @@ export function useHomeFeed({
           starredUsers.has(
             post.user?.id
           ),
+  
+        _local_created: true,
       };
   
       const postId =
@@ -610,26 +565,12 @@ export function useHomeFeed({
         );
       }
   
-      // Save to IndexedDB.
       await insertFeedPost(
         filter,
         selectedTribe,
         normalizedPost
       );
   
-      // Save temporary session copy.
-      if (
-        typeof window !== "undefined"
-      ) {
-        sessionStorage.setItem(
-          "new_post",
-          JSON.stringify(
-            normalizedPost
-          )
-        );
-      }
-  
-      // Put immediately at top of UI.
       setPosts(prev => {
         const exists =
           prev.some(
@@ -1014,6 +955,7 @@ export function useHomeFeed({
     fetchPosts,
     fetchReels,
     refreshFeed,
+    protectedPostIdsRef,
     loadMore,
     incrementPostView,
     resetFeedState,

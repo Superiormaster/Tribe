@@ -23,7 +23,10 @@ import {
   toPostMediaPayload,
 } from "@/utils/media";
 import { apiRequest } from '@/utils/api';
-import { updateFeedPost } from "@/lib/feedDb";
+import {
+  updateFeedPost,
+  insertFeedPost,
+} from "@/lib/feedDb";
 
 type ExistingVideo = {
   url: string;
@@ -332,15 +335,28 @@ export default function CreatePostPage() {
       return;
     }
   
-    sessionStorage.setItem(
-      "new_post",
-      JSON.stringify({
-        ...newPost,
-        feed_type: "post",
-        is_starred_by_user: false,
-      })
+    const feedPost = {
+      ...newPost,
+      reactKey: `post-${newPost.id}`,
+      feed_type: "post",
+      is_starred_by_user: false,
+      _local_created: true,
+    };
+    
+    await insertFeedPost(
+      "all",
+      null,
+      feedPost
     );
-  
+    
+    if (selectedCommunity) {
+      await insertFeedPost(
+        "tribes",
+        selectedCommunity,
+        feedPost
+      );
+    }
+    
     push("/main/home");
   };
   
