@@ -43,7 +43,7 @@ def convert_duration_to_float(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("media", "0003_previous_migration"),
+        ("media", "0003_alter_mediaasset_media_id_and_more"),
     ]
 
     operations = [
