@@ -1,61 +1,53 @@
 import { apiRequest, setAccessToken } from "@/utils/api";
+import { deleteRefreshToken } from "@/lib/keyStore";
+import { removeCachedUser } from "@/lib/userCache";
 
-import {
-  getActiveAccount,
-  deleteRefreshToken,
-  clearActiveAccount,
-  clearKeys,
-} from "@/lib/keyStore";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { DeviceEventEmitter } from "react-native";
 
 export async function logout() {
-  // Capture account first to avoid race conditions
+  // Capture account early (avoid race conditions)
   const selectedAccount =
-    await getActiveAccount();
+    await AsyncStorage.getItem("active_account");
 
-  // Try backend logout
-  // Do not block local cleanup if it fails
+  // Always try backend logout
+  // Don't block UI cleanup if it fails.
   try {
-    await apiRequest(
-      "api/users/logout/",
-      {
-        method: "POST",
-      }
-    );
+    await apiRequest("api/users/logout/", {
+      method: "POST",
+    });
   } catch (err) {
     console.warn(
       "Logout API failed, continuing local cleanup..."
     );
   }
 
-  // Cleanup secure storage
+  // Run cleanup in parallel (faster + safer)
   await Promise.allSettled([
     selectedAccount
-      ? deleteRefreshToken(
-          selectedAccount
-        )
-      : Promise.resolve(),
-
-    selectedAccount
-      ? clearKeys(
-          selectedAccount
-        )
+      ? deleteRefreshToken(selectedAccount)
       : Promise.resolve(),
   ]);
 
-  // Clear active account
-  await clearActiveAccount();
+  if (selectedAccount) {
+    await removeCachedUser(selectedAccount);
+  }
 
-  // Clear memory token
+  // Clear runtime auth state
   setAccessToken(null);
 
-  /**
-   * AuthContext should listen to this state
-   * and redirect user to login screen.
-   *
-   * Example:
-   * setUser(null)
-   * navigation.replace("Login")
-   */
+  // Clear storage last
+  await AsyncStorage.removeItem("active_account");
 
-  return true;
+  // Notify the native app
+  DeviceEventEmitter.emit("auth-changed");
+
+  // Keep the same logout-event behavior
+  await AsyncStorage.setItem(
+    "logout_event",
+    Date.now().toString()
+  );
+
+  // Navigation should be handled by the auth state/navigation layer.
+  DeviceEventEmitter.emit("force-home");
 }

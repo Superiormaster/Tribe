@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "679700822863",
+    "project_id": "tribe-67f64",
+    "storage_bucket": "tribe-67f64.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:679700822863:android:7c4063df6765cb2b45e33a",
+        "android_client_info": {
+          "package_name": "com.superiormasters.tribe"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCKU5oOGBLF020hRi1KIXkISaZWcM4e694"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

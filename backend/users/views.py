@@ -25,7 +25,8 @@ from django.utils.http import (
 )
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.authtoken.models import Token
-from django.db import models
+from django.db import models, IntegrityError, transaction
+from django.utils import t
 from django.contrib.auth.models import User
 from django.utils import timezone
 from datetime import timedelta
