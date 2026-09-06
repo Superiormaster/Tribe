@@ -2149,35 +2149,37 @@ def ping(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def save_fcm_token(request):
-
     token = request.data.get("token")
-    platform = request.data.get(
-        "platform",
-        "web",
-    )
-    browser = request.data.get(
-        "browser",
-        "",
-    )
+    platform = request.data.get("platform", "web")
+    browser = request.data.get("browser", "")
 
     if not token:
-        return Response(
-            {"detail": "Token is required"},
-            status=400
-        )
+        return Response({"detail": "Token is required"}, status=400)
 
-    device, created = DevicePushToken.objects.update_or_create(
-        token=token,
-        defaults={
-            "user": request.user,
-            "platform": platform,
-            "browser": browser,
-            "last_seen_at": timezone.now(),
-            "is_active": True,
-        }
-    )
+    token = token.strip() # FCM tokens sometimes have whitespace
 
-    return Response({
-        "success": True,
-        "created": created,
-    })
+    try:
+        with transaction.atomic():
+            device, created = DevicePushToken.objects.update_or_create(
+                token=token,
+                defaults={
+                    "user": request.user,
+                    "platform": platform,
+                    "browser": browser,
+                    "last_seen_at": timezone.now(),
+                    "is_active": True,
+                }
+            )
+    except IntegrityError:
+        # Race won by other request, just fetch and update
+        with transaction.atomic():
+            device = DevicePushToken.objects.select_for_update().get(token=token)
+            device.user = request.user
+            device.platform = platform
+            device.browser = browser
+            device.last_seen_at = timezone.now()
+            device.is_active = True
+            device.save()
+            created = False
+
+    return Response({"success": True, "created": created})
