@@ -207,12 +207,18 @@ function PostCard({ post, user, onViewed, community, videoRef, onDelete, isMyPro
   const [commentsCount, setCommentsCount] = useState(
       post.comments_count
   );
-  const [viewsCount, setViewsCount] = useState(post.views_count || 0);
+  const [viewsCount, setViewsCount] = useState(
+    post.views_count ?? 0
+  );
   const [sharesCount, setSharesCount] = useState(post.shares_count || 0);
   
   useEffect(() => {
     setCommentsCount(post.comments_count);
   }, [post.comments_count]);
+  
+  useEffect(() => {
+    setViewsCount(post.views_count ?? 0);
+  }, [post.views_count]);
   
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
 

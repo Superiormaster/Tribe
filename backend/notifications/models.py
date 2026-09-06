@@ -133,10 +133,7 @@ class DevicePushToken(models.Model):
         default="web"
     )
 
-    browser = models.CharField(
-        max_length=50,
-        blank=True
-    )
+    browser = models.TextField(blank=True)
 
     is_active = models.BooleanField(
         default=True
