@@ -111,7 +111,6 @@ class Notification(models.Model):
     def __str__(self):
         return f"{self.type} -> {self.recipient}"
 
-
 class DevicePushToken(models.Model):
     PLATFORM_CHOICES = (
         ("web", "Web"),
@@ -125,7 +124,7 @@ class DevicePushToken(models.Model):
         related_name="push_tokens"
     )
 
-    token = models.TextField(unique=True)
+    token = models.TextField()
 
     platform = models.CharField(
         max_length=20,
@@ -152,12 +151,22 @@ class DevicePushToken(models.Model):
     )
 
     class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "token"],
+                name="unique_user_push_token"
+            )
+        ]
+
         indexes = [
             models.Index(
                 fields=["user", "is_active"]
-            )
+            ),
+            models.Index(
+                fields=["token", "is_active"]
+            ),
         ]
-  
+
     def __str__(self):
         return f"{self.user_id} - {self.platform}"
 

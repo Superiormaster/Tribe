@@ -713,70 +713,6 @@ export default function PrivateBubble({
           />
         )}
 
-        {/* REPLY PREVIEW */}
-        {hasValidReply && (
-          <ReplyPreview
-            reply={msg.reply_to}
-            isCurrentUser={isCurrentUser}
-            onClick={() => {
-              const originalId = Number(
-                msg.reply_to?.id
-              );
-        
-              if (!originalId) {
-                console.warn(
-                  "[REPLY JUMP] Original message ID missing:",
-                  msg.reply_to
-                );
-                return;
-              }
-        
-              jumpToMessage?.(originalId);
-            }}
-          />
-        )}
-
-        {/* MEDIA RENDER */}
-        {isVisualMedia && (
-          <>
-            <MediaContainer
-              status={msg.status}
-              progress={msg.upload_progress}
-              onRetry={() => {
-                console.log("RETRY CLICKED", msg);
-                resendMedia?.(msg);
-              }}
-              fixedAspect={
-                msg.media_type !== "gif" &&
-                msg.media_type !== "sticker"
-              }
-              msg={msg}
-            >
-              {renderMedia()}
-            </MediaContainer>
-          </>
-        )}
-
-        {/* AUDIO */}
-        {msg.media_type === "audio" && mediaSrc && (
-          <div
-            data-media={mediaSrc}
-            data-type="audio"
-          >
-            <AudioBubble
-              url={mediaSrc}
-              waveform={msg.waveform}
-              duration={msg.duration?.[0]}
-              isMe={isCurrentUser}
-              status={msg.status}
-              onRetry={() => {
-                resendMedia?.(msg);
-              }}
-            />
-          </div>
-        )}
-
-        {/* TEXT */}
         {msg.is_deleted ? (
           <p className="text-xs italic text-gray-900 dark:text-gray-400">
             {msg.deleted_by_admin
@@ -784,16 +720,70 @@ export default function PrivateBubble({
               : "This message was deleted"}
           </p>
         ) : (
-          msg.encrypted_text && (
-            <p className="text-sm whitespace-pre-wrap break-all text-gray-700 dark:text-white overflow-hidden break-words overflow-wrap-anywhere
-            "
-            style={{
-              overflowWrap: "anywhere",
-              wordBreak: "break-word",
-            }}>
-              {msg.encrypted_text}
-            </p>
-          )
+          <>
+            {/* REPLY PREVIEW */}
+        
+            {hasValidReply && (
+              <ReplyPreview
+                reply={msg.reply_to}
+                isCurrentUser={isCurrentUser}
+                onClick={() => {
+                  const originalId = Number(msg.reply_to?.id);
+        
+                  if (!originalId) return;
+        
+                  jumpToMessage?.(originalId);
+                }}
+              />
+            )}
+        
+            {/* MEDIA */}
+        
+            {isVisualMedia && (
+              <MediaContainer
+                status={msg.status}
+                progress={msg.upload_progress}
+                onRetry={() => resendMedia?.(msg)}
+                fixedAspect={
+                  msg.media_type !== "gif" &&
+                  msg.media_type !== "sticker"
+                }
+                msg={msg}
+              >
+                {renderMedia()}
+              </MediaContainer>
+            )}
+        
+            {/* AUDIO */}
+        
+            {msg.media_type === "audio" && mediaSrc && (
+              <div
+                data-media={mediaSrc}
+                data-type="audio"
+              >
+                <AudioBubble
+                  url={mediaSrc}
+                  waveform={msg.waveform}
+                  duration={
+                    firstMedia?.duration ??
+                    msg.duration?.[0] ??
+                    undefined
+                  }
+                  isMe={isCurrentUser}
+                  status={msg.status}
+                  onRetry={() => resendMedia?.(msg)}
+                />
+              </div>
+            )}
+        
+            {/* TEXT */}
+        
+            {msg.encrypted_text && (
+              <p className="text-sm whitespace-pre-wrap break-all text-gray-700 dark:text-white">
+                {msg.encrypted_text}
+              </p>
+            )}
+          </>
         )}
 
         {/* FOOTER */}

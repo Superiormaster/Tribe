@@ -5,6 +5,7 @@ import uuid
 import math
 
 import boto3
+import subprocess
 
 from botocore.config import Config
 from django.core.exceptions import ValidationError
@@ -83,6 +84,143 @@ def get_object_metadata(object_key: str):
         Key=object_key,
     )
 
+
+def get_media_duration(object_key: str):
+    """
+    Best-effort duration detection for audio/video.
+
+    Returns:
+        float | None
+    """
+
+    if not object_key:
+        return None
+
+    media_url = get_public_url(object_key)
+
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                media_url,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        stdout = result.stdout.strip()
+        stderr = result.stderr.strip()
+
+        print(
+            "=== FFPROBE RESULT ===",
+            {
+                "object_key": object_key,
+                "returncode": result.returncode,
+                "stdout": stdout,
+                "stderr": stderr,
+            },
+            flush=True,
+        )
+
+        if result.returncode != 0:
+            print(
+                "=== FFPROBE FAILED ===",
+                {
+                    "object_key": object_key,
+                    "stderr": stderr,
+                },
+                flush=True,
+            )
+            return None
+
+        if not stdout:
+            return None
+
+        # FFprobe can return N/A for WebM/audio.
+        if stdout.upper() in {
+            "N/A",
+            "NA",
+            "NONE",
+            "NULL",
+            "UNKNOWN",
+        }:
+            print(
+                "=== MEDIA DURATION UNAVAILABLE ===",
+                {
+                    "object_key": object_key,
+                    "value": stdout,
+                },
+                flush=True,
+            )
+            return None
+
+        try:
+            duration = float(stdout)
+        except (TypeError, ValueError):
+            print(
+                "=== MEDIA DURATION INVALID ===",
+                {
+                    "object_key": object_key,
+                    "value": stdout,
+                },
+                flush=True,
+            )
+            return None
+
+        # Reject NaN / Infinity.
+        if not math.isfinite(duration):
+            print(
+                "=== MEDIA DURATION NON-FINITE ===",
+                {
+                    "object_key": object_key,
+                    "duration": duration,
+                },
+                flush=True,
+            )
+            return None
+
+        if duration <= 0:
+            return None
+
+        print(
+            "=== MEDIA DURATION DETECTED ===",
+            {
+                "object_key": object_key,
+                "duration": duration,
+            },
+            flush=True,
+        )
+
+        return duration
+
+    except subprocess.TimeoutExpired:
+        print(
+            "=== FFPROBE TIMEOUT ===",
+            {
+                "object_key": object_key,
+            },
+            flush=True,
+        )
+        return None
+
+    except Exception as exc:
+        print(
+            "=== MEDIA DURATION ERROR ===",
+            {
+                "object_key": object_key,
+                "error_type": type(exc).__name__,
+                "error": repr(exc),
+            },
+            flush=True,
+        )
+        return None
 
 def delete_object(object_key: str):
     if not object_key:

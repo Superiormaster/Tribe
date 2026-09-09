@@ -15,17 +15,33 @@ class InvalidPushTokenError(
 def send_to_device(
     *,
     token,
-    notification
+    notification,
 ):
-    print("========== DJANGO PUSH ==========")
-    node_url = getattr(settings, "NODE_URL", None)
-  
+
+    node_url = getattr(
+        settings,
+        "NODE_URL",
+        None,
+    )
+
+    print(
+        "🌐 [PUSH] NODE_URL:",
+        node_url,
+    )
+
     if not node_url:
-      print("NODE_URL is not configured.")
-      return
+        print(
+            "❌ [PUSH] NODE_URL is not configured."
+        )
+        return
+
+    endpoint = (
+        f"{node_url}/push/notification"
+    )
+
     try:
         response = requests.post(
-            f"{node_url}/push/notification",
+            endpoint,
             json={
                 "token": token,
                 "notification": notification,
@@ -35,25 +51,40 @@ def send_to_device(
 
     except requests.RequestException as exc:
 
+        print(
+            "❌ [PUSH] Node request failed:",
+            str(exc),
+        )
+
         raise PushDeliveryError(
             str(exc)
         ) from exc
 
     try:
         data = response.json()
+
     except ValueError:
         data = {}
 
     if response.status_code == 404:
 
+        print(
+            "❌ [PUSH] Invalid FCM token"
+        )
+
         raise InvalidPushTokenError(
             data.get(
                 "error",
-                "Invalid FCM token"
+                "Invalid FCM token",
             )
         )
 
     if response.status_code >= 400:
+
+        print(
+            "❌ [PUSH] Node returned HTTP error:",
+            response.status_code,
+        )
 
         raise PushDeliveryError(
             data.get(
@@ -64,14 +95,12 @@ def send_to_device(
 
     return data
 
+
 def send_chat_to_device(
     *,
     token,
     notification,
 ):
-    print(
-        "========== DJANGO CHAT PUSH =========="
-    )
 
     node_url = getattr(
         settings,
@@ -79,15 +108,28 @@ def send_chat_to_device(
         None,
     )
 
+    print(
+        "🌐 [CHAT PUSH] NODE_URL:",
+        node_url,
+    )
+
     if not node_url:
+        print(
+            "❌ [CHAT PUSH] NODE_URL is not configured."
+        )
+
         raise PushDeliveryError(
             "NODE_URL is not configured."
         )
 
+    endpoint = (
+        f"{node_url}/push/chat"
+    )
+
     try:
 
         response = requests.post(
-            f"{node_url}/push/chat",
+            endpoint,
             json={
                 "token": token,
                 "notification": notification,
@@ -97,17 +139,28 @@ def send_chat_to_device(
 
     except requests.RequestException as exc:
 
+        print(
+            "❌ [CHAT PUSH] Node request failed:",
+            str(exc),
+        )
+
         raise PushDeliveryError(
             str(exc)
         ) from exc
 
     try:
+
         data = response.json()
 
     except ValueError:
+
         data = {}
 
     if response.status_code == 404:
+
+        print(
+            "❌ [CHAT PUSH] Invalid FCM token"
+        )
 
         raise InvalidPushTokenError(
             data.get(
@@ -117,6 +170,11 @@ def send_chat_to_device(
         )
 
     if response.status_code >= 400:
+
+        print(
+            "❌ [CHAT PUSH] Node returned HTTP error:",
+            response.status_code,
+        )
 
         raise PushDeliveryError(
             data.get(

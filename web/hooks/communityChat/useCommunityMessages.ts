@@ -218,21 +218,10 @@ export function useCommunityMessages({
         if (cancelled) return;
   
         if (cachedMessages.length > 0) {
-          const sorted = prepareMessages(
-            cachedMessages,
-            currentUser.id
+          console.log(
+            "🟢 [INIT] Cached messages found:",
+            cachedMessages.length
           );
-    
-          debugMessage(
-            "AFTER prepareMessages INITIAL",
-            sorted
-          );
-
-          setMessages(sorted);
-  
-          setInitializing(false);
-        } else {
-          setInitializing(true);
         }
   
         const url =
@@ -363,10 +352,17 @@ export function useCommunityMessages({
               )
             : [];
   
-        const pendingMessages = [
+        const pendingCandidates = [
           ...pendingForCommunity,
           ...outboxForCommunity,
         ];
+
+        const pendingMessages =
+          mergeMessages(
+            [],
+            pendingCandidates,
+            currentUser.id
+          );
   
         let combined =
           mergeMessages(
@@ -924,6 +920,11 @@ export function useCommunityMessages({
         ? response.messages
         : [];
   
+    await saveCommunityMessages(
+      loadedMessages,
+      currentUser.id
+    );
+
     setMessages(prev =>
       prepareMessages(
         mergeMessages(

@@ -12,38 +12,74 @@ module.exports = async function presenceSocket(
   io,
   socket
 ) {
+  const userId =
+    Number(socket.user.id);
+
+  /*
+   * Register THIS socket.
+   */
   addUserSocket(
-    socket.user.id,
+    userId,
     socket.id
   );
 
+  /*
+   * Join personal room.
+   */
   socket.join(
-    USER_ROOM(socket.user.id)
+    USER_ROOM(userId)
   );
 
-  const friends =
-    await socket.api.get(
-      "users/presence-receivers/"
-    );
-  
-  await socket.api.post(
-    "users/presence/online/"
+  console.log(
+    `🟢 PRESENCE CONNECTED: ${socket.user.username} | socket=${socket.id}`
   );
-  
-  for (const id of friends.data) {
-    io.to(
-      USER_ROOM(id)
-    ).emit(
-      "user_status",
-      {
-        userId:
-          socket.user.id,
-        status:
-          "online",
-      }
+
+  /*
+   * Tell backend this user is online.
+   */
+  try {
+    await socket.api.post(
+      "users/presence/online/"
+    );
+  } catch (err) {
+    console.error(
+      "presence online failed:",
+      err.response?.data ||
+      err.message
     );
   }
-  
+
+  /*
+   * Notify friends.
+   */
+  try {
+    const friends =
+      await socket.api.get(
+        "users/presence-receivers/"
+      );
+
+    for (const id of friends.data) {
+      io.to(
+        USER_ROOM(id)
+      ).emit(
+        "user_status",
+        {
+          userId,
+          status: "online",
+        }
+      );
+    }
+  } catch (err) {
+    console.error(
+      "presence receivers failed:",
+      err.response?.data ||
+      err.message
+    );
+  }
+
+  /*
+   * HEARTBEAT
+   */
   socket.heartbeatInterval =
     setInterval(async () => {
       try {
@@ -53,64 +89,93 @@ module.exports = async function presenceSocket(
       } catch (err) {
         console.error(
           "heartbeat failed:",
+          err.response?.data ||
           err.message
         );
       }
     }, 15000);
-  
-  socket.on("app_state", ({ state }) => {
-    setUserState(socket.user.id, state);
-  });
 
+  /*
+   * APP STATE
+   */
+  socket.on(
+    "app_state",
+    ({ state } = {}) => {
+      if (
+        state !== "foreground" &&
+        state !== "background"
+      ) {
+        return;
+      }
+
+      setUserState(
+        userId,
+        state
+      );
+
+      console.log(
+        `📱 APP STATE: ${socket.user.username} → ${state}`
+      );
+    }
+  );
+
+  /*
+   * DISCONNECT
+   */
   socket.on(
     "disconnect",
-    async () => {
+    async (reason) => {
       try {
-        const isOffline =
-          removeUserSocket(
-            socket.user.id,
-            socket.id
-          );
-  
         clearInterval(
           socket.heartbeatInterval
         );
-  
-        if (!isOffline)
+
+        const isOffline =
+          removeUserSocket(
+            userId,
+            socket.id
+          );
+
+        console.log(
+          `🔴 SOCKET DISCONNECTED: ${socket.user.username} | socket=${socket.id} | reason=${reason} | completelyOffline=${isOffline}`
+        );
+
+        if (!isOffline) {
           return;
-  
+        }
+
         const friends =
           await socket.api.get(
             "users/presence-receivers/"
           );
-  
+
         const res =
           await socket.api.post(
             "users/presence/offline/"
           );
-  
+
         for (const id of friends.data) {
           io.to(
             USER_ROOM(id)
           ).emit(
             "user_status",
             {
-              userId:
-                socket.user.id,
-              status:
-                "offline",
+              userId,
+              status: "offline",
               last_seen:
                 res.data.last_seen,
             }
           );
         }
-  
+
         console.log(
-          `${socket.user.username} disconnected`
+          `⚫ USER OFFLINE: ${socket.user.username}`
         );
+
       } catch (err) {
         console.error(
           "disconnect error:",
+          err.response?.data ||
           err.message
         );
       }

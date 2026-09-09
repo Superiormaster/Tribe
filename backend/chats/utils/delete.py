@@ -23,19 +23,14 @@ def soft_delete_message(message, user):
     message.deleted_at = timezone.now()
     message.deleted_by_admin = deleted_by_admin
 
-    if deleted_by_admin:
-        message.text = "Deleted by administrator"
-    else:
-        message.text = "Deleted message"
-
+    # Remove encrypted content.
     message.encrypted_text = ""
     message.caption = ""
 
-    # Legacy/external media fields
-    message.media_url = None
-    message.thumbnail = None
+    # Remove message media references.
     message.waveform = []
 
+    # Remove reply relationship.
     message.reply_to = None
 
     message.save(
@@ -43,16 +38,14 @@ def soft_delete_message(message, user):
             "is_deleted",
             "deleted_at",
             "deleted_by_admin",
-            "text",
             "encrypted_text",
             "caption",
-            "media_url",
-            "thumbnail",
             "waveform",
             "reply_to",
         ]
     )
 
+    # Remove uploaded media associations.
     message.media_assets.clear()
 
     if chat.last_message_id == message.id:
@@ -68,6 +61,7 @@ def soft_delete_message(message, user):
         )
 
         chat.last_message = last_message
+
         chat.save(
             update_fields=["last_message"]
         )

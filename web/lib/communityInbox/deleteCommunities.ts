@@ -1,43 +1,62 @@
-import { apiRequest } from "@/utils/api";
 import {
   communityDeleteChat,
   communityDeleteChats,
 } from "@/utils/chat/MessageClientApi";
-import { deleteCommunityChatData } from "@/lib/communityMessageDB";
+import { 
+  hideCommunityChatMessages,
+} from "@/lib/communityMessageDB";
+import {
+  deleteOutboxMessagesForChat,
+} from "@/utils/chat/outbox";
 
 export async function deleteCommunityInboxChats(
   chatIds: number[],
   userId: number
 ) {
-  await Promise.all(
-    chatIds.map(async (id) => {
-      await apiRequest(
-        `api/chats/${id}/community-hide-all/`,
-        {
-          method: "POST",
-        }
-      );
-
-      await deleteCommunityChatData(
-        id,
-        userId
-      );
-    })
-  );
+  if (!chatIds.length) {
+    return;
+  }
 
   if (chatIds.length === 1) {
-    await communityDeleteChat(chatIds[0]);
+    await communityDeleteChat(
+      chatIds[0]
+    );
   } else {
-    await communityDeleteChats(chatIds);
+    await communityDeleteChats(
+      chatIds
+    );
   }
+
+  // Remove local copies.
+  await Promise.all(
+    chatIds.map((chatId) =>
+      hideCommunityChatMessages(
+        chatId,
+        userId
+      )
+    )
+  );
+  
+  await Promise.all(
+    chatIds.map((chatId) =>
+      deleteOutboxMessagesForChat(
+        chatId,
+        userId,
+        "community"
+      )
+    )
+  );
 
   chatIds.forEach((chatId) => {
     window.dispatchEvent(
-      new CustomEvent("community-chat-deleted", {
-        detail: {
-          chatId,
-        },
-      })
+      new CustomEvent(
+        "community-chat-deleted",
+        {
+          detail: {
+            chatId,
+          },
+        }
+      )
     );
   });
 }

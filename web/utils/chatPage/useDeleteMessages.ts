@@ -974,21 +974,14 @@ export function useDeleteMessages({
           response
         );
 
-        const deleted =
-          response.data?.deleted ?? [];
-
-        const deletedId = deleted
-          .map((item: any) => Number(item.id))
-          .filter(Number.isFinite);
+        const deletedId =
+          (response?.deleted_ids ?? [])
+            .map((id: any) => Number(id))
+            .filter(Number.isFinite);
         
         console.log(
-          "🗑️ [DELETE EVERYONE] response.data:",
-          response?.data
-        );
-        
-        console.log(
-          "🗑️ [DELETE EVERYONE] deleted:",
-          deleted
+          "🗑️ [DELETE EVERYONE] RESPONSE:",
+          response
         );
         
         console.log(
@@ -998,13 +991,13 @@ export function useDeleteMessages({
         
         if (!deletedId.length) {
           console.error(
-            "❌ [DELETE EVERYONE] STOP: Backend returned no deleted IDs"
+            "❌ [DELETE EVERYONE] STOP: Backend returned no deleted IDs",
+            {
+              response,
+              requestedIds: messageIds,
+            }
           );
         
-          return;
-        }
-  
-        if (!deletedId.length) {
           return;
         }
   
@@ -1089,11 +1082,6 @@ export function useDeleteMessages({
               Boolean(
                 msg.deleted_by_admin
               ),
-
-            text:
-              msg.deleted_by_admin
-                ? "Deleted by administrator"
-                : "Deleted message",
 
             encrypted_text: "",
 
@@ -1285,8 +1273,6 @@ export function useDeleteMessages({
                 "object"
                   ? message.reply_to
                   : {}),
-                text:
-                  "Deleted message",
                 is_deleted: true,
               },
             }

@@ -2154,32 +2154,27 @@ def save_fcm_token(request):
     browser = request.data.get("browser", "")
 
     if not token:
-        return Response({"detail": "Token is required"}, status=400)
+        return Response(
+            {"detail": "Token is required"},
+            status=400,
+        )
 
-    token = token.strip() # FCM tokens sometimes have whitespace
+    token = token.strip()
 
-    try:
-        with transaction.atomic():
-            device, created = DevicePushToken.objects.update_or_create(
-                token=token,
-                defaults={
-                    "user": request.user,
-                    "platform": platform,
-                    "browser": browser,
-                    "last_seen_at": timezone.now(),
-                    "is_active": True,
-                }
-            )
-    except IntegrityError:
-        # Race won by other request, just fetch and update
-        with transaction.atomic():
-            device = DevicePushToken.objects.select_for_update().get(token=token)
-            device.user = request.user
-            device.platform = platform
-            device.browser = browser
-            device.last_seen_at = timezone.now()
-            device.is_active = True
-            device.save()
-            created = False
+    device, created = (
+        DevicePushToken.objects.update_or_create(
+            user=request.user,
+            token=token,
+            defaults={
+                "platform": platform,
+                "browser": browser,
+                "last_seen_at": timezone.now(),
+                "is_active": True,
+            },
+        )
+    )
 
-    return Response({"success": True, "created": created})
+    return Response({
+        "success": True,
+        "created": created,
+    })

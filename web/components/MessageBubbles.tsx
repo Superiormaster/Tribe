@@ -1026,9 +1026,7 @@ const MessageBubbles = React.forwardRef<
   
       if (!identity) continue;
   
-      const existing =
-        seen.get(identity) ?? [];
-  
+      const existing = seen.get(identity) ?? [];
       existing.push(message);
       seen.set(identity, existing);
     }
@@ -1039,7 +1037,16 @@ const MessageBubbles = React.forwardRef<
     if (duplicates.length) {
       console.error(
         "🚨🚨 DUPLICATES IN MESSAGEBUBBLES",
-        duplicates
+        duplicates.map(([identity, items]) => ({
+          identity,
+          count: items.length,
+          messages: items.map(m => ({
+            id: m.id,
+            server_id: m.server_id,
+            client_id: m.client_id,
+            created_at: m.created_at,
+          })),
+        }))
       );
     }
   }, [messages]);

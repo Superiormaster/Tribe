@@ -68,7 +68,7 @@ def build_private_chat_payload(
 
     chat_id = str(message.chat_id)
 
-    return {
+    payload = {
         "id": str(message.id),
 
         "type": "chat",
@@ -119,6 +119,8 @@ def build_private_chat_payload(
         "createdAt": message.created_at.isoformat(),
     }
 
+    return payload
+
 
 def build_community_chat_payload(
     *,
@@ -161,7 +163,7 @@ def build_community_chat_payload(
                 or ""
             )
 
-    return {
+    payload = {
         "id": str(message.id),
 
         "type": "community_chat",
@@ -237,3 +239,5 @@ def build_community_chat_payload(
         "recipientId": str(recipient.id),
         "createdAt": message.created_at.isoformat(),
     }
+
+    return payload

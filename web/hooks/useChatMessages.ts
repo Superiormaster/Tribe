@@ -126,17 +126,10 @@ export function useChatMessages({
         if (cancelled) return;
   
         if (cachedMessages.length > 0) {
-          const sorted = prepareMessages(
-            cachedMessages,
-            currentUser.id
+          console.log(
+            "🟢 [INIT] Cached messages found:",
+            cachedMessages.length
           );
-          
-          setMessages(sorted);
-  
-          setInitializing(false);
-        } else {
-  
-          setInitializing(true);
         }
   
         const url =
@@ -154,42 +147,12 @@ export function useChatMessages({
             ? res.messages
             : [];
   
-        console.log(
-          "🔵 [INIT] SERVER REPLY DATA BACKEND:",
-          serverMessages.map((m: any) => ({
-            id: m.id,
-            client_id: m.client_id,
-            text: m.encrypted_text,
-            reply_to: m.reply_to,
-            reply_to_id: m.reply_to_id,
-          }))
-        );
-  
         if (serverMessages.length > 0) {
           await saveMessages(
             serverMessages,
             currentUser.id
           );
         }
-  
-        const replyMessage = serverMessages.find(
-          (m: any) => m.id === 49
-        );
-        
-        if (replyMessage) {
-          console.log("🧪 [DIRECT TEST] Server message 49:", {
-            id: replyMessage.id,
-            client_id: replyMessage.client_id,
-            reply_to: replyMessage.reply_to,
-          });
-        }
-  
-        await debugGetExactMessage(
-          chatId,
-          currentUser.id,
-          "private",
-          49
-        );
   
         if (cancelled) return;
   
@@ -204,13 +167,7 @@ export function useChatMessages({
               40,
               40
             );
-  
-          await debugGetExactMessage(
-            chatId,
-            currentUser.id,
-            "private",
-            49
-          );
+
         } else {
           freshCachedMessages =
             await getLatestMessages(
@@ -249,7 +206,7 @@ export function useChatMessages({
             currentUser.id
           );
   
-        const pendingForChat = [
+        const pendingCandidates = [
           ...(Array.isArray(pendingMessages)
             ? pendingMessages
             : []),
@@ -262,6 +219,13 @@ export function useChatMessages({
             Number(message.chat) ===
             Number(chatId)
         );
+  
+        const pendingForChat =
+          mergeMessages(
+            [],
+            pendingCandidates,
+            currentUser.id
+          );
   
         let combined =
           mergeMessages(
@@ -615,6 +579,11 @@ export function useChatMessages({
         ? response.messages
         : [];
   
+    await saveMessages(
+      loadedMessages,
+      currentUser.id
+    );
+
     setMessages(prev =>
       prepareMessages(
         mergeMessages(

@@ -2,7 +2,6 @@ export const getVideoDuration = (
   file: File
 ): Promise<number> => {
   return new Promise((resolve, reject) => {
-
     const isVideo =
       file.type.startsWith("video/");
 
@@ -14,10 +13,9 @@ export const getVideoDuration = (
       return;
     }
 
-    const media =
-      isVideo
-        ? document.createElement("video")
-        : document.createElement("audio");
+    const media = isVideo
+      ? document.createElement("video")
+      : document.createElement("audio");
 
     const objectUrl =
       URL.createObjectURL(file);
@@ -25,17 +23,53 @@ export const getVideoDuration = (
     let finished = false;
 
     const cleanup = () => {
-      URL.revokeObjectURL(objectUrl);
-
-      media.removeAttribute("src");
-
-      media.load();
+      clearTimeout(timeout);
 
       media.onloadedmetadata = null;
+      media.ondurationchange = null;
       media.onerror = null;
+
+      media.removeAttribute("src");
+      media.load();
+
+      URL.revokeObjectURL(objectUrl);
     };
 
-    const fail = () => {
+    const succeed = (
+      rawDuration: number
+    ) => {
+      if (finished) return;
+
+      if (
+        !Number.isFinite(rawDuration) ||
+        rawDuration <= 0
+      ) {
+        return;
+      }
+
+      finished = true;
+
+      const duration = Math.max(
+        1,
+        Math.round(rawDuration)
+      );
+
+      console.log(
+        "✅ [MEDIA DURATION] Detected",
+        {
+          name: file.name,
+          type: file.type,
+          duration,
+        }
+      );
+
+      cleanup();
+      resolve(duration);
+    };
+
+    const fail = (
+      error?: unknown
+    ) => {
       if (finished) return;
 
       finished = true;
@@ -43,75 +77,78 @@ export const getVideoDuration = (
       cleanup();
 
       reject(
-        new Error(
-          `Unable to read ${
-            isVideo
-              ? "video"
-              : "audio"
-          } duration`
-        )
+        error instanceof Error
+          ? error
+          : new Error(
+              `Unable to determine ${
+                isVideo
+                  ? "video"
+                  : "audio"
+              } duration`
+            )
       );
     };
+
+    const timeout = window.setTimeout(() => {
+      console.warn(
+        "⚠️ [MEDIA DURATION] Timeout",
+        {
+          name: file.name,
+          type: file.type,
+        }
+      );
+
+      fail(
+        new Error(
+          "Media duration detection timed out"
+        )
+      );
+    }, 5000);
 
     media.preload = "metadata";
 
     media.onloadedmetadata = () => {
-      if (finished) return;
-
-      const rawDuration =
-        media.duration;
-
-      if (
-        !Number.isFinite(
-          rawDuration
-        ) ||
-        rawDuration <= 0
-      ) {
-        finished = true;
-
-        cleanup();
-
-        reject(
-          new Error(
-            `${
-              isVideo
-                ? "Video"
-                : "Audio"
-            } duration is unavailable`
-          )
-        );
-
-        return;
-      }
-
-      const duration =
-        Math.floor(rawDuration);
-
-      finished = true;
-
-      cleanup();
-
       console.log(
-        `⏱️ [MEDIA DURATION] ${
-          isVideo
-            ? "VIDEO"
-            : "AUDIO"
-        }`,
+        "📐 [MEDIA DURATION] loadedmetadata",
         {
           name: file.name,
-          type: file.type,
-          rawDuration,
-          duration,
+          duration: media.duration,
         }
       );
 
-      resolve(duration);
+      succeed(media.duration);
     };
 
-    media.onerror = fail;
+    media.ondurationchange = () => {
+      console.log(
+        "📐 [MEDIA DURATION] durationchange",
+        {
+          name: file.name,
+          duration: media.duration,
+        }
+      );
+
+      succeed(media.duration);
+    };
+
+    media.onerror = () => {
+      console.error(
+        "❌ [MEDIA DURATION] Media error",
+        {
+          name: file.name,
+          type: file.type,
+          error: media.error,
+        }
+      );
+
+      fail(
+        new Error(
+          "Browser could not read media metadata"
+        )
+      );
+    };
 
     media.src = objectUrl;
-
     media.load();
   });
 };

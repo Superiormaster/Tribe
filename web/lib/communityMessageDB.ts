@@ -8,51 +8,186 @@ import {
 } from "./db";
 import type { Message } from "@/utils/chat/messageContract";
 
+async function findMessageByServerId(
+  db: any,
+  communityId: number,
+  ownerId: number,
+  serverId: number
+) {
+  if (
+    communityId == null ||
+    ownerId == null ||
+    serverId == null
+  ) {
+    return undefined;
+  }
+
+  const index = db
+    .transaction(MESSAGE_STORE)
+    .store
+    .index("by_chat_owner_server");
+
+  return index.get([
+    Number(communityId),
+    Number(ownerId),
+    "community",
+    Number(serverId),
+  ]);
+}
+
 // --------------------
 // MESSAGES
 // --------------------
-export async function saveCommunityMessage(msg: Message, ownerId?: number) {
+export async function saveCommunityMessage(
+  msg: Message,
+  ownerId?: number
+) {
   const db = await getDB();
+
   if (!db) return;
-  
+
   const effectiveOwnerId =
-    Number(msg.ownerId ?? ownerId);
-  
-  const clientId =
-    msg.client_id ?? `server-${msg.id}`;
-  
+    Number(
+      msg.ownerId ??
+      ownerId
+    );
+
+  if (
+    !Number.isFinite(
+      effectiveOwnerId
+    )
+  ) {
+    console.error(
+      "[IDB SAVE] Invalid ownerId:",
+      ownerId
+    );
+
+    return;
+  }
+
+  const serverId =
+    msg.server_id ??
+    msg.id ??
+    null;
+
+  let clientId =
+    msg.client_id ??
+    (
+      serverId != null
+        ? `server-${serverId}`
+        : crypto.randomUUID()
+    );
+
+  let existing;
+
+  existing =
+    await db.get(
+      MESSAGE_STORE,
+      `${effectiveOwnerId}:${clientId}`
+    );
+
+  if (
+    !existing &&
+    serverId != null &&
+    msg.chat != null
+  ) {
+    existing =
+      await findMessageByServerId(
+        db,
+        Number(msg.chat),
+        effectiveOwnerId,
+        Number(serverId)
+      );
+
+    if (existing) {
+      clientId =
+        existing.client_id;
+    }
+  }
+
   const accountMessageKey =
     `${effectiveOwnerId}:${clientId}`;
 
   const clean = {
+    ...(existing ?? {}),
     ...msg,
-    client_id: clientId,
 
-    ownerId: effectiveOwnerId,
-  
+    client_id:
+      clientId,
+
+    ownerId:
+      effectiveOwnerId,
+
     account_message_key:
       accountMessageKey,
 
-    hidden_for: msg.hidden_for || [],
-    is_deleted: msg.is_deleted || false,
+    server_id:
+      serverId ??
+      existing?.server_id,
 
-    reactions: msg.reactions || [],
+    hidden_for:
+      msg.hidden_for ??
+      existing?.hidden_for ??
+      [],
 
-    files: (msg.files || []).map((file: any) => ({
-      blob: file.blob ?? file,
-      name: file.name,
-      type: file.type,
-      size: file.size,
-      media_url: file.media_url,
-      thumbnail: file.thumbnail,
-      duration: file.duration,
-    })),
+    is_deleted:
+      msg.is_deleted ??
+      existing?.is_deleted ??
+      false,
+
+    reactions:
+      msg.reactions ??
+      existing?.reactions ??
+      [],
+
+    files:
+      (msg.files ||
+        existing?.files ||
+        []).map(
+          (file: any) => ({
+            blob:
+              file.blob ??
+              file,
+
+            name:
+              file.name,
+
+            type:
+              file.type,
+
+            size:
+              file.size,
+
+            media_url:
+              file.media_url,
+
+            thumbnail:
+              file.thumbnail,
+
+            duration:
+              file.duration,
+          })
+        ),
+
+    chat_type:
+      "community",
   };
 
-  await db.put(MESSAGE_STORE, {
-    ...clean,
-      chat_type: "community",
-  });
+  if (
+    existing?.account_message_key &&
+    existing.account_message_key !==
+      accountMessageKey
+  ) {
+    await db.delete(
+      MESSAGE_STORE,
+      existing.account_message_key
+    );
+  }
+
+  await db.put(
+    MESSAGE_STORE,
+    clean
+  );
 }
 
 function normalizeMessageFiles(
@@ -199,7 +334,10 @@ export async function saveCommunityMessages(
   messages: Message[],
   ownerId?: number
 ) {
-  if (!Array.isArray(messages) || messages.length === 0) {
+  if (
+    !Array.isArray(messages) ||
+    messages.length === 0
+  ) {
     return;
   }
 
@@ -212,16 +350,20 @@ export async function saveCommunityMessages(
       "❌ [IDB SAVE] INVALID OWNER ID:",
       ownerId
     );
+
     return;
   }
 
-  const effectiveOwnerId = Number(ownerId);
+  const effectiveOwnerId =
+    Number(ownerId);
+
   const db = await getDB();
 
   if (!db) {
     console.error(
       "❌ [IDB SAVE] IndexedDB unavailable"
     );
+
     return;
   }
 
@@ -231,31 +373,98 @@ export async function saveCommunityMessages(
 
   for (const msg of messages) {
     try {
-      const clientId =
+      const chatId =
+        msg.chat != null
+          ? Number(msg.chat)
+          : null;
+
+      const serverId =
+        msg.server_id ??
+        msg.id ??
+        null;
+
+      let existing:
+        | any
+        | undefined;
+
+      let clientId =
         msg.client_id ??
-        (msg.id != null
-          ? `server-${msg.id}`
-          : crypto.randomUUID());
+        null;
+
+      if (clientId) {
+        const exactKey =
+          `${effectiveOwnerId}:${clientId}`;
+
+        existing =
+          await db.get(
+            MESSAGE_STORE,
+            exactKey
+          );
+      }
+
+      if (
+        !existing &&
+        serverId != null &&
+        chatId != null
+      ) {
+        existing =
+          await findMessageByServerId(
+            db,
+            chatId,
+            effectiveOwnerId,
+            Number(serverId)
+          );
+
+        if (existing) {
+          console.log(
+            "🔗 [IDB RECONCILE] Found existing message by server ID:",
+            {
+              serverId,
+              existingClientId:
+                existing.client_id,
+              incomingClientId:
+                msg.client_id,
+              existingKey:
+                existing.account_message_key,
+            }
+          );
+
+          clientId =
+            existing.client_id;
+        }
+      }
+
+      if (!clientId) {
+        clientId =
+          serverId != null
+            ? `server-${serverId}`
+            : crypto.randomUUID();
+      }
 
       const accountMessageKey =
         `${effectiveOwnerId}:${clientId}`;
 
-      const existing =
-        await db.get(
-          MESSAGE_STORE,
-          accountMessageKey
-        );
+      if (
+        !existing &&
+        accountMessageKey
+      ) {
+        existing =
+          await db.get(
+            MESSAGE_STORE,
+            accountMessageKey
+          );
+      }
 
-      const isOwnExisting =
-        !!existing &&
-        Number(existing.sender) ===
-          effectiveOwnerId;
+      const isOwnMessage =
+        Number(msg.sender) ===
+        effectiveOwnerId;
 
       const replyTo =
         msg.reply_to !== undefined &&
         msg.reply_to !== null
           ? msg.reply_to
-          : existing?.reply_to ?? null;
+          : existing?.reply_to ??
+            null;
 
       const replyToId =
         msg.reply_to_id !== undefined &&
@@ -271,69 +480,49 @@ export async function saveCommunityMessages(
           : existing?.reply_to_client_id ??
             null;
 
-      const files = normalizeMessageFiles(
-        msg,
-        existing
-      );
-  
+      const files =
+        normalizeMessageFiles(
+          msg,
+          existing
+        );
+
       const mediaAssets =
-        Array.isArray((msg as any).media_assets)
+        Array.isArray(
+          (msg as any).media_assets
+        )
           ? (msg as any).media_assets
-          : Array.isArray(existing?.media_assets)
+          : Array.isArray(
+              existing?.media_assets
+            )
             ? existing.media_assets
             : [];
-      
-      const normalizedMediaUrl =
-        Array.isArray(msg.media_url) &&
-        msg.media_url.length > 0
-          ? msg.media_url
-          : mediaAssets.flatMap((asset: any) => {
-              const url =
-                asset?.original_url ??
-                asset?.media_url ??
-                asset?.url;
-      
-              if (Array.isArray(url)) {
-                return url;
-              }
-      
-              return url
-                ? [url]
-                : [];
-            });
-  
+
       const normalizedThumbnail =
         Array.isArray(msg.thumbnail) &&
         msg.thumbnail.length > 0
-          ? msg.thumbnail.flat()
+          ? msg.thumbnail
           : mediaAssets
-              .flatMap((asset: any) => {
-                const thumbnail = asset?.thumbnail_url;
-      
-                if (Array.isArray(thumbnail)) {
-                  return thumbnail;
-                }
-      
-                return thumbnail
-                  ? [thumbnail]
-                  : [];
-              });
-      
+              .map(
+                (asset: any) =>
+                  asset?.thumbnail_url
+              )
+              .filter(Boolean);
+
       const normalizedDuration =
         Array.isArray(msg.duration) &&
         msg.duration.length > 0
           ? msg.duration
           : mediaAssets
-              .map((asset: any) => asset?.duration)
+              .map(
+                (asset: any) =>
+                  asset?.duration
+              )
               .filter(
                 (duration: any) =>
                   duration !== null &&
                   duration !== undefined
               );
-    
-      const isOwnMessage =
-        Number(msg.sender) === effectiveOwnerId;
-      
+
       const authoritativeCreatedAt =
         isOwnMessage
           ? (
@@ -347,65 +536,82 @@ export async function saveCommunityMessages(
               existing?.created_at
             );
 
+      const serverSaysDeleted =
+        msg.is_deleted === true;
+      
+      const localWasDeleted =
+        existing?.is_deleted === true;
+      
+      const isDeleted =
+        serverSaysDeleted ||
+        localWasDeleted;
+      
       const record = {
         ...(existing ?? {}),
         ...msg,
-
-        account_message_key:
-          accountMessageKey,
-
+      
         client_id:
           clientId,
-
+      
+        account_message_key:
+          accountMessageKey,
+      
         ownerId:
-          existing?.ownerId ??
-          msg.ownerId ??
           effectiveOwnerId,
-
+      
+        server_id:
+          serverId ??
+          existing?.server_id,
+      
         id:
           msg.id ??
-          existing?.id ??
-          msg.server_id ??
-          existing?.server_id,
-  
-        server_id:
-          msg.server_id ??
-          msg.id ??
-          existing?.server_id ??
           existing?.id,
-
+      
+        chat:
+          msg.chat ??
+          existing?.chat,
+      
         chat_type:
           (msg as any).chat_type ??
           existing?.chat_type ??
           "community",
-
+      
         hidden_for:
           msg.hidden_for ??
           existing?.hidden_for ??
           [],
-
+      
+        // SERVER DELETION WINS
         is_deleted:
-          msg.is_deleted ??
-          existing?.is_deleted ??
+          isDeleted,
+      
+        deleted_by_admin:
+          msg.deleted_by_admin ??
+          existing?.deleted_by_admin ??
           false,
-
+      
+        deleted_at:
+          msg.deleted_at ??
+          existing?.deleted_at ??
+          null,
+      
         reactions:
           msg.reactions ??
           existing?.reactions ??
           [],
-
+      
         reply_to:
           replyTo,
-
+      
         reply_to_id:
           replyToId,
-
+      
         reply_to_client_id:
           replyToClientId,
-
+      
         created_at:
           authoritativeCreatedAt,
-
+      
         server_created_at:
           (msg as any).server_created_at ??
           (
@@ -419,43 +625,45 @@ export async function saveCommunityMessages(
           msg.client_created_at ??
           existing?.client_created_at ??
           null,
-
+      
         client_sequence:
           existing?.client_sequence ??
           msg.client_sequence,
-
+      
         files:
           files.map((file: any) => ({
             blob:
               file?.blob ?? file,
-
+      
             name:
               file?.name,
-
+      
             type:
               file?.type,
-
+      
             size:
               file?.size,
-
+      
             media_url:
               file?.media_url,
-
+      
             thumbnail:
               file?.thumbnail,
-
+      
             duration:
               file?.duration,
           })),
-
+      
         media_assets:
           (msg as any).media_assets ??
           existing?.media_assets ??
           [],
-
+      
         media_url:
-          normalizedMediaUrl,
-
+          msg.media_url ??
+          existing?.media_url ??
+          [],
+      
         thumbnail:
           normalizedThumbnail,
       
@@ -463,90 +671,82 @@ export async function saveCommunityMessages(
           normalizedDuration,
       };
 
+      if (isDeleted) {
+        record.is_deleted = true;
+        record.encrypted_text = "";
+        record.caption = "";
+      
+        record.media_assets = [];
+        record.media_url = [];
+        record.thumbnail = [];
+        record.duration = [];
+        record.waveform = [];
+      
+        record.files = [];
+      
+        record.media_type = "text";
+        record.media_source = null;
+      
+        record.preview = null;
+      }
+
       console.log(
         "📝 [IDB SAVE] WRITING:",
         {
-          key: accountMessageKey,
-          id: record.id,
-          server_id: record.server_id,
-          client_id: record.client_id,
-          chat: record.chat,
-          ownerId: record.ownerId,
-          media_type: record.media_type,
-          media_assets:
-            record.media_assets?.length,
-          media_url:
-            record.media_url?.length,
-          files:
-            record.files?.length,
-          reply_to:
-            record.reply_to,
+          key:
+            accountMessageKey,
+
+          id:
+            record.id,
+
+          server_id:
+            record.server_id,
+
+          client_id:
+            record.client_id,
+
+          existingClientId:
+            existing?.client_id,
+
+          chat:
+            record.chat,
+
+          ownerId:
+            record.ownerId,
         }
       );
-  
+
+      if (
+        existing?.account_message_key &&
+        existing.account_message_key !==
+          accountMessageKey
+      ) {
+        console.log(
+          "🧹 [IDB RECONCILE] Removing old duplicate key:",
+          existing.account_message_key
+        );
+
+        await db.delete(
+          MESSAGE_STORE,
+          existing.account_message_key
+        );
+      }
+
       await db.put(
         MESSAGE_STORE,
         record
       );
 
-      const saved =
-        await db.get(
-          MESSAGE_STORE,
-          accountMessageKey
-        );
-
-      console.log(
-        "🔄 [IDB SAVE] READ BACK:",
-        {
-          found:
-            !!saved,
-
-          key:
-            saved?.account_message_key,
-
-          id:
-            saved?.id,
-
-          server_id:
-            saved?.server_id,
-
-          client_id:
-            saved?.client_id,
-
-          media_type:
-            saved?.media_type,
-
-          media_url: saved?.media_url,
-          thumbnail: saved?.thumbnail,
-          media_assets: saved?.media_assets,
-
-          files:
-            saved?.files?.length,
-
-          reply_to:
-            saved?.reply_to,
-        }
-      );
-
-      if (!saved) {
-        console.error(
-          "🚨 [IDB SAVE] WRITE FAILED — RECORD NOT FOUND AFTER PUT",
-          {
-            accountMessageKey,
-            id: record.id,
-            client_id: record.client_id,
-          }
-        );
-      }
-    } catch (error) {
-      console.error(
-        "❌ [IDB SAVE] Failed to save message:",
-        {
-          id: msg.id,
-          client_id: msg.client_id,
-          error,
-        }
-      );
+    } catch (error: any) {
+      console.error("❌ [IDB SAVE] Failed to save message:", {
+        id: msg.id,
+        client_id: msg.client_id,
+        name: error?.name,
+        message: error?.message,
+        code: error?.code,
+        stack: error?.stack,
+        error,
+      });
     }
   }
 
@@ -555,15 +755,19 @@ export async function saveCommunityMessages(
   );
 }
 
-export const isHiddenForUser = (
-  msg: any,
-  userId: number
-) => {
-  return (
-    Array.isArray(msg.hidden_for) &&
-    msg.hidden_for.includes(userId)
+export function isHiddenForUser(
+  message: any,
+  ownerId: number
+) {
+  if (!Array.isArray(message.hidden_for)) {
+    return false;
+  }
+
+  return message.hidden_for.some(
+    (id: any) =>
+      Number(id) === Number(ownerId)
   );
-};
+}
 
 export async function getCommunityMessagesByChat(communityId: number, ownerId: number) {
   const db = await getDB();
@@ -809,67 +1013,223 @@ export async function updateCommunityMessage(
   patch: any
 ) {
   const db = await getDB();
-  if (!db) return;
-  
-  const accountMessageKey =
-    `${ownerId}:${client_id}`;
 
-  const msg = await db.get(
+  if (!db) return;
+
+  const effectiveOwnerId = Number(ownerId);
+
+  if (!Number.isFinite(effectiveOwnerId)) {
+    console.warn(
+      "[IDB UPDATE] Invalid ownerId:",
+      ownerId
+    );
+    return;
+  }
+
+  const accountMessageKey =
+    `${effectiveOwnerId}:${client_id}`;
+
+  let msg = await db.get(
     MESSAGE_STORE,
     accountMessageKey
   );
 
-  if (!msg) return;
+  if (
+    !msg &&
+    patch?.server_id != null &&
+    patch?.chat != null
+  ) {
+    msg = await findMessageByServerId(
+      db,
+      Number(patch.chat),
+      effectiveOwnerId,
+      Number(patch.server_id)
+    );
+  }
 
-  // ACCOUNT PROTECTION
-  if (msg.ownerId !== ownerId) {
+  if (
+    !msg &&
+    patch?.id != null &&
+    patch?.chat != null
+  ) {
+    msg = await findMessageByServerId(
+      db,
+      Number(patch.chat),
+      effectiveOwnerId,
+      Number(patch.id)
+    );
+  }
+
+  if (!msg) {
+    console.warn(
+      "[IDB UPDATE] Message not found:",
+      {
+        client_id,
+        ownerId: effectiveOwnerId,
+        patch,
+      }
+    );
+
     return;
   }
-  
+
+  if (
+    Number(msg.ownerId) !==
+    effectiveOwnerId
+  ) {
+    console.warn(
+      "[IDB UPDATE] Owner mismatch:",
+      {
+        client_id,
+        ownerId: effectiveOwnerId,
+        messageOwnerId: msg.ownerId,
+      }
+    );
+
+    return;
+  }
+
   const normalizedPatch = {
     ...patch,
-  
-    ...(patch.media_url !== undefined && {
-      media_url: Array.isArray(patch.media_url)
-        ? patch.media_url
-        : patch.media_url
-          ? [patch.media_url]
-          : [],
-    }),
-  
+
+    media_url:
+      patch.media_url !== undefined
+        ? (
+            Array.isArray(patch.media_url)
+              ? patch.media_url
+              : patch.media_url
+                ? [patch.media_url]
+                : []
+          )
+        : msg.media_url ?? [],
+
+    thumbnail:
+      patch.thumbnail !== undefined
+        ? (
+            Array.isArray(patch.thumbnail)
+              ? patch.thumbnail
+              : patch.thumbnail
+                ? [patch.thumbnail]
+                : []
+          )
+        : msg.thumbnail ?? [],
+
+    duration:
+      patch.duration !== undefined
+        ? (
+            Array.isArray(patch.duration)
+              ? patch.duration
+              : patch.duration != null
+                ? [patch.duration]
+                : []
+          )
+        : msg.duration ?? [],
+
     hidden_for:
       patch.hidden_for ??
       msg.hidden_for ??
       [],
-  
+
     is_deleted:
       patch.is_deleted ??
       msg.is_deleted ??
       false,
-  
-    ...(patch.thumbnail !== undefined && {
-      thumbnail: Array.isArray(patch.thumbnail)
-        ? patch.thumbnail
-        : patch.thumbnail
-          ? [patch.thumbnail]
-          : [],
-    }),
-  
-    ...(patch.duration !== undefined && {
-      duration: Array.isArray(patch.duration)
-        ? patch.duration
-        : patch.duration != null
-          ? [patch.duration]
-          : [],
-    }),
+
+    deleted_by_admin:
+      patch.deleted_by_admin ??
+      msg.deleted_by_admin ??
+      false,
+
+    deleted_at:
+      patch.deleted_at ??
+      msg.deleted_at ??
+      null,
   };
-  
-  await db.put(MESSAGE_STORE, {
+
+  if (
+    normalizedPatch.is_deleted === true
+  ) {
+    normalizedPatch.encrypted_text = "";
+    normalizedPatch.caption = "";
+
+    normalizedPatch.media_assets = [];
+    normalizedPatch.media_url = [];
+    normalizedPatch.thumbnail = [];
+    normalizedPatch.duration = [];
+    normalizedPatch.waveform = [];
+
+    normalizedPatch.files = [];
+
+    normalizedPatch.media_type = "text";
+    normalizedPatch.media_source = null;
+
+    normalizedPatch.preview = null;
+  }
+
+  const finalClientId =
+    msg.client_id ??
+    client_id;
+
+  const finalKey =
+    `${effectiveOwnerId}:${finalClientId}`;
+
+  const updated = {
     ...msg,
     ...normalizedPatch,
+
+    ownerId:
+      effectiveOwnerId,
+
+    client_id:
+      finalClientId,
+
     account_message_key:
-      accountMessageKey,
-  });
+      finalKey,
+
+    server_id:
+      msg.server_id ??
+      patch.server_id ??
+      patch.id ??
+      null,
+
+    id:
+      msg.id ??
+      patch.id ??
+      null,
+  };
+
+  if (
+    msg.account_message_key &&
+    msg.account_message_key !== finalKey
+  ) {
+    await db.delete(
+      MESSAGE_STORE,
+      msg.account_message_key
+    );
+  }
+
+  await db.put(
+    MESSAGE_STORE,
+    updated
+  );
+
+  console.log(
+    "[IDB UPDATE] Message updated:",
+    {
+      id: updated.id,
+      server_id: updated.server_id,
+      client_id: updated.client_id,
+      is_deleted: updated.is_deleted,
+      deleted_by_admin:
+        updated.deleted_by_admin,
+      encrypted_text:
+        updated.encrypted_text,
+      account_message_key:
+        updated.account_message_key,
+    }
+  );
+
+  return updated;
 }
 
 export async function syncCommunityServerMessage(
@@ -886,10 +1246,24 @@ export async function syncCommunityServerMessage(
   const accountMessageKey =
     `${effectiveOwnerId}:${client_id}`;
 
-  const local = await db.get(
+  let local = await db.get(
     MESSAGE_STORE,
     accountMessageKey
   );
+  
+  if (
+    !local &&
+    server.id != null &&
+    server.chat != null
+  ) {
+    local =
+      await findMessageByServerId(
+        db,
+        Number(server.chat),
+        effectiveOwnerId,
+        Number(server.id)
+      );
+  }
 
   if (!local) {
     console.warn(
@@ -924,15 +1298,19 @@ export async function syncCommunityServerMessage(
     Number(local.sender) ===
     effectiveOwnerId;
 
+  const resolvedClientId =
+    local?.client_id ??
+    client_id;
+
   const clientCreatedAt =
     local.client_created_at ??
     server.client_created_at ??
-    null;
+    undefined;
   
   const serverCreatedAt =
     server.created_at ??
     local.server_created_at ??
-    null;
+    undefined;
 
   const merged = {
     ...local,
@@ -940,7 +1318,7 @@ export async function syncCommunityServerMessage(
     ...server,
 
     // Identity
-    client_id,
+    client_id: resolvedClientId,
 
     server_id:
       server.server_id ??
@@ -958,11 +1336,13 @@ export async function syncCommunityServerMessage(
         ? (
             clientCreatedAt ??
             local.created_at ??
-            serverCreatedAt
+            serverCreatedAt ??
+            undefined
           )
         : (
             serverCreatedAt ??
-            local.created_at
+            local.created_at ??
+            undefined
           ),
 
     server_created_at:
@@ -1073,6 +1453,106 @@ export async function getCommunityPendingMessages(
   return pending;
 }
 
+export async function hideCommunityChatMessages(
+  communityId: number,
+  ownerId: number
+) {
+  const db = await getDB();
+
+  if (!db) return;
+
+  const effectiveCommunityId =
+    Number(communityId);
+
+  const effectiveOwnerId =
+    Number(ownerId);
+
+  if (
+    !Number.isFinite(
+      effectiveCommunityId
+    ) ||
+    !Number.isFinite(
+      effectiveOwnerId
+    )
+  ) {
+    console.warn(
+      "[IDB HIDE COMMUNITY CHAT] Invalid identifiers:",
+      {
+        communityId,
+        ownerId,
+      }
+    );
+
+    return;
+  }
+
+  const messages =
+    await db.getAllFromIndex(
+      MESSAGE_STORE,
+      "by_chat_owner",
+      [
+        effectiveCommunityId,
+        effectiveOwnerId,
+        "community",
+      ]
+    );
+
+  let hiddenCount = 0;
+
+  for (const message of messages) {
+    if (
+      Number(message.ownerId) !==
+      effectiveOwnerId
+    ) {
+      continue;
+    }
+
+    const hiddenFor =
+      Array.isArray(message.hidden_for)
+        ? [...message.hidden_for]
+        : [];
+
+    const alreadyHidden =
+      hiddenFor.some(
+        (id: any) =>
+          Number(id) ===
+          effectiveOwnerId
+      );
+
+    if (alreadyHidden) {
+      continue;
+    }
+
+    hiddenFor.push(
+      effectiveOwnerId
+    );
+
+    await db.put(
+      MESSAGE_STORE,
+      {
+        ...message,
+        hidden_for:
+          hiddenFor,
+      }
+    );
+
+    hiddenCount++;
+  }
+
+  console.log(
+    "[IDB HIDE COMMUNITY CHAT] Community messages hidden:",
+    {
+      communityId:
+        effectiveCommunityId,
+      ownerId:
+        effectiveOwnerId,
+      totalMessages:
+        messages.length,
+      hiddenCount,
+    }
+  );
+}
+
 export async function deleteCommunityChatData(
   communityId: number,
   ownerId: number
@@ -1097,7 +1577,9 @@ export async function deleteCommunityChatData(
       .getAll([communityId, ownerId, "community"]);
 
   for (const msg of messages) {
-    await messageStore.delete(msg.client_id);
+    await messageStore.delete(
+      `${ownerId}:${msg.client_id}`
+    );
   }
 
   await draftStore.delete(communityId);

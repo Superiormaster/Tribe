@@ -427,27 +427,82 @@ module.exports = function communitySocket(io, socket) {
         }
       }
 
-      if (recipientIds.length) {
-
+      console.log("");
+      console.log("========================================");
+      console.log("📱 [COMMUNITY PUSH] PUSH DECISION");
+      console.log("========================================");
+      
+      console.log({
+        communityId,
+        messageId: savedMessage.id,
+        senderId: socket.user.id,
+        recipientIds,
+        recipientCount: recipientIds.length,
+      });
+      
+      if (!recipientIds.length) {
+      
+        console.log(
+          "ℹ️ [COMMUNITY PUSH] No recipients require push."
+        );
+      
+      } else {
+      
+        console.log(
+          "🚀 [COMMUNITY PUSH] Calling Django community push endpoint..."
+        );
+      
         try {
       
-          await socket.api.post(
-            `chats/messages/${savedMessage.id}/community-push/`,
-            {
-              recipient_ids:
-                recipientIds,
-            }
+          const pushResponse =
+            await socket.api.post(
+              `chats/messages/${savedMessage.id}/community-push/`,
+              {
+                recipient_ids:
+                  recipientIds,
+              }
+            );
+      
+          console.log(
+            "✅ [COMMUNITY PUSH] Django accepted push request"
+          );
+      
+          console.log(
+            "📱 [COMMUNITY PUSH] HTTP status:",
+            pushResponse.status
+          );
+      
+          console.log(
+            "📱 [COMMUNITY PUSH] Response:",
+            pushResponse.data
           );
       
         } catch (pushError) {
       
           console.error(
-            "❌ COMMUNITY CHAT PUSH FAILED:",
-            pushError.response?.data ||
+            "❌ [COMMUNITY PUSH] Django request FAILED"
+          );
+      
+          console.error(
+            "❌ [COMMUNITY PUSH] Status:",
+            pushError.response?.status
+          );
+      
+          console.error(
+            "❌ [COMMUNITY PUSH] Response:",
+            pushError.response?.data
+          );
+      
+          console.error(
+            "❌ [COMMUNITY PUSH] Message:",
             pushError.message
           );
         }
       }
+      
+      console.log(
+        "========================================"
+      );
 
       const messageEvent = {
         ...savedMessage,

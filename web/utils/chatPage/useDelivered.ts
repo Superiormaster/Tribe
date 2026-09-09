@@ -1,128 +1,223 @@
-'use client';
-
 import { useCallback } from "react";
 
-import type {
-  Message,
-} from "@/utils/chat/messageContract";
+import type { Message } from "@/utils/chat/messageContract";
+import { updateStatus } from "@/utils/inbox/status";
+import { updateMessage } from "@/lib/messageDB";
+import { updateCommunityMessage } from "@/lib/communityMessageDB";
 
-import {
-  updateStatus,
-} from "@/utils/inbox/status";
-
-type SetMessages = React.Dispatch<
-  React.SetStateAction<Message[]>
->;
+type SetMessages =
+  React.Dispatch<React.SetStateAction<Message[]>>;
 
 interface UseChatStatusProps {
   chatId: number;
   currentUser: number | null;
   setMessages: SetMessages;
+  chatType: "private" | "community";
+}
+
+interface StatusEvent {
+  messageIds?: number[];
+  userId: number;
+  chatId: number;
 }
 
 export function useDelivered({
   chatId,
   currentUser,
   setMessages,
+  chatType,
 }: UseChatStatusProps) {
 
-  /**
-   * Socket: Seen
-   */
-  const handleSeen = useCallback(({
-    messageIds = [],
-    userId,
-    chatId: eventChatId,
-  }: {
-    messageIds?: number[];
-    userId: number;
-    chatId: number;
-  }) => {
+  const updateLocalMessage = useCallback(
+    async (
+      clientId: string,
+      patch: Partial<Message>
+    ) => {
+      if (!currentUser || !clientId) {
+        return;
+      }
 
-    if (
-      userId === currentUser ||
-      eventChatId !== chatId ||
-      messageIds.length === 0
-    ) {
-      return;
-    }
+      try {
+        if (chatType === "community") {
+          await updateCommunityMessage(
+            clientId,
+            Number(currentUser),
+            patch
+          );
+        } else {
+          await updateMessage(
+            clientId,
+            Number(currentUser),
+            patch
+          );
+        }
+      } catch (error) {
+        console.error(
+          `[IDB STATUS] Failed to update ${chatType} message`,
+          {
+            client_id: clientId,
+            patch,
+            error,
+          }
+        );
+      }
+    },
+    [chatType, currentUser]
+  );
 
-    setMessages(prev =>
-      prev.map(msg => {
+  const applyStatus = useCallback(
+    (
+      messageIds: number[],
+      nextStatus: "delivered" | "seen"
+    ) => {
+      if (
+        !currentUser ||
+        !messageIds.length
+      ) {
+        return;
+      }
 
-        if (
-          messageIds.includes(Number(msg.id))
-        ) {
+      const idSet = new Set(
+        messageIds.map(Number)
+      );
+
+      let messagesToPersist: Array<{
+        clientId: string;
+        status: Message["status"];
+      }> = [];
+
+      setMessages((prev) => {
+        const next = prev.map((msg) => {
+          const serverId = Number(
+            msg.server_id ?? msg.id
+          );
+
+          if (
+            Number(msg.sender) !== Number(currentUser) ||
+            !idSet.has(serverId) ||
+            !msg.client_id
+          ) {
+            return msg;
+          }
+
+          const updatedStatus = updateStatus(
+            msg.status,
+            nextStatus
+          );
+
+          messagesToPersist.push({
+            clientId: msg.client_id,
+            status: updatedStatus,
+          });
+
+          if (updatedStatus === msg.status) {
+            return msg;
+          }
+
           return {
             ...msg,
-            status: updateStatus(
-              msg.status,
-              "seen"
-            ),
+            status: updatedStatus,
           };
-        }
+        });
 
-        return msg;
+        return next;
+      });
 
-      })
-    );
+      if (messagesToPersist.length > 0) {
+        const updates = messagesToPersist;
 
-  }, [
-    chatId,
-    currentUser,
-    setMessages,
-  ]);
+        void Promise.all(
+          updates.map(({ clientId, status }) =>
+            updateLocalMessage(clientId, {
+              status,
+            })
+          )
+        );
+      }
+    },
+    [
+      currentUser,
+      setMessages,
+      updateLocalMessage,
+    ]
+  );
 
-  /**
-   * Socket: Delivered
-   */
-  const handleDelivered = useCallback(({
-    messageIds = [],
-    userId,
-    chatId: eventChatId,
-  }: {
-    messageIds?: number[];
-    userId: number;
-    chatId: number;
-  }) => {
+  const handleDelivered = useCallback(
+    ({
+      messageIds = [],
+      userId,
+      chatId: eventChatId,
+    }: StatusEvent) => {
+      if (
+        !currentUser ||
+        Number(userId) === Number(currentUser) ||
+        Number(eventChatId) !== Number(chatId) ||
+        messageIds.length === 0
+      ) {
+        return;
+      }
 
-    if (
-      userId === currentUser ||
-      eventChatId !== chatId ||
-      messageIds.length === 0
-    ) {
-      return;
-    }
+      applyStatus(
+        messageIds,
+        "delivered"
+      );
+    },
+    [
+      chatId,
+      currentUser,
+      applyStatus,
+    ]
+  );
 
-    setMessages(prev =>
-      prev.map(msg => {
-
-        if (
-          messageIds.includes(Number(msg.id))
-        ) {
-          return {
-            ...msg,
-            status: updateStatus(
-              msg.status,
-              "delivered"
-            ),
-          };
-        }
-
-        return msg;
-
-      })
-    );
-
-  }, [
-    chatId,
-    currentUser,
-    setMessages,
-  ]);
+  const handleSeen = useCallback(
+    ({
+      messageIds = [],
+      userId,
+      chatId: eventChatId,
+    }: StatusEvent) => {
+      if (
+        !currentUser ||
+        Number(eventChatId) !== Number(chatId)
+      ) {
+        return;
+      }
+  
+      if (
+        Number(userId) === Number(currentUser)
+      ) {
+        window.dispatchEvent(
+          new CustomEvent(
+            "chat-unread-update",
+            {
+              detail: {
+                chatId: Number(chatId),
+                chatType: "private",
+              },
+            }
+          )
+        );
+  
+        return;
+      }
+  
+      if (messageIds.length === 0) {
+        return;
+      }
+  
+      applyStatus(
+        messageIds,
+        "seen"
+      );
+    },
+    [
+      currentUser,
+      chatId,
+      applyStatus,
+    ]
+  );
 
   return {
-    handleSeen,
     handleDelivered,
+    handleSeen,
   };
-
 }

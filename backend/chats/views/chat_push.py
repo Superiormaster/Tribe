@@ -131,6 +131,51 @@ class PrivateChatPushView(
                 is_active=True,
             )
         )
+        
+        print("")
+        print("==============================================")
+        print("📱 [PRIVATE PUSH] DEVICE LOOKUP")
+        print("==============================================")
+        
+        print(
+            "Recipient ID:",
+            recipient_id,
+        )
+        
+        print(
+            "Active device count:",
+            devices.count(),
+        )
+        
+        print(
+            "Device IDs:",
+            list(
+                devices.values_list(
+                    "id",
+                    flat=True,
+                )
+            ),
+        )
+        
+        print(
+            "All device records:",
+            list(
+                DevicePushToken.objects
+                .filter(
+                    user_id=recipient_id,
+                )
+                .values(
+                    "id",
+                    "user_id",
+                    "platform",
+                    "browser",
+                    "is_active",
+                    "last_seen_at",
+                )
+            ),
+        )
+        
+        print("==============================================")
 
         queued = 0
 

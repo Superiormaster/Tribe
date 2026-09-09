@@ -1,46 +1,63 @@
 'use client';
 
-import { useEffect, useRef, useState } from "react";
+import {
+  WifiOff,
+  RotateCw,
+  Signal,
+} from "lucide-react";
+
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
 import { useNetwork } from "./NetworkContext";
 
 export default function NetworkBanner() {
   const {
     isOnline,
     serverReachable,
+    reconnecting,
+    networkStatus,
   } = useNetwork();
 
   const [visible, setVisible] =
     useState(false);
+
   const [message, setMessage] =
     useState("");
-  const [color, setColor] =
-    useState("");
+
   const hasInitialized =
     useRef(false);
+
   const hadFailure =
     useRef(false);
 
   useEffect(() => {
     if (!hasInitialized.current) {
-
-      if (isOnline && serverReachable) {
+      if (
+        isOnline &&
+        serverReachable
+      ) {
         hasInitialized.current = true;
       }
 
       return;
     }
 
-    if (!isOnline || !serverReachable) {
-
+    if (
+      !isOnline ||
+      !serverReachable
+    ) {
       hadFailure.current = true;
 
       setMessage(
         !isOnline
-          ? "⚫ Offline"
+          ? "You're offline"
           : "Network unavailable"
       );
 
-      setColor("bg-red-600");
       setVisible(true);
 
       return;
@@ -51,11 +68,9 @@ export default function NetworkBanner() {
       serverReachable &&
       hadFailure.current
     ) {
-
       hadFailure.current = false;
 
-      setMessage("🟢 Back online");
-      setColor("bg-green-600");
+      setMessage("Back online");
       setVisible(true);
 
       const timer =
@@ -67,18 +82,15 @@ export default function NetworkBanner() {
         clearTimeout(timer);
       };
     }
-
   }, [
     isOnline,
     serverReachable,
   ]);
 
   useEffect(() => {
-
     const handler = (
       event: Event
     ) => {
-
       const customEvent =
         event as CustomEvent<string>;
 
@@ -89,7 +101,6 @@ export default function NetworkBanner() {
         "Network unavailable"
       );
 
-      setColor("bg-red-600");
       setVisible(true);
     };
 
@@ -104,8 +115,21 @@ export default function NetworkBanner() {
         handler
       );
     };
-
   }, []);
+
+  const slow =
+    networkStatus === "slow" ||
+    networkStatus === "poor";
+
+  const reconnectingNow =
+    reconnecting;
+
+  const Icon =
+    reconnectingNow
+      ? RotateCw
+      : slow
+      ? Signal
+      : WifiOff;
 
   if (!visible) {
     return null;
@@ -113,30 +137,45 @@ export default function NetworkBanner() {
 
   return (
     <div
-      className={`
+      className="
         fixed
         bottom-32
         left-1/2
         -translate-x-1/2
-        px-4
-        py-2
-        rounded-full
-        shadow-lg
-        text-white
         z-[99999]
-        animate-in
-        fade-in
-        min-w-[220px]
-        text-center
-        whitespace-nowrap
-        flex
-        items-center
-        justify-center
-        slide-in-from-bottom-2
-        ${color}
-      `}
+        pointer-events-none
+      "
     >
-      {message}
+      <div
+        className="
+          flex
+          items-center
+          gap-2
+          rounded-full
+          bg-black/65
+          backdrop-blur-xl
+          border
+          border-white/10
+          px-3
+          py-2
+          text-white
+          shadow-xl
+          whitespace-nowrap
+        "
+      >
+        <Icon
+          size={15}
+          className={
+            reconnectingNow
+              ? "animate-spin"
+              : ""
+          }
+        />
+
+        <span className="text-xs font-semibold">
+          {message}
+        </span>
+      </div>
     </div>
   );
 }

@@ -1,7 +1,18 @@
 'use client';
 
-import { Play, Upload, Pause, Mic } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import {
+  Play,
+  Upload,
+  Pause,
+  Mic,
+} from 'lucide-react';
+
+import {
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+
 import AudioWaveform from '@/components/AudioWaveform';
 
 type Props = {
@@ -14,6 +25,9 @@ type Props = {
   onRetry?: () => void;
 };
 
+const AUDIO_PLAY_EVENT =
+  'tribe-audio-play';
+
 export default function AudioBubble({
   url,
   waveform = [],
@@ -23,84 +37,296 @@ export default function AudioBubble({
   status,
   onRetry,
 }: Props) {
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const audioRef =
+    useRef<HTMLAudioElement>(null);
 
-  const [playing, setPlaying] = useState(false);
-  const [current, setCurrent] = useState(0);
-  const [total, setTotal] = useState(duration ?? 0);
+  const [playing, setPlaying] =
+    useState(false);
 
+  const [current, setCurrent] =
+    useState(0);
+
+  const [total, setTotal] =
+    useState(duration ?? 0);
+
+  /*
+   * Each AudioBubble gets its own unique
+   * identifier so it can ignore its own
+   * global play event.
+   */
+  const audioIdRef =
+    useRef(
+      `tribe-audio-${Math.random()
+        .toString(36)
+        .slice(2)}`
+    );
+
+  /*
+   * Audio events + global single-player
+   * coordination.
+   */
   useEffect(() => {
-    const audio = audioRef.current;
+    const audio =
+      audioRef.current;
+
     if (!audio) return;
 
+    /*
+     * Metadata loaded
+     */
     const loaded = () => {
-      if (!duration) {
-        setTotal(Math.floor(audio.duration || 0));
+      if (
+        !duration &&
+        Number.isFinite(audio.duration)
+      ) {
+        setTotal(
+          Math.floor(audio.duration)
+        );
       }
     };
 
+    /*
+     * Playback progress
+     */
     const time = () => {
-      setCurrent(audio.currentTime);
+      setCurrent(
+        audio.currentTime
+      );
     };
 
+    /*
+     * Playback ended
+     */
     const ended = () => {
       setPlaying(false);
       setCurrent(0);
     };
 
-    audio.addEventListener('loadedmetadata', loaded);
-    audio.addEventListener('timeupdate', time);
-    audio.addEventListener('ended', ended);
+    /*
+     * Native pause event.
+     *
+     * This also fires when another
+     * AudioBubble pauses this audio.
+     */
+    const paused = () => {
+      setPlaying(false);
+    };
+
+    /*
+     * Native play event.
+     */
+    const started = () => {
+      setPlaying(true);
+    };
+
+    audio.addEventListener(
+      'loadedmetadata',
+      loaded
+    );
+
+    audio.addEventListener(
+      'timeupdate',
+      time
+    );
+
+    audio.addEventListener(
+      'ended',
+      ended
+    );
+
+    audio.addEventListener(
+      'pause',
+      paused
+    );
+
+    audio.addEventListener(
+      'play',
+      started
+    );
+
+    /*
+     * Listen for another Tribe audio
+     * starting playback.
+     */
+    const handleOtherAudio =
+      (event: Event) => {
+        const customEvent =
+          event as CustomEvent<{
+            id: string;
+          }>;
+
+        /*
+         * Ignore our own event.
+         */
+        if (
+          customEvent.detail?.id ===
+          audioIdRef.current
+        ) {
+          return;
+        }
+
+        /*
+         * Another audio started.
+         * Pause this one.
+         */
+        if (!audio.paused) {
+          audio.pause();
+        }
+
+        setPlaying(false);
+      };
+
+    window.addEventListener(
+      AUDIO_PLAY_EVENT,
+      handleOtherAudio
+    );
 
     return () => {
-      audio.removeEventListener('loadedmetadata', loaded);
-      audio.removeEventListener('timeupdate', time);
-      audio.removeEventListener('ended', ended);
+      audio.removeEventListener(
+        'loadedmetadata',
+        loaded
+      );
+
+      audio.removeEventListener(
+        'timeupdate',
+        time
+      );
+
+      audio.removeEventListener(
+        'ended',
+        ended
+      );
+
+      audio.removeEventListener(
+        'pause',
+        paused
+      );
+
+      audio.removeEventListener(
+        'play',
+        started
+      );
+
+      window.removeEventListener(
+        AUDIO_PLAY_EVENT,
+        handleOtherAudio
+      );
     };
   }, [duration]);
-  
+
+  /*
+   * Duration fallback.
+   */
   useEffect(() => {
     if (duration) return;
 
-    const audio = audioRef.current;
+    const audio =
+      audioRef.current;
+
     if (!audio) return;
 
     const loaded = () => {
-        setTotal(Math.floor(audio.duration));
+      if (
+        Number.isFinite(audio.duration)
+      ) {
+        setTotal(
+          Math.floor(audio.duration)
+        );
+      }
     };
 
-    audio.addEventListener("loadedmetadata", loaded);
+    audio.addEventListener(
+      'loadedmetadata',
+      loaded
+    );
 
     return () =>
-        audio.removeEventListener("loadedmetadata", loaded);
+      audio.removeEventListener(
+        'loadedmetadata',
+        loaded
+      );
   }, [duration]);
-  
+
+  /*
+   * Metadata preloading.
+   */
   useEffect(() => {
     if (!priority) return;
 
-    const audio = new Audio(url);
-    audio.preload = "metadata";
+    const audio =
+      new Audio(url);
+
+    audio.preload = 'metadata';
+
+    return () => {
+      audio.src = '';
+    };
   }, [priority, url]);
 
-  const toggle = () => {
-    const audio = audioRef.current;
+  /*
+   * Play / pause.
+   */
+  const toggle = async () => {
+    const audio =
+      audioRef.current;
 
     if (!audio) return;
 
-    if (playing) {
+    /*
+     * Pause current audio.
+     */
+    if (!audio.paused) {
       audio.pause();
-      setPlaying(false);
-    } else {
-      audio.play();
+      return;
+    }
+
+    window.dispatchEvent(
+      new CustomEvent(
+        AUDIO_PLAY_EVENT,
+        {
+          detail: {
+            id: audioIdRef.current,
+          },
+        }
+      )
+    );
+
+    try {
+      await audio.play();
+
       setPlaying(true);
+    } catch (error) {
+      console.error(
+        '[AudioBubble] Playback failed:',
+        error
+      );
+
+      setPlaying(false);
     }
   };
 
-  const format = (sec: number) => {
-    const m = Math.floor(sec / 60);
-    const s = Math.floor(sec % 60);
+  /*
+   * Format duration.
+   */
+  const format = (
+    sec: number
+  ) => {
+    if (
+      !Number.isFinite(sec) ||
+      sec < 0
+    ) {
+      return '0:00';
+    }
 
-    return `${m}:${s.toString().padStart(2, '0')}`;
+    const m =
+      Math.floor(sec / 60);
+
+    const s =
+      Math.floor(sec % 60);
+
+    return `${m}:${s
+      .toString()
+      .padStart(2, '0')}`;
   };
 
   return (
@@ -125,13 +351,22 @@ export default function AudioBubble({
       <audio
         ref={audioRef}
         src={url}
-        preload={priority ? "auto" : "metadata"}
+        preload={
+          priority
+            ? 'auto'
+            : 'metadata'
+        }
       />
 
-      {/* Controls */}
-      <div className="flex items-center gap-2 shrink-0">
-      
-        {/* Play */}
+      {/* CONTROLS */}
+      <div
+        className="
+          flex
+          items-center
+          gap-2
+          shrink-0
+        "
+      >
         <button
           type="button"
           onClick={toggle}
@@ -145,7 +380,11 @@ export default function AudioBubble({
             justify-center
             shrink-0
           "
-          aria-label={playing ? "Pause voice message" : "Play voice message"}
+          aria-label={
+            playing
+              ? 'Pause voice message'
+              : 'Play voice message'
+          }
         >
           {playing ? (
             <Pause
@@ -155,16 +394,18 @@ export default function AudioBubble({
           ) : (
             <Play
               size={18}
-              className="text-white ml-0.5"
+              className="
+                text-white
+                ml-0.5
+              "
             />
           )}
         </button>
-      
       </div>
-  
+
       {/* UPLOAD STATUS */}
-      {(status === "uploading" ||
-        status === "sending") && (
+      {(status === 'uploading' ||
+        status === 'sending') && (
         <div
           className="
             w-11
@@ -190,10 +431,10 @@ export default function AudioBubble({
           />
         </div>
       )}
-  
+
       {/* RETRY */}
-      {(status === "pending" ||
-        status === "failed") && (
+      {(status === 'pending' ||
+        status === 'failed') && (
         <button
           type="button"
           onClick={onRetry}
@@ -218,7 +459,7 @@ export default function AudioBubble({
         </button>
       )}
 
-      {/* Waveform */}
+      {/* WAVEFORM */}
       <div className="flex-1">
         <AudioWaveform
           waveform={waveform}
@@ -229,13 +470,31 @@ export default function AudioBubble({
           }
         />
 
-        <div className="flex items-center justify-between mt-1">
+        <div
+          className="
+            flex
+            items-center
+            justify-between
+            mt-1
+          "
+        >
           {playing ? (
-            <span className="text-[11px] text-gray-500 dark:text-gray-300">
+            <span
+              className="
+                text-[11px]
+                text-gray-500
+                dark:text-gray-300
+              "
+            >
               {format(current)}
             </span>
           ) : (
-            <span className="text-[11px] text-gray-300">
+            <span
+              className="
+                text-[11px]
+                text-gray-300
+              "
+            >
               {format(total)}
             </span>
           )}

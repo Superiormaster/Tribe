@@ -9,30 +9,48 @@ export default function AudioWaveform({
   waveform?: number[];
   progress?: number;
 }) {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const canvasRef =
+    useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
-    if (!canvasRef.current || waveform.length === 0) return;
+    if (
+      !canvasRef.current ||
+      waveform.length === 0
+    ) {
+      return;
+    }
 
     const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext('2d');
+
     if (!ctx) return;
 
     const width = canvas.width;
     const height = canvas.height;
 
-    ctx.clearRect(0, 0, width, height);
+    ctx.clearRect(
+      0,
+      0,
+      width,
+      height
+    );
 
-    const barWidth = width / waveform.length;
+    const barWidth =
+      width / waveform.length;
 
     waveform.forEach((v, i) => {
       const x = i * barWidth;
       const h = v * height;
 
-      ctx.fillStyle =
-        i / waveform.length < progress
-          ? "#22c55e" // played (green)
-          : "#9ca3af"; // unplayed (gray)
+      const isPlayed =
+        i / waveform.length < progress;
+
+      ctx.fillStyle = isPlayed
+        ? '#4f46e5' // indigo-600
+        : document.documentElement
+            .classList.contains('dark')
+          ? '#6b7280' // gray-500 dark mode
+          : '#d1d5db'; // gray-300 light mode
 
       ctx.fillRect(
         x,

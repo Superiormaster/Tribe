@@ -108,6 +108,7 @@ export interface Message {
   chat?: number;
 
   sender: number;
+  server_created_at?: string;
   sender_info?: UserSummary;
   sender_username?: string;
   sender_avatar?: string | null;
@@ -128,11 +129,15 @@ export interface Message {
 
   status?: MessageStatus;
   media_status?: MediaStatus;
+  retryable?: boolean;
+  error_type?: string;
+  error_message?: string;
 
   upload_progress?: number;
 
   created_at?: string;
   updated_at?: string;
+  deleted_at?: string;
 
   reactions?: any[];
 

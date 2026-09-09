@@ -62,16 +62,7 @@ export default function ChatPage() {
   const { user } = useContext(UserContext)!;
   const { canCommunicate } = useNetwork();
   const { replace, push } = useNavigation();
-  const [activeReaction, setActiveReaction] = useState<string | null>(null);
   const [showReportModal, setShowReportModal] = useState(false);
-
-  useEffect(() => {
-    console.log("Chat page mounted");
-  
-    return () => {
-      console.log("Chat page unmounted");
-    };
-  }, []);
 
   const currentUser = useMemo(() => ({
     id: user?.id ?? null,
@@ -305,6 +296,7 @@ export default function ChatPage() {
     handleDelivered,
   } = useDelivered({
     chatId: chatIdNum,
+    chatType: "private",
     currentUser: currentUser.id,
     setMessages,
   });
@@ -417,12 +409,7 @@ export default function ChatPage() {
   });
   
   const closeReactionPicker = () => {
-    setActiveReaction(null);
     clearSelection();
-  };
-  
-  const closeReactionPickerOnly = () => {
-    setActiveReaction(null);
   };
 
   const {
@@ -501,38 +488,6 @@ export default function ChatPage() {
     setShowMuteModal,
     setShowChatOptions,
   });
-  
-  useEffect(() => {
-    if (!socketRef.current) return;
-  
-    socketRef.current.onUserStatus = ({
-      userId,
-      status,
-      last_seen,
-    }: {
-      userId: number;
-      status: string;
-      last_seen: string | null;
-    }) => {
-      if (userId !== chatUser?.id) return;
-    
-      setChatUser(prev =>
-        prev
-          ? {
-              ...prev,
-              status,
-              last_seen: last_seen ?? undefined,
-            }
-          : prev
-      );
-    };
-  
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.onUserStatus = null;
-      }
-    };
-  }, [chatUser?.id]);
   
   const selectedCommunityMessages =
     getSelectedMessages();
@@ -619,6 +574,7 @@ export default function ChatPage() {
       />
 
       <ChatBody
+        ref={messageBodyRef}
         chatId={chatIdNum}
         messages={messages}
         closeReactionPicker={closeReactionPicker}
@@ -765,6 +721,7 @@ export default function ChatPage() {
         }}
         onDelete={() => {
           messageBodyRef.current?.closeReactionPicker();
+        
           setShowDeleteModal(true);
         }}
       />
@@ -806,9 +763,10 @@ export default function ChatPage() {
         canDeleteForEveryone={
           canDeleteForEveryone
         }
-        onClose={() =>
-          setShowDeleteModal(false)
-        }
+        onClose={() => {
+          messageBodyRef.current?.closeReactionPicker();
+          setShowDeleteModal(false);
+        }}
         onDeleteForMe={handleDeleteForMe}
         onDeleteForEveryone={
           handleDeleteForEveryone

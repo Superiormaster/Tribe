@@ -17,6 +17,7 @@ from ..services.r2 import (
     list_multipart_parts,
     initialize_media_upload,
     media_response,
+    get_media_duration,
 )
 
 def get_user_media(request, media_id):
@@ -308,6 +309,37 @@ class CompleteMediaUploadView(APIView):
         asset.content_type = content_type
 
         asset.status = "ready"
+  
+        if (
+            asset.media_type in {
+                "audio",
+                "video",
+            }
+            and (
+                asset.duration is None
+                or asset.duration <= 0
+            )
+        ):
+        
+            detected_duration = (
+                get_media_duration(
+                    asset.object_key
+                )
+            )
+        
+            if detected_duration is not None:
+        
+                asset.duration = detected_duration
+        
+                print(
+                    "=== DURATION GENERATED ===",
+                    {
+                        "media_id": asset.media_id,
+                        "media_type": asset.media_type,
+                        "duration": detected_duration,
+                    },
+                    flush=True,
+                )
 
         if hasattr(
             asset,
@@ -320,6 +352,7 @@ class CompleteMediaUploadView(APIView):
                     "size",
                     "content_type",
                     "status",
+                    "duration",
                     "thumbnail_status",
                     "updated_at",
                 ]
@@ -331,6 +364,7 @@ class CompleteMediaUploadView(APIView):
                 update_fields=[
                     "size",
                     "content_type",
+                    "duration",
                     "status",
                     "updated_at",
                 ]
@@ -724,6 +758,37 @@ class CompleteMultipartMediaUploadView(APIView):
 
         asset.multipart_upload_id = None
 
+        if (
+            asset.media_type in {
+                "audio",
+                "video",
+            }
+            and (
+                asset.duration is None
+                or asset.duration <= 0
+            )
+        ):
+        
+            detected_duration = (
+                get_media_duration(
+                    asset.object_key
+                )
+            )
+        
+            if detected_duration is not None:
+        
+                asset.duration = detected_duration
+        
+                print(
+                    "=== DURATION GENERATED ===",
+                    {
+                        "media_id": asset.media_id,
+                        "media_type": asset.media_type,
+                        "duration": detected_duration,
+                    },
+                    flush=True,
+                )
+
         if asset.media_type in {
             "image",
             "video",
@@ -743,6 +808,7 @@ class CompleteMultipartMediaUploadView(APIView):
                         "size",
                         "content_type",
                         "status",
+                        "duration",
                         "multipart_upload_id",
                         "thumbnail_status",
                         "updated_at",
@@ -756,6 +822,7 @@ class CompleteMultipartMediaUploadView(APIView):
                         "size",
                         "content_type",
                         "status",
+                        "duration",
                         "multipart_upload_id",
                         "updated_at",
                     ]

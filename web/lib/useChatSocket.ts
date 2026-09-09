@@ -52,10 +52,12 @@ type TribeSocket = Socket & {
 
 type Props = {
   chatId: number | null;
+
   currentUser: CurrentUser | null;
 
-  // THIS MUST BE THE GLOBAL SOCKET REF.
-  socketRef: React.MutableRefObject<TribeSocket | null>;
+  socketRef: React.MutableRefObject<
+    TribeSocket | null
+  >;
 
   setIsTyping: Dispatch<
     SetStateAction<boolean>
@@ -68,13 +70,34 @@ type Props = {
 
 type PrivateChatHandlers = {
   handleConnect: () => void;
-  handleTyping: (data: any) => void;
-  handleDisconnect: (reason: string) => void;
-  handleStopTyping: (data: any) => void;
-  handleErr: (err: any) => void;
-  handleError: (err: any) => void;
-  handleReceiveMessage: (message: Message) => void;
-  handleUserStatus: (data: any) => void;
+
+  handleTyping: (
+    data: any
+  ) => void;
+
+  handleDisconnect: (
+    reason: string
+  ) => void;
+
+  handleStopTyping: (
+    data: any
+  ) => void;
+
+  handleErr: (
+    err: any
+  ) => void;
+
+  handleError: (
+    err: any
+  ) => void;
+
+  handleReceiveMessage: (
+    message: Message
+  ) => void;
+
+  handleUserStatus: (
+    data: any
+  ) => void;
 };
 
 export function useChatSocket({
@@ -84,18 +107,30 @@ export function useChatSocket({
   setIsTyping,
   setChatUser,
 }: Props) {
-  const mountedRef = useRef(false);
 
-  const [socketReady, setSocketReady] =
-    useState(false);
+  const mountedRef =
+    useRef(false);
+
+  const [
+    socketReady,
+    setSocketReady,
+  ] = useState(false);
 
   useEffect(() => {
-    if (!chatId || !currentUser?.id) {
+
+    if (
+      !chatId ||
+      !currentUser?.id
+    ) {
       setSocketReady(false);
       return;
     }
 
-    const id = Number(chatId);
+    const id =
+      Number(chatId);
+
+    const currentUserId =
+      Number(currentUser.id);
 
     mountedRef.current = true;
 
@@ -103,36 +138,41 @@ export function useChatSocket({
       '🔵 [PRIVATE] MOUNT',
       {
         chatId: id,
-        userId: currentUser.id,
+        userId: currentUserId,
       }
     );
 
-    let socket: TribeSocket | null = null;
+    let socket:
+      TribeSocket | null = null;
 
-    const getGlobalSocket = (): TribeSocket | null => {
-      const current =
-        socketRef.current;
+    const getGlobalSocket =
+      (): TribeSocket | null => {
 
-      if (!current) {
-        console.log(
-          '⏳ [PRIVATE] Global socket not available yet',
-          id
-        );
+        const current =
+          socketRef.current;
 
-        return null;
-      }
+        if (!current) {
 
-      socket = current;
+          console.log(
+            '⏳ [PRIVATE] Global socket not available yet',
+            id
+          );
 
-      return current;
-    };
+          return null;
+        }
+
+        socket =
+          current;
+
+        return current;
+      };
 
     const handleConnect = () => {
-      if (!mountedRef.current) {
-        return;
-      }
 
-      if (!socket) {
+      if (
+        !mountedRef.current ||
+        !socket
+      ) {
         return;
       }
 
@@ -146,16 +186,8 @@ export function useChatSocket({
 
       setSocketReady(false);
 
-      // Rejoin ONLY this chat.
       socket.emit(
         'join_chat',
-        {
-          chatId: id,
-        }
-      );
-
-      socket.emit(
-        'mark_seen',
         {
           chatId: id,
         }
@@ -167,49 +199,62 @@ export function useChatSocket({
     const handleReceiveMessage = (
       message: Message
     ) => {
-      if (!mountedRef.current) {
+
+      if (
+        !mountedRef.current
+      ) {
         return;
       }
-    
+
       const messageChatId =
         Number(
           (message as any)?.chat ??
           (message as any)?.chatId
         );
-    
+
       if (
         messageChatId !== id
       ) {
         return;
       }
-    
-      socket?.setPrivateChatMessages?.(
-        id,
-        (setMessages:
-          Dispatch<
-            SetStateAction<Message[]>
-          >) => {
-          setMessages(
-            prev =>
-              sortMessages(
-                mergeMessages(
-                  prev,
-                  [message]
+
+      socket
+        ?.setPrivateChatMessages
+        ?.(
+          id,
+          (
+            setMessages:
+              Dispatch<
+                SetStateAction<Message[]>
+              >
+          ) => {
+
+            setMessages(
+              prev =>
+                sortMessages(
+                  mergeMessages(
+                    prev,
+                    [message]
+                  )
                 )
-              )
-          );
-        }
-      );
+            );
+
+          }
+        );
     };
 
     const handleTyping = (
       data: any
     ) => {
-      if (
+
+      const eventChatId =
         Number(
           data?.chatId ??
           data?.chat
-        ) !== id
+        );
+
+      if (
+        eventChatId !== id
       ) {
         return;
       }
@@ -222,11 +267,15 @@ export function useChatSocket({
     const handleStopTyping = (
       data: any
     ) => {
-      if (
+
+      const eventChatId =
         Number(
           data?.chatId ??
           data?.chat
-        ) !== id
+        );
+
+      if (
+        eventChatId !== id
       ) {
         return;
       }
@@ -245,35 +294,58 @@ export function useChatSocket({
       status: string;
       last_seen: string | null;
     }) => {
+
       if (
-        Number(userId) ===
-        Number(currentUser.id)
+        !mountedRef.current
       ) {
         return;
       }
 
-      if (!mountedRef.current) {
+      const eventUserId =
+        Number(userId);
+
+      if (
+        eventUserId ===
+        currentUserId
+      ) {
         return;
       }
 
       setChatUser?.(
-        (prev: any) =>
-          prev
-            ? {
-                ...prev,
-                status,
-                last_seen:
-                  last_seen ??
-                  undefined,
-              }
-            : prev
+        (prev: any) => {
+
+          if (!prev) {
+            return prev;
+          }
+
+          if (
+            Number(prev.id) !==
+            eventUserId
+          ) {
+            return prev;
+          }
+
+          return {
+            ...prev,
+
+            status,
+
+            last_seen:
+              last_seen ??
+              prev.last_seen,
+          };
+
+        }
       );
     };
 
     const handleDisconnect = (
       reason: string
     ) => {
-      if (!mountedRef.current) {
+
+      if (
+        !mountedRef.current
+      ) {
         return;
       }
 
@@ -291,6 +363,7 @@ export function useChatSocket({
     const handleError = (
       err: any
     ) => {
+
       console.error(
         '🔴 [PRIVATE] CONNECT ERROR',
         {
@@ -309,6 +382,7 @@ export function useChatSocket({
     const handleErr = (
       err: any
     ) => {
+
       console.error(
         '🔴 [PRIVATE] SOCKET ERROR',
         {
@@ -321,7 +395,10 @@ export function useChatSocket({
     const attach = (
       globalSocket: TribeSocket
     ) => {
-      if (!mountedRef.current) {
+
+      if (
+        !mountedRef.current
+      ) {
         return;
       }
 
@@ -332,13 +409,13 @@ export function useChatSocket({
         globalSocket.__privateChatHandlers ||
         new Map();
 
-      // Prevent duplicate registration.
       const existing =
-        globalSocket.__privateChatHandlers.get(
-          id
-        );
+        globalSocket
+          .__privateChatHandlers
+          .get(id);
 
       if (existing) {
+
         console.warn(
           '⚠️ [PRIVATE] Existing handlers found, cleaning first',
           id
@@ -385,19 +462,21 @@ export function useChatSocket({
         );
       }
 
-      globalSocket.__privateChatHandlers.set(
-        id,
-        {
-          handleConnect,
-          handleTyping,
-          handleDisconnect,
-          handleStopTyping,
-          handleErr,
-          handleError,
-          handleReceiveMessage,
-          handleUserStatus,
-        }
-      );
+      globalSocket
+        .__privateChatHandlers
+        .set(
+          id,
+          {
+            handleConnect,
+            handleTyping,
+            handleDisconnect,
+            handleStopTyping,
+            handleErr,
+            handleError,
+            handleReceiveMessage,
+            handleUserStatus,
+          }
+        );
 
       globalSocket.on(
         'connect',
@@ -439,74 +518,87 @@ export function useChatSocket({
         handleUserStatus
       );
 
-      globalSocket.onTyping = (
-        data: any
-      ) => {
-        if (
-          Number(
-            data?.userId
-          ) ===
-          Number(
-            currentUser.id
-          )
-        ) {
-          return;
-        }
+      globalSocket.onTyping =
+        (
+          data: any
+        ) => {
 
-        setIsTyping(true);
-      };
+          if (
+            Number(
+              data?.userId
+            ) ===
+            currentUserId
+          ) {
+            return;
+          }
 
-      globalSocket.onStopTyping = (
-        data: any
-      ) => {
-        if (
-          Number(
-            data?.userId
-          ) ===
-          Number(
-            currentUser.id
-          )
-        ) {
-          return;
-        }
+          setIsTyping(true);
+        };
 
-        setIsTyping(false);
-      };
+      globalSocket.onStopTyping =
+        (
+          data: any
+        ) => {
 
-      globalSocket.onMessage = (
-        message: Message
-      ) => {
-        if (!mountedRef.current) {
-          return;
-        }
+          if (
+            Number(
+              data?.userId
+            ) ===
+            currentUserId
+          ) {
+            return;
+          }
 
-        if (
-          Number(
-            (message as any)?.chat ??
-            (message as any)?.chatId
-          ) !== id
-        ) {
-          return;
-        }
+          setIsTyping(false);
+        };
 
-        globalSocket.setPrivateChatMessages?.(
-          id,
-          (setMessages:
-            Dispatch<
-              SetStateAction<Message[]>
-            >) => {
-              setMessages(
-                prev =>
-                  sortMessages(
-                    mergeMessages(
-                      prev,
-                      [message]
+      globalSocket.onMessage =
+        (
+          message: Message
+        ) => {
+
+          if (
+            !mountedRef.current
+          ) {
+            return;
+          }
+
+          const messageChatId =
+            Number(
+              (message as any)?.chat ??
+              (message as any)?.chatId
+            );
+
+          if (
+            messageChatId !== id
+          ) {
+            return;
+          }
+
+          globalSocket
+            .setPrivateChatMessages
+            ?.(
+              id,
+              (
+                setMessages:
+                  Dispatch<
+                    SetStateAction<Message[]>
+                  >
+              ) => {
+
+                setMessages(
+                  prev =>
+                    sortMessages(
+                      mergeMessages(
+                        prev,
+                        [message]
+                      )
                     )
-                  )
-              );
-            }
-        );
-      };
+                );
+
+              }
+            );
+        };
 
       if (
         globalSocket.connected
@@ -528,6 +620,7 @@ export function useChatSocket({
 
     const handleGlobalSocketConnected =
       () => {
+
         if (
           !mountedRef.current
         ) {
@@ -543,15 +636,16 @@ export function useChatSocket({
           return;
         }
 
-        // Avoid duplicate attachment.
         if (
           socket ===
-          globalSocket &&
-          globalSocket.__privateChatHandlers?.has(
-            id
-          )
+            globalSocket &&
+          globalSocket
+            .__privateChatHandlers
+            ?.has(id)
         ) {
+
           handleConnect();
+
           return;
         }
 
@@ -562,6 +656,7 @@ export function useChatSocket({
 
     const handleGlobalSocketDisconnected =
       () => {
+
         if (
           !mountedRef.current
         ) {
@@ -587,6 +682,7 @@ export function useChatSocket({
     );
 
     return () => {
+
       console.log(
         '🧹 [PRIVATE] CLEANUP',
         {
@@ -613,7 +709,9 @@ export function useChatSocket({
       if (
         !cleanupSocket
       ) {
+
         setSocketReady(false);
+
         return;
       }
 
@@ -625,6 +723,7 @@ export function useChatSocket({
       if (
         cleanupSocket.connected
       ) {
+
         cleanupSocket.emit(
           'leave_chat',
           {
@@ -636,6 +735,7 @@ export function useChatSocket({
       if (
         handlers
       ) {
+
         cleanupSocket.off(
           'connect',
           handlers.handleConnect
@@ -681,7 +781,8 @@ export function useChatSocket({
           ?.delete(id);
       }
 
-      delete cleanupSocket.setPrivateChatMessages;
+      delete cleanupSocket
+        .setPrivateChatMessages;
 
       setSocketReady(false);
 

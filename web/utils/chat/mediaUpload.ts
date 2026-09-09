@@ -43,6 +43,7 @@ type UploadedChatMedia = {
   url: string;
   type: "video" | "audio" | "image";
   thumbnail: string | null;
+  duration: number | null;
 };
 
 export async function uploadMediaFiles(
@@ -52,6 +53,7 @@ export async function uploadMediaFiles(
     connectionType,
     signal,
     onProgress,
+    duration: providedDurations = [],
   }: {
     networkStatus:
       | "offline"
@@ -65,6 +67,7 @@ export async function uploadMediaFiles(
       | "unknown";
 
     signal?: AbortSignal;
+    duration?: Array<number | null>;
 
     onProgress?: (
       percent: number,
@@ -197,167 +200,208 @@ export async function uploadMediaFiles(
     let compressedVideoKey:
       string | null = null;
     
-    let mediaDuration:
-      number | null = null;
-    
+    let mediaDuration: number | null = null;
+
     const isVideo =
       originalFile.type.startsWith("video/");
     
     const isAudio =
       originalFile.type.startsWith("audio/");
     
-    if (isVideo || isAudio) {
+    const providedDuration =
+      providedDurations[index] ?? null;
     
+    if (
+      typeof providedDuration === "number" &&
+      Number.isFinite(providedDuration) &&
+      providedDuration > 0
+    ) {
       mediaDuration =
-        await getVideoDuration(
-          originalFile
+        Math.max(
+          1,
+          Math.round(providedDuration)
         );
     
       console.log(
-        "⏱️ [CHAT] Media duration:",
+        "⏱️ [CHAT] Using existing message duration",
         {
-          name:
-            originalFile.name,
-    
-          type:
-            originalFile.type,
-    
-          duration:
-            mediaDuration,
+          name: originalFile.name,
+          type: originalFile.type,
+          duration: mediaDuration,
+          source: "voice-recorder",
         }
       );
+    } else if (isVideo) {
+      console.log(
+        "⏱️ [CHAT] No supplied duration. Detecting video duration...",
+        {
+          name: originalFile.name,
+          type: originalFile.type,
+        }
+      );
+    
+      try {
+        const detected =
+          await Promise.race<number | null>([
+            getVideoDuration(originalFile),
+    
+            new Promise<null>((resolve) => {
+              setTimeout(() => {
+                console.warn(
+                  "⚠️ [CHAT] Video duration detection timed out."
+                );
+    
+                resolve(null);
+              }, 5000);
+            }),
+          ]);
+    
+        if (
+          typeof detected === "number" &&
+          Number.isFinite(detected) &&
+          detected > 0
+        ) {
+          mediaDuration =
+            Math.max(
+              1,
+              Math.round(detected)
+            );
+        } else {
+          mediaDuration = null;
+        }
+    
+        console.log(
+          "⏱️ [CHAT] Video duration check finished",
+          {
+            name: originalFile.name,
+            duration: mediaDuration,
+          }
+        );
+      } catch (error) {
+        console.warn(
+          "⚠️ [CHAT] Video duration detection failed.",
+          error
+        );
+    
+        mediaDuration = null;
+      }
+    } else if (isAudio) {
+      console.log(
+        "ℹ️ [CHAT] Audio duration unavailable. No valid supplied duration.",
+        {
+          name: originalFile.name,
+          type: originalFile.type,
+        }
+      );
+    
+      mediaDuration = null;
+    }
   
+    if (isVideo) {
       const shouldCompress =
+        mediaDuration !== null &&
         mediaDuration > 3 &&
-        originalFile.size > 8 * 1024 * 1024;
-  
+        originalFile.size >
+          8 * 1024 * 1024;
+    
       const targetQuality =
         networkStatus === "poor" ||
         networkStatus === "slow"
           ? "720p"
           : "1080p";
-
+    
       compressedVideoKey =
         getCompressedVideoKey(
           originalFile,
           targetQuality
         );
-
+    
+      console.log(
+        "🎥 [CHAT] Checking compressed video cache",
+        {
+          name: originalFile.name,
+          quality: targetQuality,
+          shouldCompress,
+          cacheKey: compressedVideoKey,
+        }
+      );
+    
       const cached =
         await getCompressedVideo(
           compressedVideoKey
         );
-
+    
       if (cached) {
-
         console.log(
           "🎥 [CHAT] Using persisted compressed video",
           {
-            original:
-              originalFile.name,
-
-            compressed:
-              cached.name,
-
+            original: originalFile.name,
+            compressed: cached.name,
             size:
               (
                 cached.size /
                 1024 /
                 1024
               ).toFixed(2) + " MB",
-
-            quality:
-              targetQuality,
+            quality: targetQuality,
           }
         );
-
-        fileToUpload =
-          cached;
-
+    
+        fileToUpload = cached;
+    
         onProgress?.(
           50,
           originalFile
         );
-
       } else {
-
         console.log(
-          "🎥 [CHAT] Compressing video",
+          "🎥 [CHAT] No cached video. Preparing compression.",
           {
-            name:
-              originalFile.name,
-
-            size:
-              (
-                originalFile.size /
-                1024 /
-                1024
-              ).toFixed(2) + " MB",
-
-            quality:
-              targetQuality,
+            name: originalFile.name,
+            shouldCompress,
           }
         );
-
+    
         onProgress?.(
           0,
           originalFile
         );
-
-        const { compressVideo } =
-          await import(
-            "@/utils/mediaUpload/videoCompressor"
-          );
-  
+    
         if (shouldCompress) {
+          const { compressVideo } =
+            await import(
+              "@/utils/mediaUpload/videoCompressor"
+            );
+    
+          console.log(
+            "🎥 [CHAT] Starting video compression"
+          );
+    
           const compressed =
             await compressVideo({
-              file:
-                originalFile,
-  
+              file: originalFile,
               networkStatus,
-  
               connectionType,
-  
               signal,
-  
-              onProgress:
-                percent => {
-  
-                  onProgress?.(
-                    Math.round(
-                      percent / 2
-                    ),
-                    originalFile
-                  );
-                },
+              onProgress: percent => {
+                onProgress?.(
+                  Math.round(
+                    percent / 2
+                  ),
+                  originalFile
+                );
+              },
             });
-  
-          onProgress?.(
-            50,
-            originalFile
-          );
-  
+    
           console.log(
-            "🎥 [CHAT] Compression result:",
+            "🎥 [CHAT] Video compression finished",
             {
-              originalName:
-                originalFile.name,
-          
-              originalSize:
-                originalFile.size,
-          
-              compressedName:
-                compressed.name,
-          
-              compressedSize:
-                compressed.size,
-          
-              compressedType:
-                compressed.type,
+              name: compressed?.name,
+              size: compressed?.size,
+              type: compressed?.type,
             }
           );
-          
+    
           if (
             !compressed ||
             compressed.size <= 0
@@ -366,41 +410,52 @@ export async function uploadMediaFiles(
               "Video compression produced an empty file."
             );
           }
-  
+    
+          onProgress?.(
+            50,
+            originalFile
+          );
+    
           await saveCompressedVideo(
             compressedVideoKey,
             compressed,
             originalFile,
             targetQuality
           );
-  
+    
           console.log(
-            "💾 [CHAT] Compressed video persisted",
-            {
-              name:
-                compressed.name,
-  
-              size:
-                (
-                  compressed.size /
-                  1024 /
-                  1024
-                ).toFixed(2) + " MB",
-  
-              quality:
-                targetQuality,
-            }
+            "💾 [CHAT] Compressed video persisted"
           );
-  
+    
           fileToUpload =
             compressed;
         } else {
-          fileToUpload = originalFile;
-        
-          onProgress?.(50, originalFile);
+          console.log(
+            "🎥 [CHAT] Video does not need compression"
+          );
+    
+          fileToUpload =
+            originalFile;
+    
+          onProgress?.(
+            50,
+            originalFile
+          );
         }
       }
     }
+    
+    console.log(
+      "✅ [UPLOAD FILE] MEDIA PREPARATION FINISHED",
+      {
+        name: originalFile.name,
+        type: originalFile.type,
+        duration: mediaDuration,
+        uploadFileName: fileToUpload.name,
+        uploadFileSize: fileToUpload.size,
+        uploadFileType: fileToUpload.type,
+      }
+    );
 
     /*
      * Check cancellation again before upload.
@@ -551,6 +606,7 @@ export async function uploadMediaFiles(
         thumbnail:
           response.thumbnail_url ??
           null,
+        duration: mediaDuration,
       });
 
       onProgress?.(
@@ -622,5 +678,8 @@ export async function uploadMediaFiles(
     media_url,
     thumbnail,
     media_asset_ids,
+    duration: uploaded.map(
+      media => media.duration
+    ),
   };
 }

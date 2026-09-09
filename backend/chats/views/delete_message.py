@@ -39,56 +39,50 @@ def delete_messages(request):
         )
     )
 
-    deleted_messages = []
+    deleted_ids = []
     failed_messages = []
-
+    
     for message in messages:
-
+    
         is_participant = message.chat.participants.filter(
             user=user
         ).exists()
-
+    
         if not is_participant:
             failed_messages.append({
                 "id": message.id,
                 "reason": "not_a_participant",
             })
             continue
-
+    
         if message.sender_id != user.id:
             failed_messages.append({
                 "id": message.id,
                 "reason": "not_message_owner",
             })
             continue
-
+    
         if message.is_deleted:
             continue
-
+    
         try:
-
+    
             soft_delete_message(
                 message,
                 user,
             )
-
-            deleted_messages.append({
-                "id": message.id,
-                "deleted_by_admin":
-                    message.deleted_by_admin,
-                "deleted_text":
-                    message.text,
-            })
-
+    
+            deleted_ids.append(message.id)
+    
         except PermissionDenied:
-
+    
             failed_messages.append({
                 "id": message.id,
                 "reason": "permission_denied",
             })
-
+    
     return Response({
-        "deleted": deleted_messages,
+        "deleted_ids": deleted_ids,
         "failed": failed_messages,
     })
 

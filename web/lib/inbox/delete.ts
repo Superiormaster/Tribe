@@ -3,24 +3,21 @@ import {
   deleteChat,
   deleteChats,
 } from "@/utils/chat/MessageClientApi";
-import { deleteChatData } from "@/lib/messageDB";
+import { 
+  hideChatMessages,
+} from "@/lib/messageDB";
+
+import {
+  deleteOutboxMessagesForChat,
+} from "@/utils/chat/outbox";
 
 export async function deleteInboxChats(
   chatIds: number[],
   userId: number
 ) {
-  await Promise.all(
-    chatIds.map(async id => {
-      await apiRequest(
-        `api/chats/${id}/hide-all/`,
-        {
-          method: "POST",
-        }
-      );
-
-      await deleteChatData(id, userId);
-    })
-  );
+  if (!chatIds.length) {
+    return;
+  }
 
   if (chatIds.length === 1) {
     await deleteChat(chatIds[0]);
@@ -28,13 +25,37 @@ export async function deleteInboxChats(
     await deleteChats(chatIds);
   }
 
-  chatIds.forEach(chatId => {
+  // Remove the user's local copy.
+  await Promise.all(
+    chatIds.map((chatId) =>
+      hideChatMessages(
+        chatId,
+        userId
+      )
+    )
+  );
+  
+  await Promise.all(
+    chatIds.map((chatId) =>
+      deleteOutboxMessagesForChat(
+        chatId,
+        userId,
+        "private"
+      )
+    )
+  );
+
+  // Tell the rest of the frontend.
+  chatIds.forEach((chatId) => {
     window.dispatchEvent(
-      new CustomEvent("chat-deleted", {
-        detail: {
-          chatId,
-        },
-      })
+      new CustomEvent(
+        "chat-deleted",
+        {
+          detail: {
+            chatId,
+          },
+        }
+      )
     );
   });
 }

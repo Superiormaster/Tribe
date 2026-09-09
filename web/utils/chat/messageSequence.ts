@@ -4,6 +4,7 @@ import {
 } from "@/lib/db";
 
 type MessageSequence = {
+  ownerId: number;
   nextSequence: number;
 };
 
@@ -18,10 +19,22 @@ export async function getNextClientSequence(
     );
   }
 
+  const normalizedOwnerId =
+    Number(ownerId);
+
+  if (
+    !Number.isFinite(normalizedOwnerId) ||
+    normalizedOwnerId <= 0
+  ) {
+    throw new Error(
+      `Invalid ownerId: ${ownerId}`
+    );
+  }
+
   const existing =
     await db.get(
       MESSAGE_SEQUENCE_STORE,
-      String(ownerId)
+      normalizedOwnerId
     ) as MessageSequence | undefined;
 
   const nextSequence =
@@ -30,9 +43,9 @@ export async function getNextClientSequence(
   await db.put(
     MESSAGE_SEQUENCE_STORE,
     {
+      ownerId: normalizedOwnerId,
       nextSequence,
-    },
-    String(ownerId)
+    }
   );
 
   return nextSequence;

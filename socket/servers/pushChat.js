@@ -2,9 +2,7 @@
 
 const { messaging } = require("./firebase");
 
-
 function getMediaPreview(message) {
-
   const mediaType =
     message.mediaType ||
     message.media_type ||
@@ -19,9 +17,7 @@ function getMediaPreview(message) {
   let thumbnail = "";
 
   switch (mediaType) {
-
     case "image":
-
       body = "📷 Photo";
 
       thumbnail =
@@ -31,9 +27,7 @@ function getMediaPreview(message) {
 
       break;
 
-
     case "video":
-
       body = "🎥 Video";
 
       thumbnail =
@@ -43,16 +37,11 @@ function getMediaPreview(message) {
 
       break;
 
-
     case "audio":
-
       body = "🎤 Voice message";
-
       break;
 
-
     case "gif":
-
       body = "🎞 GIF";
 
       thumbnail =
@@ -62,9 +51,7 @@ function getMediaPreview(message) {
 
       break;
 
-
     case "sticker":
-
       body = "😊 Sticker";
 
       thumbnail =
@@ -74,9 +61,7 @@ function getMediaPreview(message) {
 
       break;
 
-
     case "gallery":
-
       body = "🖼 Multiple photos";
 
       thumbnail =
@@ -86,9 +71,7 @@ function getMediaPreview(message) {
 
       break;
 
-
     default:
-
       break;
   }
 
@@ -99,9 +82,7 @@ function getMediaPreview(message) {
   };
 }
 
-
 function getChatGrouping(message) {
-
   const chatType =
     message.chatType ||
     (
@@ -110,15 +91,12 @@ function getChatGrouping(message) {
         : "private"
     );
 
-
   let groupType;
   let groupId;
   let groupKey;
   let groupTitle;
 
-
   if (chatType === "community") {
-
     groupType = "community";
 
     groupId =
@@ -137,9 +115,7 @@ function getChatGrouping(message) {
       message.groupTitle ||
       message.communityName ||
       "Community";
-
   } else {
-
     groupType = "private";
 
     groupId =
@@ -159,7 +135,6 @@ function getChatGrouping(message) {
       "Chat";
   }
 
-
   return {
     chatType,
     groupType,
@@ -169,27 +144,53 @@ function getChatGrouping(message) {
   };
 }
 
+async function sendChatPush(token, message) {
+  console.log("");
+  console.log("========================================");
+  console.log("📱 [FCM] CHAT PUSH START");
+  console.log("========================================");
 
-async function sendChatPush(
-  token,
-  message
-) {
+  console.log("📱 [FCM] Token exists:", Boolean(token));
 
   if (!token) {
+    console.error(
+      "❌ [FCM] Missing FCM token"
+    );
+
     throw new Error(
       "Missing FCM token."
     );
   }
 
+  console.log("📱 [FCM] Message input:", {
+    chatId:
+      message?.chatId,
+
+    messageId:
+      message?.messageId,
+
+    senderId:
+      message?.senderId,
+
+    senderName:
+      message?.senderName,
+
+    communityId:
+      message?.communityId,
+
+    chatType:
+      message?.chatType,
+
+    mediaType:
+      message?.mediaType ||
+      message?.media_type,
+  });
 
   const {
     mediaType,
     body,
     thumbnail,
-  } = getMediaPreview(
-    message
-  );
-
+  } = getMediaPreview(message);
 
   const {
     chatType,
@@ -197,52 +198,53 @@ async function sendChatPush(
     groupId,
     groupKey,
     groupTitle,
-  } = getChatGrouping(
-    message
-  );
-
+  } = getChatGrouping(message);
 
   const chatId =
     String(
       message.chatId || ""
     );
 
-
   const messageId =
     String(
       message.messageId || ""
     );
-
 
   const senderId =
     String(
       message.senderId || ""
     );
 
-
   const communityId =
     String(
       message.communityId || ""
     );
-
 
   const webLink =
     groupType === "community"
       ? `/communities/${groupId}/chat`
       : `/chat/${groupId}`;
 
+  console.log("📱 [FCM] Notification prepared:", {
+    chatType,
+    groupType,
+    groupId,
+    groupKey,
+    groupTitle,
+    chatId,
+    messageId,
+    senderId,
+    communityId,
+    mediaType,
+    body,
+    hasThumbnail: Boolean(thumbnail),
+    webLink,
+  });
 
   const payload = {
-
     token,
 
-
-    // =================================
-    // FCM DISPLAY NOTIFICATION
-    // =================================
-
     notification: {
-
       title:
         groupTitle ||
         message.senderName ||
@@ -257,18 +259,8 @@ async function sendChatPush(
         : {}),
     },
 
-
-    // =================================
-    // SHARED DATA CONTRACT
-    //
-    // This is what PWA and future
-    // React Native can consume.
-    // =================================
-
     data: {
-
-      type:
-        "chat",
+      type: "chat",
 
       chatType,
 
@@ -289,11 +281,6 @@ async function sendChatPush(
       thumbnail:
         thumbnail || "",
 
-
-      // ===============================
-      // GROUPING
-      // ===============================
-
       groupKey,
 
       groupType,
@@ -301,11 +288,6 @@ async function sendChatPush(
       groupId,
 
       groupTitle,
-
-
-      // ===============================
-      // COMMUNITY
-      // ===============================
 
       communityId,
 
@@ -316,15 +298,8 @@ async function sendChatPush(
         message.communityCover || "",
     },
 
-
-    // =================================
-    // ANDROID
-    // =================================
-
     android: {
-
       notification: {
-
         channelId:
           "chat_messages",
 
@@ -333,24 +308,11 @@ async function sendChatPush(
               imageUrl: thumbnail,
             }
           : {}),
-
-        // DO NOT put groupKey here
-        // as collapseKey.
-        //
-        // groupKey identifies the
-        // logical conversation.
       },
     },
 
-
-    // =================================
-    // PWA / WEB
-    // =================================
-
     webpush: {
-
       notification: {
-
         icon:
           message.senderAvatar ||
           "/icon-192.png",
@@ -362,57 +324,78 @@ async function sendChatPush(
           : {}),
       },
 
-
       fcmOptions: {
-
-        link:
-          webLink,
+        link: webLink,
       },
     },
   };
 
+  console.log(
+    "📱 [FCM] Calling Firebase messaging.send()..."
+  );
 
   try {
-
     const id =
-      await messaging.send(
-        payload
-      );
+      await messaging.send(payload);
 
+    console.log("");
+    console.log(
+      "✅✅✅ [FCM] CHAT PUSH SENT SUCCESSFULLY"
+    );
+
+    console.log("📱 [FCM] FCM ID:", id);
+
+    console.log("📱 [FCM] Details:", {
+      chatType,
+      groupType,
+      groupId,
+      groupKey,
+      messageId,
+      senderId,
+    });
 
     console.log(
-      "✅ CHAT PUSH SENT:",
+      "========================================"
+    );
+
+    return id;
+
+  } catch (err) {
+    console.error("");
+    console.error(
+      "❌❌❌ [FCM] CHAT PUSH FAILED"
+    );
+
+    console.error("📱 [FCM] Error code:", err?.code);
+
+    console.error(
+      "📱 [FCM] Error message:",
+      err?.message
+    );
+
+    console.error(
+      "📱 [FCM] Error details:",
+      err
+    );
+
+    console.error(
+      "📱 [FCM] Push context:",
       {
-        id,
         chatType,
         groupType,
         groupId,
         groupKey,
         messageId,
+        senderId,
       }
     );
 
-
-    return id;
-
-  } catch (err) {
-
     console.error(
-      "❌ CHAT PUSH ERROR"
-    );
-
-    console.error(
-      err.code
-    );
-
-    console.error(
-      err.message
+      "========================================"
     );
 
     throw err;
   }
 }
 
-
-module.exports =
-  sendChatPush;
+module.exports = sendChatPush;

@@ -6,6 +6,7 @@ import {
 import type {
   MessageStatus,
   MediaStatus,
+  Message,
 } from "@/utils/chat/messageContract";
 import { safeEmit } from "@/utils/chat/safeEmit";
 import { sortMessages } from "@/utils/chat/messageMerger";
@@ -218,9 +219,11 @@ export const emitCommunitySocketMessage = async (
             }
 
             const serverMessage = ack.message;
+            const clientId = msg.client_id;
 
-            const sentPatch = {
+            const sentPatch: Partial<Message> = {
               server_id: serverMessage.id,
+              client_id: clientId,
             
               created_at: msg.created_at,
             
@@ -295,13 +298,15 @@ export const emitCommunitySocketMessage = async (
  
             window.dispatchEvent(
               new CustomEvent(
-                "message-synced",
+                "community-message-synced",
                 {
                   detail: {
             
                     client_id:
-                      msg.client_id,
+                      clientId,
             
+                    chatId: msg.chat,
+                    message: sentPatch,
                     messageId:
                       serverMessage.id,
                   },

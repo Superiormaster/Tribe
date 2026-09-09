@@ -5,7 +5,6 @@ def get_chat_messages(chat_id, user):
         Message.objects.filter(
             chat_id=chat_id,
             chat__participants__user=user,
-            is_deleted=False,
         )
         .exclude(hidden_for=user)
         .select_related(
@@ -36,8 +35,6 @@ def get_community_messages(community_id, user):
         Message.objects.filter(
             community_id=community_id,
             community__memberships__user=user,
-            is_deleted=False,
-            deleted_by_admin=False,
         )
         .exclude(hidden_for=user)
         .select_related(

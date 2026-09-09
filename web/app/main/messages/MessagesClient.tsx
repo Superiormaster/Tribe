@@ -310,6 +310,76 @@ export default function MessagesClient() {
     }
   };
   
+  useEffect(() => {
+    const handleChatUnreadUpdate = (
+      event: Event
+    ) => {
+      const customEvent =
+        event as CustomEvent<{
+          chatId?: number;
+          chatType?: string;
+        }>;
+  
+      const chatId =
+        Number(
+          customEvent.detail?.chatId
+        );
+  
+      const chatType =
+        customEvent.detail?.chatType;
+  
+      if (!chatId) {
+        return;
+      }
+  
+      if (
+        !chatType ||
+        chatType === "private"
+      ) {
+        setPrivateRecentChats(prev =>
+          prev.map(chat =>
+            Number(chat.chat_id) === chatId
+              ? {
+                  ...chat,
+                  unseen: 0,
+                }
+              : chat
+          )
+        );
+      }
+  
+      if (
+        chatType === "community"
+      ) {
+        setCommunityRecentChats(prev =>
+          prev.map(chat =>
+            Number(chat.community_id) === chatId
+              ? {
+                  ...chat,
+                  unseen: 0,
+                }
+              : chat
+          )
+        );
+      }
+    };
+  
+    window.addEventListener(
+      "chat-unread-update",
+      handleChatUnreadUpdate
+    );
+  
+    return () => {
+      window.removeEventListener(
+        "chat-unread-update",
+        handleChatUnreadUpdate
+      );
+    };
+  }, [
+    setPrivateRecentChats,
+    setCommunityRecentChats,
+  ]);
+  
   const handleOpenChat = async (userId: number) => {
     try {
       const res = await openChat(userId);
@@ -387,6 +457,9 @@ export default function MessagesClient() {
     userId: currentUser.id,
     setRecentChats: setPrivateRecentChats,
     setCommunityChats: setCommunityRecentChats,
+  
+    refreshPrivate: () => fetchPrivateRecent(1),
+    refreshCommunity: () => fetchCommunityRecent(1),
   });
   
   useEffect(() => {
@@ -1042,7 +1115,7 @@ export default function MessagesClient() {
         💬
       </button>
 
-      {/*<button
+      {/*}<button
         onClick={async () => {
           try {
             await resetDatabase();

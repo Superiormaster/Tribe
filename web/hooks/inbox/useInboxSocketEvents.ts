@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useRef,
 } from "react";
 
 import {
@@ -29,17 +30,84 @@ interface UseInboxSocketEventsProps {
     React.Dispatch<
       React.SetStateAction<CommunityChat[]>
     >;
+
+  refreshPrivate?: () => void | Promise<void>;
+
+  refreshCommunity?: () => void | Promise<void>;
 }
 
 export function useInboxSocketEvents({
   userId,
   setRecentChats,
   setCommunityChats,
+  refreshPrivate,
+  refreshCommunity,
 }: UseInboxSocketEventsProps) {
+
+  const privateRefreshTimer =
+    useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const communityRefreshTimer =
+    useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const schedulePrivateRefresh =
+    useCallback(() => {
+
+      if (!refreshPrivate) {
+        return;
+      }
+
+      if (privateRefreshTimer.current) {
+        clearTimeout(
+          privateRefreshTimer.current
+        );
+      }
+
+      privateRefreshTimer.current =
+        setTimeout(() => {
+
+          privateRefreshTimer.current =
+            null;
+
+          void refreshPrivate();
+
+        }, 300);
+
+    }, [
+      refreshPrivate,
+    ]);
+
+  const scheduleCommunityRefresh =
+    useCallback(() => {
+
+      if (!refreshCommunity) {
+        return;
+      }
+
+      if (communityRefreshTimer.current) {
+        clearTimeout(
+          communityRefreshTimer.current
+        );
+      }
+
+      communityRefreshTimer.current =
+        setTimeout(() => {
+
+          communityRefreshTimer.current =
+            null;
+
+          void refreshCommunity();
+
+        }, 300);
+
+    }, [
+      refreshCommunity,
+    ]);
 
   const handleDelivered =
     useCallback(
       (event: Event) => {
+
         const data =
           (event as CustomEvent).detail;
 
@@ -54,6 +122,10 @@ export function useInboxSocketEvents({
         const normalizedChatId =
           Number(chatId);
 
+        if (!Number.isFinite(normalizedChatId)) {
+          return;
+        }
+
         setRecentChats(
           prev =>
             prev.map(
@@ -74,15 +146,20 @@ export function useInboxSocketEvents({
                     }
             )
         );
+
+        schedulePrivateRefresh();
+
       },
       [
         setRecentChats,
+        schedulePrivateRefresh,
       ]
     );
 
   const handleSeen =
     useCallback(
       (event: Event) => {
+
         const data =
           (event as CustomEvent).detail;
 
@@ -92,16 +169,23 @@ export function useInboxSocketEvents({
             senderId,
         } = data ?? {};
 
+        if (!chatId) {
+          return;
+        }
+
         if (
-          !chatId ||
           Number(senderId) ===
-            Number(userId)
+          Number(userId)
         ) {
           return;
         }
 
         const normalizedChatId =
           Number(chatId);
+
+        if (!Number.isFinite(normalizedChatId)) {
+          return;
+        }
 
         setRecentChats(
           prev =>
@@ -123,16 +207,58 @@ export function useInboxSocketEvents({
                     }
             )
         );
+
+        schedulePrivateRefresh();
+
       },
       [
         userId,
         setRecentChats,
+        schedulePrivateRefresh,
       ]
     );
 
-  const handleCommunityDelivered =
+  const handleSync =
     useCallback(
       (event: Event) => {
+
+        const data =
+          (event as CustomEvent).detail;
+
+        const chatId =
+          data?.chatId ??
+          data?.chat_id ??
+          data?.message?.chat ??
+          data?.message?.chat_id;
+
+        if (
+          chatId !== undefined &&
+          chatId !== null
+        ) {
+          const normalizedChatId =
+            Number(chatId);
+
+          if (
+            !Number.isFinite(
+              normalizedChatId
+            )
+          ) {
+            return;
+          }
+        }
+
+        schedulePrivateRefresh();
+
+      },
+      [
+        schedulePrivateRefresh,
+      ]
+    );
+  
+  const handleCommunitySync =
+    useCallback(
+      (event: Event) => {
+
         const data =
           (event as CustomEvent).detail;
 
@@ -147,6 +273,48 @@ export function useInboxSocketEvents({
         const normalizedCommunityId =
           Number(communityId);
 
+        if (
+          !Number.isFinite(
+            normalizedCommunityId
+          )
+        ) {
+          return;
+        }
+
+        scheduleCommunityRefresh();
+
+      },
+      [
+        scheduleCommunityRefresh,
+      ]
+    );
+
+  const handleCommunityDelivered =
+    useCallback(
+      (event: Event) => {
+
+        const data =
+          (event as CustomEvent).detail;
+
+        const communityId =
+          data?.communityId ??
+          data?.community_id;
+
+        if (!communityId) {
+          return;
+        }
+
+        const normalizedCommunityId =
+          Number(communityId);
+
+        if (
+          !Number.isFinite(
+            normalizedCommunityId
+          )
+        ) {
+          return;
+        }
+
         setCommunityChats(
           prev =>
             prev.map(
@@ -169,15 +337,20 @@ export function useInboxSocketEvents({
                     }
             )
         );
+
+        scheduleCommunityRefresh();
+
       },
       [
         setCommunityChats,
+        scheduleCommunityRefresh,
       ]
     );
 
   const handleCommunitySeen =
     useCallback(
       (event: Event) => {
+
         const data =
           (event as CustomEvent).detail;
 
@@ -190,16 +363,27 @@ export function useInboxSocketEvents({
           data?.senderId ??
           data?.sender_id;
 
+        if (!communityId) {
+          return;
+        }
+
         if (
-          !communityId ||
           Number(senderId) ===
-            Number(userId)
+          Number(userId)
         ) {
           return;
         }
 
         const normalizedCommunityId =
           Number(communityId);
+
+        if (
+          !Number.isFinite(
+            normalizedCommunityId
+          )
+        ) {
+          return;
+        }
 
         setCommunityChats(
           prev =>
@@ -223,10 +407,14 @@ export function useInboxSocketEvents({
                     }
             )
         );
+
+        scheduleCommunityRefresh();
+
       },
       [
         userId,
         setCommunityChats,
+        scheduleCommunityRefresh,
       ]
     );
 
@@ -240,6 +428,16 @@ export function useInboxSocketEvents({
     window.addEventListener(
       "message-seen",
       handleSeen
+    );
+
+    window.addEventListener(
+      "message-synced",
+      handleSync
+    );
+  
+    window.addEventListener(
+      "community-message-synced",
+      handleCommunitySync
     );
 
     window.addEventListener(
@@ -265,6 +463,16 @@ export function useInboxSocketEvents({
       );
 
       window.removeEventListener(
+        "message-synced",
+        handleSync
+      );
+  
+      window.removeEventListener(
+        "community-message-synced",
+        handleCommunitySync
+      );
+
+      window.removeEventListener(
         "community-message-delivered",
         handleCommunityDelivered
       );
@@ -274,11 +482,34 @@ export function useInboxSocketEvents({
         handleCommunitySeen
       );
 
+      if (
+        privateRefreshTimer.current
+      ) {
+        clearTimeout(
+          privateRefreshTimer.current
+        );
+
+        privateRefreshTimer.current =
+          null;
+      }
+
+      if (
+        communityRefreshTimer.current
+      ) {
+        clearTimeout(
+          communityRefreshTimer.current
+        );
+
+        communityRefreshTimer.current =
+          null;
+      }
+
     };
 
   }, [
     handleDelivered,
     handleSeen,
+    handleSync,
     handleCommunityDelivered,
     handleCommunitySeen,
   ]);
@@ -289,6 +520,12 @@ export function useInboxSocketEvents({
 
     onSeen:
       handleSeen,
+
+    onSync:
+      handleSync,
+  
+    onCommunitySync:
+      handleCommunitySync,
 
     onCommunityDelivered:
       handleCommunityDelivered,

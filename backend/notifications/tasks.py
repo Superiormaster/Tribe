@@ -1,6 +1,8 @@
-from celery import shared_task
+# notifications/tasks.py
+
 from django.utils import timezone
 from django.db import transaction
+from celery import shared_task
 
 @shared_task(
     bind=True,
@@ -24,7 +26,7 @@ def send_push_notification(
         NotificationSerializer,
     )
 
-    from notifications.services.push import (
+    from notifications.push import (
         send_to_device,
         InvalidPushTokenError,
     )
@@ -36,6 +38,7 @@ def send_push_notification(
     from users.utils import get_user_avatar
 
     try:
+
         notification = (
             Notification.objects
             .select_related(
@@ -44,10 +47,18 @@ def send_push_notification(
                 "community",
             )
             .prefetch_related("actors")
-            .get(id=notification_id)
+            .get(
+                id=notification_id
+            )
         )
 
     except Notification.DoesNotExist:
+
+        print(
+            "❌ Notification does not exist:",
+            notification_id,
+        )
+
         return
 
     user = notification.recipient
@@ -56,6 +67,11 @@ def send_push_notification(
         user,
         notification.type,
     ):
+
+        print(
+            "🚫 Push blocked by user preferences"
+        )
+
         return
 
     now = timezone.now()
@@ -72,9 +88,10 @@ def send_push_notification(
         )
     )
 
-    # --------------------------------
-    # Serialize notification once
-    # --------------------------------
+    print(
+        "📦 Queued deliveries:",
+        deliveries.count(),
+    )
 
     serialized = NotificationSerializer(
         notification
@@ -85,16 +102,19 @@ def send_push_notification(
     community_cover = ""
 
     if notification.community:
-    
+
         community = notification.community
-    
+
         if community.cover_image_asset:
+
             community_cover = (
                 community
                 .cover_image_asset
                 .original_url
             )
+
         else:
+
             community_cover = (
                 community.cover_image or ""
             )
@@ -105,39 +125,40 @@ def send_push_notification(
             notification=notification,
             actor=actor,
         )
-    
+
     else:
-    
+
         payload = {
             "id": str(notification.id),
-    
+
             "type": notification.type,
-    
+
             "title": "Tribe",
-    
+
             "body": serialized["message"],
-    
+
             "postId": (
                 str(notification.post.id)
                 if notification.post
                 else ""
             ),
-    
+
             "userId": (
                 str(actor.id)
                 if actor
                 else ""
             ),
-  
+
             "avatar": (
                 get_user_avatar(actor)
                 if actor
                 else ""
             ),
-    
+
             "thumbnail": "",
+
             "recommendationType": "",
-    
+
             "communityCover":
                 community_cover,
 
@@ -146,7 +167,10 @@ def send_push_notification(
                 if notification.community
                 else ""
             ),
-            "createdAt": notification.created_at.isoformat(),
+
+            "createdAt":
+                notification.created_at.isoformat(),
+
             "link": (
                 f"/main/home/{notification.post.id}"
                 if notification.post
@@ -157,10 +181,6 @@ def send_push_notification(
                 )
             ),
         }
-
-    # --------------------------------
-    # Media
-    # --------------------------------
 
     if notification.post:
 
@@ -200,13 +220,10 @@ def send_push_notification(
                     or ""
                 )
 
-    # --------------------------------
-    # Send each due delivery
-    # --------------------------------
-
     for delivery in deliveries:
 
         if delivery.status == "sent":
+
             continue
 
         device = delivery.device
@@ -221,6 +238,10 @@ def send_push_notification(
                     "status",
                     "attempts",
                 ]
+            )
+
+            print(
+                "🚀 Sending notification to device..."
             )
 
             send_to_device(
@@ -242,6 +263,11 @@ def send_push_notification(
 
         except InvalidPushTokenError as exc:
 
+            print(
+                "❌ INVALID PUSH TOKEN:",
+                device.id,
+            )
+
             device.is_active = False
 
             device.save(
@@ -262,6 +288,11 @@ def send_push_notification(
 
         except Exception as exc:
 
+            print(
+                "Error:",
+                str(exc),
+            )
+
             delivery.status = "failed"
             delivery.last_error = str(exc)
 
@@ -271,6 +302,7 @@ def send_push_notification(
                     "last_error",
                 ]
             )
+
             continue
 
 @shared_task(
@@ -281,7 +313,6 @@ def send_message_push(
     self,
     delivery_id,
 ):
-
     from notifications.models import (
         PushNotificationDelivery,
     )
@@ -291,14 +322,14 @@ def send_message_push(
         build_community_chat_payload,
     )
 
-    from notifications.services.push import (
+    from notifications.push import (
         send_chat_to_device,
         InvalidPushTokenError,
     )
 
     from notifications.services.preferences import (
         can_send_message_push,
-        can_send_community_message_push,
+        can_send_community_chat_push,
         get_quiet_hours_end,
     )
 
@@ -329,15 +360,29 @@ def send_message_push(
 
         except PushNotificationDelivery.DoesNotExist:
 
+            print(
+                "❌ Delivery does not exist:",
+                delivery_id,
+            )
+
             return
 
         if delivery.status != "queued":
+
+            print(
+                "⏭️ Delivery is not queued. Skipping."
+            )
+
             return
 
         message = delivery.message
         device = delivery.device
 
         if not message:
+
+            print(
+                "❌ Message no longer exists."
+            )
 
             delivery.status = "skipped"
             delivery.last_error = (
@@ -354,6 +399,10 @@ def send_message_push(
             return
 
         if not device.is_active:
+
+            print(
+                "⏭️ Device inactive. Skipping."
+            )
 
             delivery.status = "skipped"
             delivery.last_error = (
@@ -428,9 +477,13 @@ def send_message_push(
 
             return
 
+        print(
+            "✅ Private message notifications enabled."
+        )
+
         if message.chat.chat_type == "community":
 
-            if not can_send_community_message_push(
+            if not can_send_community_chat_push(
                 user
             ):
 
@@ -448,12 +501,13 @@ def send_message_push(
 
                 return
 
-        # ==================================
-        # QUIET HOURS
-        # ==================================
-
         quiet_until = get_quiet_hours_end(
             user
+        )
+
+        print(
+            "Quiet until:",
+            quiet_until,
         )
 
         if quiet_until:
@@ -482,6 +536,7 @@ def send_message_push(
             delivery.scheduled_for
             and delivery.scheduled_for > now
         ):
+
             return
 
         delivery.status = "processing"
@@ -498,6 +553,10 @@ def send_message_push(
 
         if message.chat.chat_type == "private":
 
+            print(
+                "💬 Building PRIVATE chat payload."
+            )
+
             payload = build_private_chat_payload(
                 message=message,
                 recipient=device.user,
@@ -511,6 +570,11 @@ def send_message_push(
             )
 
         else:
+
+            print(
+                "❌ Unsupported chat type:",
+                message.chat.chat_type,
+            )
 
             with transaction.atomic():
 
@@ -543,6 +607,15 @@ def send_message_push(
 
     except InvalidPushTokenError as exc:
 
+        print(
+            "❌ INVALID FCM TOKEN"
+        )
+
+        print(
+            "Error:",
+            str(exc),
+        )
+
         device.is_active = False
 
         device.save(
@@ -574,6 +647,11 @@ def send_message_push(
         return
 
     except Exception as exc:
+
+        print(
+            "Error:",
+            str(exc),
+        )
 
         with transaction.atomic():
 
@@ -644,6 +722,13 @@ def process_scheduled_push_notifications():
         )
     )
 
+    count = deliveries.count()
+
+    print(
+        "📦 Due deliveries:",
+        count,
+    )
+
     for delivery in deliveries:
 
         delivery_id = delivery["id"]
@@ -662,6 +747,7 @@ def process_scheduled_push_notifications():
 
 @shared_task
 def flush_user_push_deliveries(user_id):
+
     from notifications.models import (
         PushNotificationDelivery,
     )
@@ -684,47 +770,15 @@ def flush_user_push_deliveries(user_id):
         .order_by("created_at")
     )
 
-    print(
-        "=========================================="
-    )
-    print(
-        "🔥 FLUSH USER PUSH DELIVERIES"
-    )
-    print(
-        "USER:",
-        user_id,
-    )
-    print(
-        "COUNT:",
-        deliveries.count(),
-    )
-    print(
-        "=========================================="
-    )
-
     for delivery in deliveries:
 
         if delivery.message_id:
-
-            print(
-                "📨 QUEUED MESSAGE DELIVERY:",
-                delivery.id,
-                "MESSAGE:",
-                delivery.message_id,
-            )
 
             send_message_push.delay(
                 delivery.id
             )
 
         elif delivery.notification_id:
-
-            print(
-                "🔔 QUEUED NOTIFICATION DELIVERY:",
-                delivery.id,
-                "NOTIFICATION:",
-                delivery.notification_id,
-            )
 
             send_push_notification.delay(
                 delivery.notification_id

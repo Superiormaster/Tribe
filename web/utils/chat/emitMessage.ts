@@ -3,6 +3,7 @@ import { sortMessages } from "@/utils/chat/messageMerger";
 import type {
   MessageStatus,
   MediaStatus,
+  Message,
 } from "@/utils/chat/messageContract";
 import {
   classifyMessageError,
@@ -264,9 +265,11 @@ export const emitSocketMessage = async (
                 }
 
                 const serverMessage = ack.message;
+                const clientId = msg.client_id;
 
-                const sentPatch = {
+                const sentPatch: Partial<Message> = {
                   server_id: serverMessage.id,
+                  client_id: clientId,
                 
                   created_at: msg.created_at,
                 
@@ -342,8 +345,9 @@ export const emitSocketMessage = async (
                     {
                       detail: {
                 
-                        client_id:
-                          msg.client_id,
+                        client_id: clientId,
+                        chatId: msg.chat,
+                        message: sentPatch,
                 
                         messageId:
                           serverMessage.id,

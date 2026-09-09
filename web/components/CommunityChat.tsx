@@ -63,7 +63,6 @@ export default function CommunityChat({ communityId }: Props) {
   const [showReportModal, setShowReportModal] = useState(false);
   
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [activeReaction, setActiveReaction] = useState<string | null>(null);
   const {
     socketRef,
   } = useGlobalSocketContext();
@@ -253,6 +252,7 @@ export default function CommunityChat({ communityId }: Props) {
     chatId: communityId,
     currentUser: currentUser.id,
     setMessages,
+    chatType: "community",
   });
   
   useEffect(() => {
@@ -605,6 +605,10 @@ export default function CommunityChat({ communityId }: Props) {
     );
   };
   
+  const closeReactionPicker = () => {
+    clearSelection();
+  };
+  
   useEffect(() => {
     if (!socketReady || !socketRef.current) {
       return;
@@ -774,10 +778,6 @@ export default function CommunityChat({ communityId }: Props) {
         "Failed to leave community. Please try again."
       );
     }
-  };
-  
-  const closeReactionPicker = () => {
-    setActiveReaction(null);
   };
   
   const selectedCommunityMessages =
@@ -1109,9 +1109,10 @@ export default function CommunityChat({ communityId }: Props) {
         canDeleteForEveryone={
           canDeleteForEveryone
         }
-        onClose={() =>
-          setShowDeleteModal(false)
-        }
+        onClose={() => {
+          messageBodyRef.current?.closeReactionPicker();
+          setShowDeleteModal(false);
+        }}
         onDeleteForMe={handleDeleteForMe}
         onDeleteForEveryone={
           handleDeleteForEveryone

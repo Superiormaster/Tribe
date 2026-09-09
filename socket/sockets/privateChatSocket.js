@@ -136,6 +136,21 @@ module.exports = function privateChatSocket(
   );
   
   socket.on(
+    "leave_chat",
+    ({ chatId }) => {
+      if (!chatId) return;
+  
+      socket.leave(
+        CHAT_ROOM(chatId)
+      );
+  
+      console.log(
+        `📤 ${socket.user.username} left chat_${chatId}`
+      );
+    }
+  );
+  
+  socket.on(
     "user_online",
     async ({
       accessToken,
@@ -407,52 +422,118 @@ module.exports = function privateChatSocket(
           recipientState === "background" ||
           recipientState === "offline";
         
-        console.log(
-          "📱 CHAT PUSH CHECK:",
-          {
+        console.log("");
+        console.log("========================================");
+        console.log("📱 [PRIVATE PUSH] PUSH DECISION");
+        console.log("========================================");
+        
+        console.log({
+          senderId: socket.user.id,
+          recipientId,
+          recipientState,
+          shouldPush,
+          messageId: savedMessage.id,
+          chatId,
+          clientId: client_id,
+        });
+        
+        if (!recipientId) {
+          console.log(
+            "⚠️ [PRIVATE PUSH] No recipient ID. Push skipped."
+          );
+        }
+        
+        if (
+          recipientId &&
+          !shouldPush
+        ) {
+          console.log(
+            "ℹ️ [PRIVATE PUSH] Recipient is active. Push not queued."
+          );
+        
+          console.log({
             recipientId,
             recipientState,
-            shouldPush,
-            messageId:
-              savedMessage.id,
-          }
-        );
+          });
+        }
         
         if (
           recipientId &&
           shouldPush
         ) {
         
+          console.log(
+            "🚀 [PRIVATE PUSH] Calling Django push endpoint..."
+          );
+        
+          console.log({
+            endpoint:
+              "chats/private-chat-push/",
+        
+            messageId:
+              savedMessage.id,
+        
+            recipientId,
+        
+            recipientState,
+          });
+        
           try {
         
-            await socket.api.post(
-              "chats/private-chat-push/",
-              {
-                message_id:
-                  savedMessage.id,
+            const pushResponse =
+              await socket.api.post(
+                "chats/private-chat-push/",
+                {
+                  message_id:
+                    savedMessage.id,
         
-                recipient_id:
-                  recipientId,
-              }
+                  recipient_id:
+                    recipientId,
+                }
+              );
+        
+            console.log("");
+            console.log(
+              "✅ [PRIVATE PUSH] Django accepted push request"
             );
         
             console.log(
-              "📱 CHAT PUSH QUEUED:",
-              {
-                recipientId,
-                messageId:
-                  savedMessage.id,
-              }
+              "📱 [PRIVATE PUSH] Django response:",
+              pushResponse.data
+            );
+        
+            console.log(
+              "📱 [PRIVATE PUSH] HTTP status:",
+              pushResponse.status
             );
         
           } catch (pushError) {
         
+            console.error("");
             console.error(
-              "❌ CHAT PUSH REQUEST FAILED:",
-              pushError.response?.data ||
+              "❌ [PRIVATE PUSH] Django push request FAILED"
+            );
+        
+            console.error(
+              "❌ [PRIVATE PUSH] Status:",
+              pushError.response?.status
+            );
+        
+            console.error(
+              "❌ [PRIVATE PUSH] Response:",
+              pushError.response?.data
+            );
+        
+            console.error(
+              "❌ [PRIVATE PUSH] Message:",
               pushError.message
             );
+        
           }
+        
+          console.log(
+            "========================================"
+          );
         }
   
         console.log(

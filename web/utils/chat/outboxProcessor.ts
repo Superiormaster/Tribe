@@ -902,8 +902,20 @@ async function prepareMediaMessage(
       }
     );
 
-    const uploaded =
-      await uploadMediaFiles(
+    console.log("🚀 [OUTBOX] About to call uploadMediaFiles()", {
+      client_id: message.client_id,
+      chat_id: message.chat,
+      chat_type: message.chat_type,
+      files: message.files,
+      media_type: message.media_type,
+    });
+    
+    let uploaded;
+    
+    try {
+      console.log("⏳ [OUTBOX] Awaiting uploadMediaFiles()...");
+    
+      uploaded = await uploadMediaFiles(
         uploadableFiles,
         {
           networkStatus:
@@ -914,6 +926,13 @@ async function prepareMediaMessage(
 
           signal:
             controller.signal,
+
+          duration:
+            Array.isArray(message.duration)
+              ? message.duration
+              : message.duration != null
+                ? [message.duration]
+                : [],
 
           onProgress:
             (
@@ -959,6 +978,15 @@ async function prepareMediaMessage(
             },
         }
       );
+    
+      console.log("✅ [OUTBOX] uploadMediaFiles() RESOLVED", uploaded);
+    } catch (error) {
+      console.error("❌ [OUTBOX] uploadMediaFiles() THREW", error);
+    
+      throw error;
+    }
+    
+    console.log("➡️ [OUTBOX] Continuing after uploadMediaFiles()");
 
     console.log(
       "📦 [MEDIA PREPARE] UPLOAD RESULT",
@@ -1033,7 +1061,12 @@ async function prepareMediaMessage(
       media_asset_ids:
         uploaded.media_asset_ids,
 
-      duration: message.duration ?? [],
+      duration:
+        Array.isArray(uploaded.duration)
+          ? uploaded.duration
+          : Array.isArray(message.duration)
+            ? message.duration
+            : [],
       media_status:
         "uploaded",
 
@@ -1379,7 +1412,7 @@ async function reconcileOutbox(
   if (!db) {
     return;
   }
-  
+
   const privatePending =
     await getPendingMessages(ownerId);
 
@@ -1389,11 +1422,10 @@ async function reconcileOutbox(
     );
 
   for (const message of privatePending) {
-
     if (message.server_id) {
       continue;
     }
-  
+
     if (
       !hasSendableCommunityContent(
         message as Partial<Message>
@@ -1403,42 +1435,57 @@ async function reconcileOutbox(
         "🗑️ Removing empty private message:",
         message.client_id
       );
-  
+
       await db.delete(
         MESSAGE_STORE,
-        message.client_id
+        message.account_message_key ??
+        `${ownerId}:${message.client_id}`
       );
-  
+
       await removeFromOutbox(
         message.client_id
       );
-  
+
       continue;
     }
-  
+
+    if (
+      message.status === "sending" ||
+      message.status === "uploading"
+    ) {
+      console.log(
+        "♻️ [OUTBOX RECONCILE] Recovering private message:",
+        {
+          client_id:
+            message.client_id,
+          status:
+            message.status,
+        }
+      );
+    }
+
     await enqueueMessage({
       client_id:
         message.client_id,
-    
+
       ownerId,
-    
+
       chat_id:
         Number(message.chat),
-    
+
       client_sequence:
         message.client_sequence,
-    
+
       chat_type:
         "private",
     });
   }
 
   for (const message of communityPending) {
-
     if (message.server_id) {
       continue;
     }
-  
+
     if (
       !hasSendableCommunityContent(
         message as Partial<Message>
@@ -1448,34 +1495,50 @@ async function reconcileOutbox(
         "🗑️ Removing empty community message:",
         message.client_id
       );
-  
+
       await db.delete(
         MESSAGE_STORE,
-        message.client_id
+        message.account_message_key ??
+        `${ownerId}:${message.client_id}`
       );
-  
+
       await removeFromOutbox(
         message.client_id
       );
-  
+
       continue;
     }
-  
+
+    if (
+      message.status === "sending" ||
+      message.status === "uploading"
+    ) {
+      console.log(
+        "♻️ [OUTBOX RECONCILE] Recovering community message:",
+        {
+          client_id:
+            message.client_id,
+          status:
+            message.status,
+        }
+      );
+    }
+
     await enqueueMessage({
       client_id:
         message.client_id,
-    
+
       ownerId,
-    
+
       chat_id:
         Number(
           message.community ??
           message.communityId
         ),
-    
+
       client_sequence:
         message.client_sequence,
-    
+
       chat_type:
         "community",
     });

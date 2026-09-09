@@ -3,38 +3,35 @@ const onlineUsers = new Map();
 /**
  * Add socket
  */
-function addUserSocket(
-  userId,
-  socketId
-) {
-  if (!onlineUsers.has(userId)) {
-    onlineUsers.set(userId, {
+function addUserSocket(userId, socketId) {
+  const id = Number(userId);
+
+  if (!onlineUsers.has(id)) {
+    onlineUsers.set(id, {
       sockets: new Set(),
       state: "foreground",
     });
   }
 
   onlineUsers
-    .get(userId)
+    .get(id)
     .sockets
     .add(socketId);
 }
 
-/**
- * Remove socket
- */
-function removeUserSocket(
-  userId,
-  socketId
-) {
-  const user = onlineUsers.get(userId);
+function removeUserSocket(userId, socketId) {
+  const id = Number(userId);
 
-  if (!user) return true;
+  const user = onlineUsers.get(id);
+
+  if (!user) {
+    return true;
+  }
 
   user.sockets.delete(socketId);
 
   if (user.sockets.size === 0) {
-    onlineUsers.delete(userId);
+    onlineUsers.delete(id);
     return true;
   }
 
@@ -42,9 +39,7 @@ function removeUserSocket(
 }
 
 function setUserState(userId, state) {
-  const user = onlineUsers.get(userId);
-
-  if (!user) return;
+  const id = Number(userId);
 
   if (
     state !== "foreground" &&
@@ -53,13 +48,23 @@ function setUserState(userId, state) {
     return;
   }
 
+  const user = onlineUsers.get(id);
+
+  if (!user) {
+    return;
+  }
+
   user.state = state;
 }
 
 function getUserState(userId) {
-  const user = onlineUsers.get(userId);
+  const id = Number(userId);
 
-  if (!user) return "offline";
+  const user = onlineUsers.get(id);
+
+  if (!user) {
+    return "offline";
+  }
 
   return user.state;
 }
@@ -68,14 +73,14 @@ function isUserOnline(userId) {
   return getUserState(userId) !== "offline";
 }
 
-/**
- * Get sockets
- */
-function getUserSockets(
-  userId
-) {
-  const user = onlineUsers.get(userId);
-  if (!user) return new Set();
+function getUserSockets(userId) {
+  const id = Number(userId);
+
+  const user = onlineUsers.get(id);
+
+  if (!user) {
+    return new Set();
+  }
 
   return user.sockets;
 }
