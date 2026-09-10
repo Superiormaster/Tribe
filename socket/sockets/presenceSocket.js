@@ -3,10 +3,62 @@ const {
 } = require("../servers/rooms");
 
 const {
+  onlineUsers,
   addUserSocket,
   removeUserSocket,
   setUserState,
 } = require("../servers/presence");
+
+const {
+  emitCommunityOnlineCount,
+} = require("../servers/communityOnline");
+
+async function updateUserCommunityPresence(
+  io,
+  socket
+) {
+  try {
+    const res =
+      await socket.api.get(
+        "chats/presence-communities/"
+      );
+
+    const communityIds =
+      Array.isArray(
+        res.data.community_ids
+      )
+        ? res.data.community_ids
+        : [];
+
+    console.log(
+      "🌍 AFFECTED COMMUNITIES:",
+      communityIds
+    );
+
+    for (
+      const communityId of communityIds
+    ) {
+      await emitCommunityOnlineCount(
+        io,
+        socket,
+        communityId
+      );
+    }
+
+  } catch (err) {
+    console.error(
+      "❌ FAILED TO UPDATE USER COMMUNITY PRESENCE:",
+      {
+        status:
+          err.response?.status,
+        data:
+          err.response?.data,
+        message:
+          err.message,
+      }
+    );
+  }
+}
 
 module.exports = async function presenceSocket(
   io,
@@ -14,39 +66,35 @@ module.exports = async function presenceSocket(
 ) {
   const userId =
     Number(socket.user.id);
-
-  /*
-   * Register THIS socket.
-   */
+  
+  const wasOffline =
+    !onlineUsers.has(userId);
+  
   addUserSocket(
     userId,
     socket.id
   );
-
-  /*
-   * Join personal room.
-   */
+  
   socket.join(
     USER_ROOM(userId)
   );
-
+  
   console.log(
-    `🟢 PRESENCE CONNECTED: ${socket.user.username} | socket=${socket.id}`
+    `🟢 PRESENCE CONNECTED: ${socket.user.username} | socket=${socket.id} | firstSocket=${wasOffline}`
   );
-
-  /*
-   * Tell backend this user is online.
-   */
-  try {
-    await socket.api.post(
-      "users/presence/online/"
-    );
-  } catch (err) {
-    console.error(
-      "presence online failed:",
-      err.response?.data ||
-      err.message
-    );
+  
+  if (wasOffline) {
+    try {
+      await socket.api.post(
+        "users/presence/online/"
+      );
+    } catch (err) {
+      console.error(
+        "presence online failed:",
+        err.response?.data ||
+        err.message
+      );
+    }
   }
 
   /*
@@ -76,6 +124,11 @@ module.exports = async function presenceSocket(
       err.message
     );
   }
+  
+  await updateUserCommunityPresence(
+    io,
+    socket
+  );
 
   /*
    * HEARTBEAT
@@ -167,6 +220,11 @@ module.exports = async function presenceSocket(
             }
           );
         }
+
+        await updateUserCommunityPresence(
+          io,
+          socket
+        );
 
         console.log(
           `⚫ USER OFFLINE: ${socket.user.username}`

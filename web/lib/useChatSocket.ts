@@ -4,9 +4,12 @@ import {
   useEffect,
   useState,
   useRef,
+  useCallback,
 } from 'react';
 
 import type { Socket } from 'socket.io-client';
+import type { TribeSocket } from "@/lib/socket";
+import { useNetwork } from '@/components/networkConnection/NetworkContext';
 
 import {
   mergeMessages,
@@ -29,33 +32,12 @@ type PrivateChatHandlerMap = Map<
   PrivateChatHandlers
 >;
 
-type TribeSocket = Socket & {
-  __privateChatHandlers?: PrivateChatHandlerMap;
-
-  onTyping?: (data: any) => void;
-
-  onStopTyping?: (data: any) => void;
-
-  onMessage?: (
-    message: Message
-  ) => void;
-
-  setPrivateChatMessages?: (
-    chatId: number,
-    updater: (
-      setMessages: Dispatch<
-        SetStateAction<Message[]>
-      >
-    ) => void
-  ) => void;
-};
-
 type Props = {
   chatId: number | null;
 
   currentUser: CurrentUser | null;
 
-  socketRef: React.MutableRefObject<
+  socketRef: React.RefObject<
     TribeSocket | null
   >;
 
@@ -94,10 +76,6 @@ type PrivateChatHandlers = {
   handleReceiveMessage: (
     message: Message
   ) => void;
-
-  handleUserStatus: (
-    data: any
-  ) => void;
 };
 
 export function useChatSocket({
@@ -110,11 +88,50 @@ export function useChatSocket({
 
   const mountedRef =
     useRef(false);
+  const { isOnline } = useNetwork();
+  const isOnlineRef =
+    useRef(isOnline);
+  
+  useEffect(() => {
+    isOnlineRef.current =
+      isOnline;
+  }, [isOnline]);
 
   const [
     socketReady,
     setSocketReady,
   ] = useState(false);
+  
+  const handlersRef = useRef<{
+    setMessages?: Dispatch<
+      SetStateAction<Message[]>
+    >;
+  
+    setIsTyping?: Dispatch<
+      SetStateAction<boolean>
+    >;
+  }>({});
+  
+  const setHandlers = useCallback(
+    ({
+      setMessages,
+      setIsTyping,
+    }: {
+      setMessages?: Dispatch<
+        SetStateAction<Message[]>
+      >;
+  
+      setIsTyping?: Dispatch<
+        SetStateAction<boolean>
+      >;
+    }) => {
+      handlersRef.current = {
+        setMessages,
+        setIsTyping,
+      };
+    },
+    []
+  );
 
   useEffect(() => {
 
@@ -192,9 +209,58 @@ export function useChatSocket({
           chatId: id,
         }
       );
+  
+      socket.emit("chat_view", {
+        chatId,
+        visible: true,
+      });
 
       setSocketReady(true);
     };
+
+    const markChatAsSeen = useCallback(
+      (targetChatId: number) => {
+        if (
+          !socket?.connected
+        ) {
+          return;
+        }
+    
+        if (!isOnlineRef.current) {
+          return;
+        }
+    
+        if (
+          document.visibilityState !==
+          "visible"
+        ) {
+          return;
+        }
+    
+        if (
+          Number(targetChatId) !==
+          Number(chatId)
+        ) {
+          return;
+        }
+    
+        socket.emit(
+          "mark_seen",
+          {
+            chatId: Number(targetChatId),
+          }
+        );
+    
+        console.log(
+          "👁️ AUTO MARK SEEN:",
+          targetChatId
+        );
+      },
+      [
+        socket,
+        chatId,
+      ]
+    );
 
     const handleReceiveMessage = (
       message: Message
@@ -241,6 +307,15 @@ export function useChatSocket({
 
           }
         );
+      
+      if (
+        Number(message.chat) ===
+        Number(chatId)
+      ) {
+        markChatAsSeen(
+          Number(message.chat)
+        );
+      }
     };
 
     const handleTyping = (
@@ -282,60 +357,6 @@ export function useChatSocket({
 
       socket?.onStopTyping?.(
         data
-      );
-    };
-
-    const handleUserStatus = ({
-      userId,
-      status,
-      last_seen,
-    }: {
-      userId: number;
-      status: string;
-      last_seen: string | null;
-    }) => {
-
-      if (
-        !mountedRef.current
-      ) {
-        return;
-      }
-
-      const eventUserId =
-        Number(userId);
-
-      if (
-        eventUserId ===
-        currentUserId
-      ) {
-        return;
-      }
-
-      setChatUser?.(
-        (prev: any) => {
-
-          if (!prev) {
-            return prev;
-          }
-
-          if (
-            Number(prev.id) !==
-            eventUserId
-          ) {
-            return prev;
-          }
-
-          return {
-            ...prev,
-
-            status,
-
-            last_seen:
-              last_seen ??
-              prev.last_seen,
-          };
-
-        }
       );
     };
 
@@ -455,11 +476,6 @@ export function useChatSocket({
           'receive_message',
           existing.handleReceiveMessage
         );
-
-        globalSocket.off(
-          'user_status',
-          existing.handleUserStatus
-        );
       }
 
       globalSocket
@@ -474,7 +490,6 @@ export function useChatSocket({
             handleErr,
             handleError,
             handleReceiveMessage,
-            handleUserStatus,
           }
         );
 
@@ -511,11 +526,6 @@ export function useChatSocket({
       globalSocket.on(
         'receive_message',
         handleReceiveMessage
-      );
-
-      globalSocket.on(
-        'user_status',
-        handleUserStatus
       );
 
       globalSocket.onTyping =
@@ -730,6 +740,11 @@ export function useChatSocket({
             chatId: id,
           }
         );
+  
+        cleanupSocket.emit("chat_view", {
+          chatId: null,
+          visible: false,
+        });
       }
 
       if (
@@ -771,11 +786,6 @@ export function useChatSocket({
           handlers.handleReceiveMessage
         );
 
-        cleanupSocket.off(
-          'user_status',
-          handlers.handleUserStatus
-        );
-
         cleanupSocket
           .__privateChatHandlers
           ?.delete(id);
@@ -803,5 +813,6 @@ export function useChatSocket({
   return {
     socketRef,
     socketReady,
+    setHandlers,
   };
 }

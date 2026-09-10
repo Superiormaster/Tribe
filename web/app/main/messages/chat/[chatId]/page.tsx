@@ -87,6 +87,7 @@ export default function ChatPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const {
     socketRef,
+    presence,
   } = useGlobalSocketContext();
   const messageBodyRef = useRef<MessageBubblesHandle | null>(null);
   
@@ -156,6 +157,25 @@ export default function ChatPage() {
   
     loadChat();
   }, [chatIdNum, currentUser.id]);
+  
+  const effectiveChatUser = useMemo(() => {
+    if (!chatUser) return null;
+  
+    const livePresence =
+      presence.get(Number(chatUser.id));
+  
+    if (!livePresence) {
+      return chatUser;
+    }
+  
+    return {
+      ...chatUser,
+      status: livePresence.status,
+      last_seen:
+        livePresence.last_seen ??
+        chatUser.last_seen,
+    };
+  }, [chatUser, presence]);
   
   const messagingBlocked =
     chatUser?.is_message_blocked ||
@@ -256,6 +276,7 @@ export default function ChatPage() {
   
   const {
     socketReady,
+    setHandlers,
   } = useChatSocket({
     chatId: chatIdNum,
     currentUser,
@@ -321,6 +342,76 @@ export default function ChatPage() {
     handleDelivered,
   ]);
   
+  useEffect(() => {
+    const socket = socketRef.current;
+  
+    if (
+      !socket ||
+      !socket.connected ||
+      !chatIdNum
+    ) {
+      return;
+    }
+  
+    const updateChatView = () => {
+      const visible =
+        document.visibilityState === "visible";
+  
+      socket.emit(
+        "chat_view",
+        {
+          chatId: chatIdNum,
+          visible,
+        }
+      );
+  
+      console.log(
+        "👁️ CHAT VIEW STATE:",
+        {
+          chatIdNum,
+          visible,
+        }
+      );
+    };
+  
+    updateChatView();
+  
+    socket.on(
+      "connect",
+      updateChatView
+    );
+  
+    document.addEventListener(
+      "visibilitychange",
+      updateChatView
+    );
+  
+    return () => {
+      socket.off(
+        "connect",
+        updateChatView
+      );
+  
+      document.removeEventListener(
+        "visibilitychange",
+        updateChatView
+      );
+  
+      if (socket.connected) {
+        socket.emit(
+          "chat_view",
+          {
+            chatId: null,
+            visible: false,
+          }
+        );
+      }
+    };
+  }, [
+    socketRef,
+    chatIdNum,
+  ]);
+  
   const {
     handleTyping,
     stopTyping,
@@ -332,13 +423,15 @@ export default function ChatPage() {
   });
   
   useEffect(() => {
-    if (!socketRef.current) return;
-  
-    socketRef.current.setHandlers?.({
+    setHandlers({
       setMessages,
       setIsTyping,
     });
-  }, [socketRef, setMessages]);
+  }, [
+    setHandlers,
+    setMessages,
+    setIsTyping,
+  ]);
   
   const jumpToMessage = async (messageId: number) => {
     await messageBodyRef.current?.jumpToMessage(
@@ -550,7 +643,7 @@ export default function ChatPage() {
       />
 
       <ChatHeader
-        chatUser={chatUser}
+        chatUser={effectiveChatUser}
         isTyping={isTyping}
         formatLastSeen={formatLastSeen}
         onAudioCall={async () => {

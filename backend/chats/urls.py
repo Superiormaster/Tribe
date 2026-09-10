@@ -15,6 +15,8 @@ from .views import (
     report_community,
     report,
     unmute_chat,
+    community_online_members,
+    presence_communities,
     mute_chat,
     CommunityMessagePushView,
     get_or_create_community_chat,
@@ -175,6 +177,16 @@ urlpatterns = [
     path(
         "<int:chat_id>/community-chat-delete/",
         delete_community_chat
+    ),
+    path(
+        "communities/<int:community_id>/online-members/",
+        community_online_members,
+        name="community-online-members",
+    ),
+    path(
+        "presence-communities/",
+        presence_communities,
+        name="presence-communities",
     ),
     path(
         "community-chats-delete/",

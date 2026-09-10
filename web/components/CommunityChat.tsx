@@ -212,6 +212,7 @@ export default function CommunityChat({ communityId }: Props) {
   const {
     socketReady,
     pinMessage,
+    setHandlers,
   } = useCommunitySocket(
     communityId,
     currentUser,
@@ -276,21 +277,86 @@ export default function CommunityChat({ communityId }: Props) {
   ]);
   
   useEffect(() => {
+    const socket = socketRef.current;
+  
     if (
-      !socketReady ||
-      !socketRef.current
+      !socket ||
+      !socket.connected ||
+      !communityId
     ) {
       return;
     }
   
-    socketRef.current.setHandlers?.({
+    const updateChatView = () => {
+      const visible =
+        document.visibilityState === "visible";
+  
+      socket.emit(
+        "community_view",
+        {
+          chatId: communityId,
+          visible,
+        }
+      );
+  
+      console.log(
+        "👁 COMMMUNITY VIEW STATE:",
+        {
+          communityId,
+          visible,
+        }
+      );
+    };
+  
+    updateChatView();
+  
+    socket.on(
+      "connect",
+      updateChatView
+    );
+  
+    document.addEventListener(
+      "visibilitychange",
+      updateChatView
+    );
+  
+    return () => {
+      socket.off(
+        "connect",
+        updateChatView
+      );
+  
+      document.removeEventListener(
+        "visibilitychange",
+        updateChatView
+      );
+  
+      if (socket.connected) {
+        socket.emit(
+          "community_view",
+          {
+            chatId: null,
+            visible: false,
+          }
+        );
+      }
+    };
+  }, [
+    socketRef,
+    communityId,
+  ]);
+  
+  useEffect(() => {
+    setHandlers({
       setMessages,
       setTypingUsers,
       setOnlineCount,
     });
   }, [
-    socketReady,
+    setHandlers,
     setMessages,
+    setTypingUsers,
+    setOnlineCount,
   ]);
   
   const {

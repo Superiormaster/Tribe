@@ -252,3 +252,60 @@ def community_detail(request, community_id):
         "join_approval_required":
             community.join_approval_required,
     })
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def community_online_members(request, community_id):
+    """
+    Return the IDs of all members of a community.
+
+    IMPORTANT:
+    This endpoint does NOT determine who is online.
+    Node.js global presence does that.
+
+    Django only provides the community membership list.
+    """
+
+    community = get_object_or_404(
+        Community,
+        id=community_id
+    )
+
+    # Only community members can request this list.
+    is_member = CommunityMembership.objects.filter(
+        community=community,
+        user=request.user,
+    ).exists()
+
+    if not is_member:
+        return Response(
+            {"detail": "Not a member."},
+            status=403
+        )
+
+    member_ids = list(
+        CommunityMembership.objects
+        .filter(community=community)
+        .values_list("user_id", flat=True)
+    )
+
+    return Response({
+        "community_id": community.id,
+        "member_ids": member_ids,
+    })
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def presence_communities(request):
+    community_ids = list(
+        CommunityMembership.objects
+        .filter(user=request.user)
+        .values_list(
+            "community_id",
+            flat=True
+        )
+    )
+
+    return Response({
+        "community_ids": community_ids,
+    })

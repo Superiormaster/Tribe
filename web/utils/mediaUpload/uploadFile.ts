@@ -90,6 +90,7 @@ export async function uploadFile({
 
   return uploadMedia(
     file,
-    onProgress
+    onProgress,
+    signal
   );
 }

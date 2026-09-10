@@ -538,6 +538,13 @@ export function useHomeFeed({
 
   const addFeedPost = useCallback(
     async (post: any) => {
+      console.log("🔥 [HOME][ADD FEED][1] ENTERED", {
+        postId: post?.id,
+        post,
+        filter,
+        selectedTribe,
+      });
+  
       const normalizedPost = {
         ...post,
   
@@ -549,45 +556,82 @@ export function useHomeFeed({
           post.feed_type ?? "post",
   
         is_starred_by_user:
-          starredUsers.has(
-            post.user?.id
-          ),
+          starredUsers.has(post.user?.id),
   
         _local_created: true,
       };
   
-      const postId =
-        Number(normalizedPost.id);
+      const postId = Number(normalizedPost.id);
+  
+      console.log("🔥 [HOME][ADD FEED][2] NORMALIZED", {
+        postId,
+        reactKey: normalizedPost.reactKey,
+        feed_type: normalizedPost.feed_type,
+      });
   
       if (postId) {
-        protectedPostIdsRef.current.add(
-          postId
+        protectedPostIdsRef.current.add(postId);
+  
+        console.log(
+          "🔥 [HOME][ADD FEED][3] PROTECTED",
+          {
+            postId,
+            protectedIds: [
+              ...protectedPostIdsRef.current,
+            ],
+          }
         );
       }
+  
+      console.log(
+        "🔥 [HOME][ADD FEED][4] CACHE INSERTED",
+        {
+          postId,
+        }
+      );
+  
+      setPosts(prev => {
+        const exists = prev.some(
+          item =>
+            Number(item.id) === postId
+        );
+  
+        console.log(
+          "🔥 [HOME][ADD FEED][5] SETTING POSTS",
+          {
+            postId,
+            previousCount: prev.length,
+            exists,
+            firstBefore: prev[0]?.id,
+          }
+        );
+  
+        if (exists) {
+          return prev;
+        }
+  
+        const next = [
+          normalizedPost,
+          ...prev,
+        ];
+  
+        console.log(
+          "🔥 [HOME][ADD FEED][6] NEW STATE",
+          {
+            postId,
+            nextCount: next.length,
+            firstAfter: next[0]?.id,
+          }
+        );
+  
+        return next;
+      });
   
       await insertFeedPost(
         filter,
         selectedTribe,
         normalizedPost
       );
-  
-      setPosts(prev => {
-        const exists =
-          prev.some(
-            item =>
-              Number(item.id) ===
-              postId
-          );
-  
-        if (exists) {
-          return prev;
-        }
-  
-        return [
-          normalizedPost,
-          ...prev,
-        ];
-      });
     },
     [
       filter,

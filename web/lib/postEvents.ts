@@ -7,6 +7,21 @@ export const REPOST_DELETED_EVENT =
 export const SHARE_DELETED_EVENT =
   "tribe:share-deleted";
 
+export const POST_CREATED_EVENT =
+  "tribe:post-created";
+
+export function emitPostCreated(post: any) {
+  window.dispatchEvent(
+    new CustomEvent(
+      POST_CREATED_EVENT,
+      {
+        detail: {
+          post,
+        },
+      }
+    )
+  );
+}
 
 export function emitPostDeleted(
   postId: number

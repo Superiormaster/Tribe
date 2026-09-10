@@ -1,37 +1,17 @@
-'use client';
+"use client";
 
 import {
   useCallback,
   useEffect,
-  useRef,
+  useMemo,
   useState,
-} from 'react';
+} from "react";
 
-import { uploadFile } from '@/utils/mediaUpload/uploadFile';
-
-import {
-  getCompressedVideo,
-  getCompressedVideoKey,
-  saveCompressedVideo,
-  deleteCompressedVideo,
-} from "@/utils/mediaUpload/compressedVideoStore";
+import type { UploadedMedia } from "@/utils/media";
 
 import {
-  compressImage,
-} from '@/utils/compressImage';
-
-import {
-  useNetwork,
-} from '@/components/networkConnection/NetworkContext';
-
-import {
-  UploadNetworkError,
-} from '@/utils/mediaUpload/errors';
-
-import {
-  buildUploadedMedia,
-  type UploadedMedia,
-} from '@/utils/media';
+  usePostUpload,
+} from "@/components/PostUploadProvider";
 
 type ExistingVideo = {
   url: string;
@@ -39,11 +19,11 @@ type ExistingVideo = {
 };
 
 export type UploadStatus =
-  | 'idle'
-  | 'uploading'
-  | 'success'
-  | 'failed'
-  | 'paused';
+  | "idle"
+  | "uploading"
+  | "success"
+  | "failed"
+  | "paused";
 
 interface UseMediaUploadProps {
   content: string;
@@ -62,1005 +42,251 @@ export function getFileKey(file: File) {
 export function useMediaUpload({
   imageFiles,
   video,
-  isOnline,
 }: UseMediaUploadProps) {
-
   const {
-    networkStatus,
-    connectionType,
-  } = useNetwork();
+    jobs,
+    isReady,
+    isOnline,
+  } = usePostUpload();
+
+  const currentMediaFiles = useMemo(() => {
+    const files: File[] = [];
+
+    for (const item of imageFiles) {
+      if (item instanceof File) {
+        files.push(item);
+      }
+    }
+
+    if (video instanceof File) {
+      files.push(video);
+    }
+
+    return files;
+  }, [imageFiles, video]);
 
   const [uploadedMedia, setUploadedMedia] =
     useState<UploadedMedia[]>([]);
 
-  const [uploadStatus, setUploadStatus] =
-    useState<UploadStatus>('idle');
-
   const [uploadError, setUploadError] =
     useState<Error | null>(null);
+
+  const [uploadStatus, setUploadStatus] =
+    useState<UploadStatus>("idle");
 
   const [fileProgress, setFileProgress] =
     useState<Record<string, number>>({});
 
-  const abortControllersRef =
-    useRef<Set<AbortController>>(new Set());
+  const currentJob = useMemo(() => {
+    if (!currentMediaFiles.length) {
+      return null;
+    }
 
-  const uploadGenerationRef =
-    useRef(0);
+    const fileKeys = new Set(
+      currentMediaFiles.map(getFileKey),
+    );
 
-  const uploadPromiseRef =
-    useRef<Promise<UploadedMedia[]> | null>(null);
-  const uploadingRef =
-    useRef(false);
+    return (
+      jobs.find((job) =>
+        job.media.some((media) =>
+          fileKeys.has(
+            `${media.file_name}-${media.file_size}-${media.file_last_modified}`,
+          ),
+        ),
+      ) ?? null
+    );
+  }, [jobs, currentMediaFiles]);
 
-  const getFilesToUpload =
-    useCallback((): File[] => {
+  useEffect(() => {
+    if (!currentJob) {
+      return;
+    }
 
-      if (video instanceof File) {
-        return [video];
-      }
+    const progress: Record<string, number> = {};
 
-      return imageFiles.filter(
-        (item): item is File =>
-          item instanceof File
-      );
+    let uploadedCount = 0;
+    let failed = false;
+    let paused = false;
+    let uploading = false;
 
-    }, [
-      video,
-      imageFiles,
-    ]);
-  
-  const getVideoQuality =
-    useCallback(() => {
+    const mediaResults: UploadedMedia[] = [];
 
-      if (
-        networkStatus === 'poor' ||
-        networkStatus === 'slow'
-      ) {
-        return '720p' as const;
-      }
+    for (const media of currentJob.media) {
+      const fileKey =
+        `${media.file_name}-${media.file_size}-${media.file_last_modified}`;
 
-      return '1080p' as const;
-
-    }, [
-      networkStatus,
-    ]);
-
-  const uploadSingleFile =
-    useCallback(
-      async (
-        originalFile: File,
-        generation: number,
-      ): Promise<UploadedMedia> => {
-
-        if (
-          !isOnline
-        ) {
-          throw new UploadNetworkError(
-            'Network connection unavailable.'
-          );
-        }
-
-        if (
-          generation !==
-          uploadGenerationRef.current
-        ) {
-          throw new DOMException(
-            'Media upload was cancelled.',
-            'AbortError'
-          );
-        }
-
-        const controller =
-          new AbortController();
-
-        abortControllersRef.current.add(
-          controller
+      progress[fileKey] =
+        Math.max(
+          0,
+          Math.min(
+            100,
+            Number(media.progress) || 0,
+          ),
         );
 
-        const originalKey =
-          getFileKey(originalFile);
-        let compressedVideoKey:
-          string | null = null;
+      if (media.status === "uploaded") {
+        uploadedCount++;
+      }
 
-        try {
+      if (media.status === "failed") {
+        failed = true;
+      }
 
-          let fileToUpload =
-            originalFile;
+      if (media.status === "paused") {
+        paused = true;
+      }
 
-          if (
-            originalFile.type.startsWith(
-              'image/'
-            )
-          ) {
+      if (
+        media.status === "uploading" ||
+        media.status === "compressing"
+      ) {
+        uploading = true;
+      }
 
-            setFileProgress(
-              prev => ({
-                ...prev,
-                [originalKey]: 0,
-              })
-            );
+      if (
+        media.status === "uploaded" &&
+        media.media_id &&
+        media.uploaded_url
+      ) {
+        mediaResults.push({
+          mediaId: String(media.media_id),
+          url: media.uploaded_url,
+          thumbnail: media.thumbnail_url ?? "",
+          type: media.media_type,
+        });
+      }
+    }
 
-            const compressedImage =
-              await compressImage(
-                originalFile,
-                1.5
-              );
+    setFileProgress(progress);
 
-            if (
-              controller.signal.aborted
-            ) {
-              throw new DOMException(
-                'Image compression cancelled.',
-                'AbortError'
-              );
-            }
+    if (mediaResults.length) {
+      setUploadedMedia(mediaResults);
+    }
 
-            fileToUpload =
-              compressedImage;
+    if (failed || currentJob.status === "failed") {
+      setUploadStatus("failed");
 
-            setFileProgress(
-              prev => ({
-                ...prev,
-                [originalKey]: 20,
-              })
-            );
-          }
+      const message =
+        currentJob.error ||
+        currentJob.media.find(
+          (item) => item.error,
+        )?.error ||
+        "Background post upload failed.";
 
-          if (
-            originalFile.type.startsWith(
-              'video/'
-            )
-          ) {
-            
-            const targetQuality =
-              getVideoQuality();
-  
-            compressedVideoKey =
-              getCompressedVideoKey(
-                originalFile,
-                targetQuality
-              );
-  
-            const cached =
-              await getCompressedVideo(
-                compressedVideoKey
-              );
-  
-            if (cached) {
-  
-              console.log(
-                "🎥 Using persisted compressed video:",
-                {
-                  name: cached.name,
-                  size:
-                    (
-                      cached.size /
-                      1024 /
-                      1024
-                    ).toFixed(2) + " MB",
-                  quality:
-                    targetQuality,
-                }
-              );
-  
-              fileToUpload =
-                cached;
-  
-            } else {
-  
-              console.log(
-                "🎥 Compressing video:",
-                {
-                  name:
-                    originalFile.name,
-                  size:
-                    (
-                      originalFile.size /
-                      1024 /
-                      1024
-                    ).toFixed(2) + " MB",
-                  quality:
-                    targetQuality,
-                }
-              );
-  
-              setFileProgress(
-                prev => ({
-                  ...prev,
-                  [originalKey]: 0,
-                })
-              );
-  
-              const { compressVideo } =
-                await import("@/utils/mediaUpload/videoCompressor");
+      setUploadError(
+        new Error(message),
+      );
 
-              const compressed =
-                await compressVideo({
-                  file:
-                    originalFile,
-                  networkStatus,
-                  connectionType,
-                  signal:
-                    controller.signal,
-  
-                  onProgress:
-                    percent => {
-  
-                      setFileProgress(
-                        prev => ({
-                          ...prev,
-  
-                          [originalKey]:
-                            Math.round(
-                              percent / 2
-                            ),
-                        })
-                      );
-                    },
-                });
-  
-              setFileProgress(
-                prev => ({
-                  ...prev,
-                  [originalKey]: 50,
-                })
-              );
-    
-              await saveCompressedVideo(
-                compressedVideoKey,
-                compressed,
-                originalFile,
-                targetQuality
-              );
-  
-              console.log(
-                "💾 Compressed video persisted:",
-                compressed.name
-              );
-    
-              fileToUpload =
-                compressed;
-            }
-          }
+      return;
+    }
 
-          const uploaded =
-            await uploadFile({
-              file:
-                fileToUpload,
+    if (
+      paused ||
+      currentJob.status === "paused" ||
+      !isOnline
+    ) {
+      setUploadStatus("paused");
+      setUploadError(null);
+      return;
+    }
 
-              signal:
-                controller.signal,
+    if (
+      uploading ||
+      currentJob.status === "uploading"
+    ) {
+      setUploadStatus("uploading");
+      setUploadError(null);
+      return;
+    }
 
-              onProgress:
-                percent => {
-                  const progress =
-                    originalFile.type.startsWith(
-                      'image/'
-                    )
-                      ? 50 +
-                        Math.round(
-                          percent / 2
-                        )
-                      : 50 +
-                        Math.round(
-                          percent / 2
-                        );
+    if (
+      uploadedCount ===
+        currentJob.media.length &&
+      currentJob.media.length > 0
+    ) {
+      setUploadStatus("success");
+      setUploadError(null);
+      return;
+    }
 
-                  setFileProgress(
-                    prev => ({
-                      ...prev,
-
-                      [originalKey]:
-                        Math.min(
-                          progress, 100
-                        ),
-                    })
-                  );
-                },
-            });
-
-          if (
-            generation !==
-            uploadGenerationRef.current
-          ) {
-            throw new DOMException(
-              'Media upload was cancelled.',
-              'AbortError'
-            );
-          }
-
-          if (
-            !uploaded?.original_url ||
-            uploaded?.media_id == null
-          ) {
-            throw new Error(
-              'Media upload completed but required media information was not returned.'
-            );
-          }
-
-          setFileProgress(
-            prev => ({
-              ...prev,
-              [originalKey]: 100,
-            })
-          );
-
-          if (
-            compressedVideoKey &&
-            originalFile.type.startsWith(
-              'video/'
-            )
-          ) {
-
-            await deleteCompressedVideo(
-              compressedVideoKey
-            );
-
-            console.log(
-              '🗑️ Persisted compressed video deleted after successful upload.'
-            );
-          }
-
-          return buildUploadedMedia(
-            Array.isArray(uploaded.original_url)
-              ? uploaded.original_url[0]
-              : uploaded.original_url,
-            String(uploaded.media_id),
-            originalFile,
-            uploaded.thumbnail_url
-          );
-
-        } finally {
-
-          abortControllersRef.current.delete(
-            controller
-          );
-        }
-      },
-      [
-        isOnline,
-        networkStatus,
-        connectionType,
-        getVideoQuality,
-      ]
-    );
+    if (
+      currentJob.status === "queued" ||
+      currentJob.status === "creating"
+    ) {
+      setUploadStatus("uploading");
+      setUploadError(null);
+    }
+  }, [
+    currentJob,
+    isOnline,
+  ]);
 
   const uploadSelectedMedia =
     useCallback(
       async (
-        files: File[],
+        _files: File[],
       ): Promise<UploadedMedia[]> => {
-
-        const generation =
-          ++uploadGenerationRef.current;
-
-        if (!files.length) {
-          return [];
-        }
-
-        if (!isOnline) {
-
-          setUploadStatus(
-            'paused'
-          );
-
-          return [];
-        }
-
-        setUploadStatus(
-          'uploading'
+        throw new Error(
+          "Direct media upload is disabled. All posts must be queued through the background PostUploadManager.",
         );
-
-        setUploadError(
-          null
-        );
-
-        /*
-         * Clear old progress for
-         * this upload operation.
-         */
-        setFileProgress({});
-
-        const results:
-          UploadedMedia[] = [];
-        uploadingRef.current =
-          true;
-
-        try {
-
-          for (
-            let index = 0;
-            index < files.length;
-            index++
-          ) {
-
-            const file =
-              files[index];
-  
-            if (
-              !isOnline
-            ) {
-              throw new UploadNetworkError(
-                'Network connection lost.'
-              );
-            }
-
-            if (
-              generation !==
-              uploadGenerationRef.current
-            ) {
-              throw new DOMException(
-                'Media upload was cancelled.',
-                'AbortError'
-              );
-            }
-
-            const uploaded =
-              await uploadSingleFile(
-                file,
-                generation
-              );
-
-            results.push(
-              uploaded
-            );
-
-            setUploadedMedia(
-              [...results]
-            );
-          }
-
-          if (
-            generation !==
-            uploadGenerationRef.current
-          ) {
-            return [];
-          }
-
-          setUploadStatus(
-            'success'
-          );
-
-          setUploadError(
-            null
-          );
-
-          return results;
-
-        } catch (error) {
-
-          if (
-            error instanceof
-            UploadNetworkError ||
-            (
-              error instanceof Error &&
-              error.name ===
-                'UploadNetworkError'
-            )
-          ) {
-
-            setUploadStatus(
-              'paused'
-            );
-
-            setUploadError(
-              null
-            );
-
-            throw error;
-          }
-
-          if (
-            error instanceof DOMException &&
-            error.name ===
-              'AbortError'
-          ) {
-
-            setUploadStatus(
-              'paused'
-            );
-
-            throw error;
-          }
-
-          const normalizedError =
-            error instanceof Error
-              ? error
-              : new Error(
-                  'Media upload failed.'
-                );
-
-          setUploadError(
-            normalizedError
-          );
-
-          setUploadStatus(
-            'failed'
-          );
-
-          throw normalizedError;
-        }
       },
-      [
-        isOnline,
-        uploadSingleFile,
-      ]
+      [],
     );
 
   const resumeUpload =
     useCallback(
-      async (): Promise<
-        UploadedMedia[]
-      > => {
-
-        const files =
-          getFilesToUpload();
-
-        if (!files.length) {
-          return uploadedMedia;
-        }
-
-        if (!isOnline) {
-
-          setUploadStatus(
-            'paused'
-          );
-
-          return uploadedMedia;
-        }
-
-        uploadGenerationRef.current++;
-  
-        setUploadStatus(
-          'uploading'
+      async (): Promise<UploadedMedia[]> => {
+        throw new Error(
+          "Direct media resume is disabled. Resume the background post upload job through PostUploadManager.",
         );
-
-        setUploadError(
-          null
-        );
-
-        const promise =
-          uploadSelectedMedia(
-            files
-          );
-
-        uploadPromiseRef.current =
-          promise;
-
-        try {
-
-          const media =
-            await promise;
-
-          setUploadedMedia(
-            media
-          );
-
-          setUploadStatus(
-            'success'
-          );
-
-          return media;
-
-        } catch (error) {
-
-          if (
-            error instanceof
-            UploadNetworkError ||
-            (
-              error instanceof Error &&
-              error.name ===
-                'UploadNetworkError'
-            )
-          ) {
-
-            setUploadStatus(
-              'paused'
-            );
-
-            setUploadError(
-              null
-            );
-
-            throw error;
-          }
-
-          setUploadStatus(
-            'failed'
-          );
-
-          setUploadError(
-            error instanceof Error
-              ? error
-              : new Error(
-                  'Media upload failed.'
-                )
-          );
-
-          throw error;
-
-        } finally {
-
-          if (
-            uploadPromiseRef.current ===
-            promise
-          ) {
-            uploadPromiseRef.current =
-              null;
-          }
-        }
       },
-      [
-        getFilesToUpload,
-        isOnline,
-        uploadedMedia,
-        uploadSelectedMedia,
-      ]
+      [],
     );
 
-  useEffect(() => {
-    if (
-      !(video instanceof File)
-    ) {
-      if (
-        !imageFiles.some(
-          item =>
-            item instanceof File
-        )
-      ) {
-        setUploadStatus(
-          'idle'
-        );
-      }
-    
-      return;
-    }
-    
-    const videoFile = video;
-
-    if (!isOnline) {
-      setUploadStatus(
-        'paused'
-      );
-
-      setUploadError(
-        null
-      );
-
-      return;
-    }
-
-    if (
-      uploadingRef.current
-    ) {
-      return;
-    }
-
-    let cancelled =
-      false;
-
-    async function uploadVideo() {
+  const clearUploadedMedia =
+    useCallback(() => {
       setUploadedMedia([]);
       setFileProgress({});
       setUploadError(null);
-      setUploadStatus(
-        'uploading'
-      );
-
-      let promise:
-        Promise<UploadedMedia[]> |
-        null = null;
-
-      try {
-        promise =
-          uploadSelectedMedia(
-            [videoFile]
-          );
-
-        uploadPromiseRef.current =
-          promise;
-
-        const media =
-          await promise;
-
-        if (
-          cancelled
-        ) {
-          return;
-        }
-
-        setUploadedMedia(
-          media
-        );
-
-        setUploadStatus(
-          'success'
-        );
-
-      } catch (error) {
-        if (
-          cancelled
-        ) {
-          return;
-        }
-
-        if (
-          error instanceof
-          UploadNetworkError ||
-          (
-            error instanceof Error &&
-            error.name ===
-              'UploadNetworkError'
-          )
-        ) {
-
-          setUploadStatus(
-            'paused'
-          );
-
-          return;
-        }
-
-        if (
-          error instanceof DOMException &&
-          error.name ===
-            'AbortError'
-        ) {
-
-          setUploadStatus(
-            'paused'
-          );
-
-          return;
-        }
-
-        console.error(
-          'Video upload failed:',
-          error
-        );
-
-        setUploadedMedia([]);
-
-        setUploadError(
-          error instanceof Error
-            ? error
-            : new Error(
-                'Video upload failed.'
-              )
-        );
-
-        setUploadStatus(
-          'failed'
-        );
-
-      } finally {
-
-        if (
-          promise &&
-          uploadPromiseRef.current ===
-            promise
-        ) {
-          uploadPromiseRef.current =
-            null;
-        }
-      }
-    }
-
-    uploadVideo();
-
-    return () => {
-      cancelled = true;
-
-      uploadGenerationRef.current++;
-
-      abortControllersRef.current.forEach(
-        controller => {
-          controller.abort();
-        }
-      );
-
-      abortControllersRef.current.clear();
-    };
-  }, [
-    video,
-    isOnline,
-    uploadSelectedMedia,
-  ]);
-
-  useEffect(() => {
-    const files =
-      imageFiles.filter(
-        (item): item is File =>
-          item instanceof File
-      );
-
-    if (!files.length) {
-      if (
-        !(video instanceof File)
-      ) {
-        setUploadStatus(
-          'idle'
-        );
-      }
-
-      return;
-    }
-
-    if (!isOnline) {
-      setUploadStatus(
-        'paused'
-      );
-
-      setUploadError(
-        null
-      );
-
-      return;
-    }
-
-    if (
-      uploadingRef.current
-    ) {
-      return;
-    }
-  
-    let cancelled =
-      false;
-
-    async function uploadImages() {
-
-      setUploadedMedia([]);
-      setFileProgress({});
-      setUploadError(null);
-      setUploadStatus(
-        'uploading'
-      );
-
-      let promise:
-        Promise<UploadedMedia[]> |
-        null = null;
-
-      try {
-
-        promise =
-          uploadSelectedMedia(
-            files
-          );
-
-        uploadPromiseRef.current =
-          promise;
-
-        const media =
-          await promise;
-
-        if (
-          cancelled
-        ) {
-          return;
-        }
-
-        setUploadedMedia(
-          media
-        );
-
-        setUploadStatus(
-          'success'
-        );
-
-      } catch (error) {
-
-        if (
-          cancelled
-        ) {
-          return;
-        }
-
-        if (
-          error instanceof
-          UploadNetworkError ||
-          (
-            error instanceof Error &&
-            error.name ===
-              'UploadNetworkError'
-          )
-        ) {
-
-          setUploadStatus(
-            'paused'
-          );
-
-          setUploadError(
-            null
-          );
-
-          return;
-        }
-
-        if (
-          error instanceof DOMException &&
-          error.name ===
-            'AbortError'
-        ) {
-
-          setUploadStatus(
-            'paused'
-          );
-
-          return;
-        }
-
-        console.error(
-          'Image upload failed:',
-          error
-        );
-
-        setUploadedMedia([]);
-
-        setUploadError(
-          error instanceof Error
-            ? error
-            : new Error(
-                'Image upload failed.'
-              )
-        );
-
-        setUploadStatus(
-          'failed'
-        );
-
-      } finally {
-
-        if (
-          promise &&
-          uploadPromiseRef.current ===
-            promise
-        ) {
-          uploadPromiseRef.current =
-            null;
-        }
-      }
-    }
-
-    uploadImages();
-
-    return () => {
-
-      cancelled = true;
-
-      uploadGenerationRef.current++;
-
-      abortControllersRef.current.forEach(
-        controller => {
-          controller.abort();
-        }
-      );
-
-      abortControllersRef.current.clear();
-
-    };
-
-  }, [
-    imageFiles,
-    isOnline,
-    uploadSelectedMedia,
-    video,
-  ]);
+      setUploadStatus("idle");
+    }, []);
 
   return {
     uploadedMedia,
+
     uploadStatus,
+
     uploading:
-      uploadStatus ===
-      'uploading',
+      uploadStatus === "uploading",
+
     uploadError,
+
     fileProgress,
-    uploadPromiseRef,
+
+    uploadPromiseRef: {
+      current: null,
+    },
+
     uploadSelectedMedia,
+
     setUploadedMedia,
+
     setFileProgress,
+
     setUploadError,
+
     resumeUpload,
+
     setUploadStatus,
+
+    backgroundJob: currentJob,
+
+    backgroundUploadReady:
+      isReady,
+
+    backgroundUploadOnline:
+      isOnline,
+
+    clearUploadedMedia,
   };
 }

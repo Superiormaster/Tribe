@@ -2,60 +2,63 @@
 
 import {
   useEffect,
+  useState,
   useRef,
   useCallback,
 } from 'react';
-import { apiRequest } from '@/utils/api';
-import { ensureConnected } from '@/utils/chat/waitForConnect';
+
 import {
   flushOutbox,
-} from "@/utils/chat/outboxProcessor";
-import { useNetwork } from '@/components/networkConnection/NetworkContext';
+} from '@/utils/chat/outboxProcessor';
+
+import {
+  useNetwork,
+} from '@/components/networkConnection/NetworkContext';
+
 import {
   getSocket,
   reconnectSocket,
-} from "@/lib/socket";
+} from '@/lib/socket';
+import type { TribeSocket } from "@/lib/socket";
+
+import {
+  ensureConnected,
+} from '@/utils/chat/waitForConnect';
+
 import {
   rejoinAllCommunities,
-} from "@/lib/communitySocket";
+} from '@/lib/communitySocket';
+
+type UserPresence = {
+  status: 'online' | 'offline';
+  last_seen: string | null;
+};
 
 export function useGlobalSocket(
   currentUser: any
 ) {
-  const socketRef = useRef<any>(null);
-  
+  const socketRef = useRef<TribeSocket | null>(null);
+
   const handlersRef = useRef<{
     onConnect?: () => void;
-  
+
     onDelivered?: (data: any) => void;
     onSeen?: (data: any) => void;
-  
-    onCommunityDelivered?: (
-      data: any
-    ) => void;
-  
-    onCommunitySeen?: (
-      data: any
-    ) => void;
-  
+
+    onCommunityDelivered?: (data: any) => void;
+    onCommunitySeen?: (data: any) => void;
+
     onSendState?: () => void;
-  
+
     onSocketConnected?: () => void;
-    onSocketDisconnected?: () => void;
-  
-    onReconnectAttempt?: (
-      n: number
-    ) => void;
-  
-    onReconnect?: (
-      n: number
-    ) => void;
-  
-    onConnectError?: (
-      err: any
-    ) => void;
-  
-    onMessageDeliveredAck?: (
+    onSocketDisconnected?: (reason: string) => void;
+
+    onReconnectAttempt?: (n: number) => void;
+    onReconnect?: (n: number) => void;
+    onConnectError?: (err: any) => void;
+
+    onMessageDeliveredAck?: (data: any) => void;
+    onUserStatus?: (
       data: any
     ) => void;
   }>({});
@@ -64,9 +67,14 @@ export function useGlobalSocket(
     isOnline,
     finishReconnect,
   } = useNetwork();
+  
+  const [presence, setPresence] =
+  useState<Map<number, UserPresence>>(
+    new Map()
+  );
 
   const reconnectPromiseRef =
-  useRef<Promise<any> | null>(null);
+    useRef<Promise<any> | null>(null);
 
   const ensureGlobalSocket =
     useCallback(
@@ -92,7 +100,7 @@ export function useGlobalSocket(
 
               if (!socket) {
                 console.warn(
-                  "⚠️ GLOBAL: getSocket() returned null"
+                  '⚠️ GLOBAL: getSocket() returned null'
                 );
 
                 return null;
@@ -101,12 +109,7 @@ export function useGlobalSocket(
               socketRef.current =
                 socket;
 
-              /*
-               * Already connected.
-               */
-              if (
-                socket.connected
-              ) {
+              if (socket.connected) {
                 await ensureConnected(
                   socket
                 );
@@ -115,7 +118,7 @@ export function useGlobalSocket(
               }
 
               console.log(
-                "🔌 GLOBAL: socket disconnected — reconnecting"
+                '🔌 GLOBAL: socket disconnected — reconnecting'
               );
 
               socket =
@@ -123,7 +126,7 @@ export function useGlobalSocket(
 
               if (!socket) {
                 console.warn(
-                  "⚠️ GLOBAL: reconnectSocket() returned null"
+                  '⚠️ GLOBAL: reconnectSocket() returned null'
                 );
 
                 return null;
@@ -137,7 +140,7 @@ export function useGlobalSocket(
               );
 
               console.log(
-                "🟢 GLOBAL: socket ensured",
+                '🟢 GLOBAL: socket ensured',
                 socket.id
               );
 
@@ -145,11 +148,12 @@ export function useGlobalSocket(
 
             } catch (error) {
               console.error(
-                "❌ GLOBAL SOCKET ENSURE FAILED",
+                '❌ GLOBAL SOCKET ENSURE FAILED',
                 error
               );
 
               return null;
+
             } finally {
               reconnectPromiseRef.current =
                 null;
@@ -161,114 +165,137 @@ export function useGlobalSocket(
 
         return promise;
       },
-      [
-        currentUser?.id,
-      ]
+      [currentUser?.id]
     );
-  
-  const reconnect = useCallback(
-    async () => {
-      if (
-        !isOnline ||
-        !currentUser?.id
-      ) {
-        finishReconnect();
-        return;
-      }
 
-      try {
-        const socket = await ensureGlobalSocket();
-  
-        console.log("Socket instance", socket);
-        console.log("Socket id", socket.id);
-        console.log("Connected", socket.connected);
-
-        if (!socket) {
+  const reconnect =
+    useCallback(
+      async () => {
+        if (
+          !isOnline ||
+          !currentUser?.id
+        ) {
+          finishReconnect();
           return;
         }
 
-        socket.emit(
-          'user_online'
-        );
-        console.log("Reconnect finished");
-        console.log("Calling flush");
-
         try {
+          console.log(
+            '🌐 GLOBAL NETWORK RECOVERY'
+          );
 
-          await flushOutbox({
-            ownerId:
-              currentUser.id,
-            privateSocket:
-              socket,
-            communitySocket:
-              socket,
-            isOnline:
-              true,
-          });
-      
+          const socket =
+            await ensureGlobalSocket();
+
+          if (!socket) {
+            console.warn(
+              '⚠️ GLOBAL RECOVERY: socket unavailable'
+            );
+
+            return;
+          }
+
+          if (
+            !socket.connected
+          ) {
+            console.warn(
+              '⚠️ GLOBAL RECOVERY: socket still disconnected'
+            );
+
+            return;
+          }
+
+          socket.emit(
+            'network_online'
+          );
+
+          console.log(
+            '📬 GLOBAL: network_online emitted'
+          );
+
+          try {
+            await flushOutbox({
+              ownerId:
+                currentUser.id,
+
+              privateSocket:
+                socket,
+
+              communitySocket:
+                socket,
+
+              isOnline:
+                true,
+            });
+
+          } catch (error) {
+            console.error(
+              '❌ GLOBAL: outbox flush failed',
+              error
+            );
+          }
+
         } catch (error) {
-      
           console.error(
-            "❌ Initial outbox flush failed",
+            '❌ GLOBAL NETWORK RECOVERY FAILED',
             error
           );
+
+        } finally {
+          finishReconnect();
         }
-      } catch (err) {
-        console.error(
-          'Reconnect failed',
-          err
-        );
-      } finally {
-        finishReconnect();
-      }
-    },
-    [
-      isOnline,
-      currentUser?.id,
-      finishReconnect,
-    ]
-  );
-  
+      },
+      [
+        isOnline,
+        currentUser?.id,
+        ensureGlobalSocket,
+        finishReconnect,
+      ]
+    );
+
   useEffect(() => {
-    const handler = (event: Event) => {
+    const handler = (
+      event: Event
+    ) => {
       const customEvent =
         event as CustomEvent<{
           accessToken: string;
         }>;
-  
+
       const accessToken =
         customEvent.detail?.accessToken;
-  
+
       if (!accessToken) {
         return;
       }
-  
-      const socket = socketRef.current;
-  
+
+      const socket =
+        socketRef.current;
+
       if (!socket) {
         return;
       }
-  
+
       socket.emit(
-        "update_access_token",
+        'update_access_token',
         {
           accessToken,
         }
       );
-  
+
       console.log(
-        "🔐 Global socket received refreshed access token"
+        '🔐 GLOBAL: refreshed access token sent to socket'
       );
     };
-  
+
     window.addEventListener(
-      "access-token-refreshed",
+      'access-token-refreshed',
       handler
     );
-  
+
     return () => {
       window.removeEventListener(
-        "access-token-refreshed",
+        'access-token-refreshed',
         handler
       );
     };
@@ -293,81 +320,39 @@ export function useGlobalSocket(
         recovering = true;
 
         try {
-          console.log(
-            "🌐 GLOBAL NETWORK RECOVERY"
-          );
+          await reconnect();
 
-          const socket =
-            await ensureGlobalSocket();
-
-          if (!socket) {
-            console.warn(
-              "⚠️ GLOBAL NETWORK RECOVERY: socket unavailable"
-            );
-
-            return;
-          }
-
-          if (socket.connected) {
-            socket.emit(
-              "user_online"
-            );
-
-            await flushOutbox({
-              ownerId:
-                currentUser.id,
-
-              privateSocket:
-                socket,
-
-              communitySocket:
-                socket,
-
-              isOnline:
-                true,
-            });
-          }
-
-          console.log(
-            "✅ GLOBAL NETWORK RECOVERY COMPLETE"
-          );
-
-        } catch (error) {
-          console.error(
-            "❌ GLOBAL NETWORK RECOVERY FAILED",
-            error
-          );
         } finally {
           recovering = false;
         }
       };
 
     window.addEventListener(
-      "online",
+      'online',
       recoverConnection
     );
 
     window.addEventListener(
-      "network-reconnected",
+      'network-reconnected',
       recoverConnection
     );
 
     return () => {
       window.removeEventListener(
-        "online",
+        'online',
         recoverConnection
       );
 
       window.removeEventListener(
-        "network-reconnected",
+        'network-reconnected',
         recoverConnection
       );
     };
   }, [
     currentUser?.id,
-    ensureGlobalSocket,
+    reconnect,
   ]);
-  
+
   useEffect(() => {
     if (!currentUser?.id) {
       return;
@@ -386,7 +371,7 @@ export function useGlobalSocket(
 
         try {
           console.log(
-            "🚀 GLOBAL SOCKET STARTUP"
+            '🚀 GLOBAL SOCKET STARTUP'
           );
 
           const socket =
@@ -399,9 +384,11 @@ export function useGlobalSocket(
             return;
           }
 
-          if (socket.connected) {
-            console.log(
-              "🚀 APP START — CHECKING OUTBOX"
+          if (
+            socket.connected
+          ) {
+            socket.emit(
+              'network_online'
             );
 
             await flushOutbox({
@@ -421,7 +408,7 @@ export function useGlobalSocket(
 
         } catch (error) {
           console.error(
-            "❌ GLOBAL STARTUP FAILED",
+            '❌ GLOBAL STARTUP FAILED',
             error
           );
         }
@@ -436,7 +423,7 @@ export function useGlobalSocket(
     currentUser?.id,
     ensureGlobalSocket,
   ]);
-  
+
   useEffect(() => {
     if (!currentUser?.id) {
       return;
@@ -457,9 +444,7 @@ export function useGlobalSocket(
           const socket =
             await getSocket();
 
-          if (
-            stopped
-          ) {
+          if (stopped) {
             return;
           }
 
@@ -470,14 +455,27 @@ export function useGlobalSocket(
           }
 
           console.log(
-            "🔌 GLOBAL HEALTH CHECK — SOCKET DISCONNECTED"
+            '🔌 GLOBAL HEALTH CHECK — SOCKET DISCONNECTED'
           );
 
-          await ensureGlobalSocket();
+          const restored =
+            await ensureGlobalSocket();
+
+          if (
+            restored?.connected
+          ) {
+            restored.emit(
+              'network_online'
+            );
+
+            console.log(
+              '📬 GLOBAL HEALTH: network_online emitted'
+            );
+          }
 
         } catch (error) {
           console.warn(
-            "⚠️ GLOBAL SOCKET HEALTH CHECK FAILED",
+            '⚠️ GLOBAL SOCKET HEALTH CHECK FAILED',
             error
           );
         }
@@ -544,7 +542,7 @@ export function useGlobalSocket(
 
           } catch (error) {
             console.error(
-              "❌ PERIODIC OUTBOX FLUSH FAILED",
+              '❌ PERIODIC OUTBOX FLUSH FAILED',
               error
             );
           }
@@ -568,325 +566,381 @@ export function useGlobalSocket(
 
     let mounted = true;
 
-    const init = async () => {
-      try {
-        const socket =
-          await getSocket();
-  
-        if (!mounted) return;
+    const init =
+      async () => {
+        try {
+          const socket =
+            await getSocket();
 
-        if (!socket) {
-          return;
-        }
-
-        socketRef.current =
-          socket;
-
-        const sendState = () => {
-          if (
-            !socket.connected
-          ) {
+          if (!mounted) {
             return;
           }
 
-          socket.emit("app_state", {
-            state: document.hidden
-              ? "background"
-              : "foreground",
-          });
-        };
-        
-        document.addEventListener(
-          "visibilitychange",
-          sendState
-        );
-        
-        socket.on("connect", sendState);
-        
-        // Send initial state
-        sendState();
-  
-        const onSocketConnected =
-          () => {
-            window.dispatchEvent(
-              new Event(
-                "socket-connected"
-              )
-            );
-          };
-  
-        const onSocketDisconnected =
-          () => {
-            window.dispatchEvent(
-              new Event(
-                "socket-disconnected"
-              )
-            );
-          };
-  
-        const onReconnectAttempt =
-          (attempt: number) => {
-            console.log(
-              "reconnect attempt",
-              attempt
-            );
-          };
-  
-        const onReconnect =
-          (attempt: number) => {
-            console.log(
-              "reconnected",
-              attempt
-            );
-          };
-  
-        const onConnectError =
-          (err: any) => {
-            console.error(
-              "connect error",
-              err
-            );
-          };
+          if (!socket) {
+            return;
+          }
 
-        if (
-          handlersRef.current
-            .onConnect
-        ) {
-          socket.off(
-            'connect',
-            handlersRef.current
-              .onConnect
-          );
-
-          socket.off(
-            'delivered',
-            handlersRef.current
-              .onDelivered
-          );
-
-          socket.off(
-            'seen',
-            handlersRef.current
-              .onSeen
-          );
-        }
-        
-        if (handlersRef.current.onSendState) {
-          socket.off(
-            "connect",
-            handlersRef.current.onSendState
-          );
-        
-          document.removeEventListener(
-            "visibilitychange",
-            handlersRef.current.onSendState
-          );
-        }
-
-        const onConnect =
-          async () => {
+          socketRef.current =
+            socket;
+  
+          const onUserStatus = ({
+            userId,
+            status,
+            last_seen,
+          }: {
+            userId: number;
+            status: 'online' | 'offline';
+            last_seen?: string | null;
+          }) => {
+            const id = Number(userId);
+          
             if (
-              !currentUser?.id
+              !id ||
+              id === Number(currentUser.id)
+            ) {
+              return;
+            }
+          
+            setPresence(prev => {
+              const next = new Map(prev);
+          
+              next.set(id, {
+                status,
+                last_seen:
+                  last_seen ??
+                  next.get(id)?.last_seen ??
+                  null,
+              });
+          
+              return next;
+            });
+          
+            console.log(
+              '🌍 GLOBAL USER STATUS:',
+              {
+                userId: id,
+                status,
+                last_seen,
+              }
+            );
+          };
+
+          const sendState = () => {
+            if (
+              !socket.connected
             ) {
               return;
             }
 
-            console.log(
-              '🌍 Global socket connected'
-            );
-
-            console.log("Connected",socket.id);
-
             socket.emit(
-              'user_online'
+              'app_state',
+              {
+                state:
+                  document.hidden
+                    ? 'background'
+                    : 'foreground',
+              }
             );
-  
-            rejoinAllCommunities(
-              socket
-            );
-  
-            sendState();
-
-            socket.emit(
-              "join_notifications"
-            );
-
-            try {
-              await flushOutbox({
-                ownerId:
-                  currentUser.id,
-                privateSocket:
-                  socket,
-                communitySocket:
-                  socket,
-                isOnline:
-                  true,
-              });
-            } catch (err) {
-              console.error(
-                'Flush failed',
-                err
-              );
-            }
           };
 
-        const onDelivered = (
-          data: any
-        ) => {
-          window.dispatchEvent(
-            new CustomEvent(
-              'message-delivered',
-              {
-                detail: data,
+          const onSocketConnected =
+            () => {
+              console.log(
+                '🟢 GLOBAL SOCKET CONNECTED',
+                socket.id
+              );
+
+              window.dispatchEvent(
+                new Event(
+                  'socket-connected'
+                )
+              );
+            };
+
+          const onSocketDisconnected =
+            (reason: string) => {
+              console.log(
+                '🔴 GLOBAL SOCKET DISCONNECTED',
+                reason
+              );
+
+              window.dispatchEvent(
+                new Event(
+                  'socket-disconnected'
+                )
+              );
+            };
+
+          const onConnect =
+            async () => {
+              if (
+                !currentUser?.id
+              ) {
+                return;
               }
-            )
-          );
-        };
 
-        const onSeen = (
-          data: any
-        ) => {
-          window.dispatchEvent(
-            new CustomEvent(
-              'message-seen',
-              {
-                detail: data,
+              console.log(
+                '🌍 GLOBAL SOCKET CONNECT EVENT',
+                socket.id
+              );
+
+              sendState();
+
+              socket.emit(
+                'network_online'
+              );
+
+              console.log(
+                '📬 GLOBAL: network_online emitted after connect'
+              );
+
+              rejoinAllCommunities(
+                socket
+              );
+
+              /*
+               * Notifications.
+               */
+              socket.emit(
+                'join_notifications'
+              );
+
+              /*
+               * Flush offline outbox.
+               */
+              try {
+                await flushOutbox({
+                  ownerId:
+                    currentUser.id,
+
+                  privateSocket:
+                    socket,
+
+                  communitySocket:
+                    socket,
+
+                  isOnline:
+                    true,
+                });
+
+              } catch (error) {
+                console.error(
+                  '❌ GLOBAL CONNECT: outbox flush failed',
+                  error
+                );
               }
-            )
-          );
-        };
+            };
 
-        const onCommunityDelivered = (
-          data: any
-        ) => {
-        
-          console.log(
-            "📬 COMMUNITY DELIVERED:",
-            data
+          document.addEventListener(
+            'visibilitychange',
+            sendState
           );
-        
-          window.dispatchEvent(
-            new CustomEvent(
-              "community-message-delivered",
-              {
-                detail: data,
+
+          socket.on(
+            'connect',
+            sendState
+          );
+
+          /*
+           * Initial presence state.
+           */
+          sendState();
+
+          const onDelivered =
+            (data: any) => {
+              window.dispatchEvent(
+                new CustomEvent(
+                  'message-delivered',
+                  {
+                    detail: data,
+                  }
+                )
+              );
+            };
+
+          const onSeen =
+            (data: any) => {
+              window.dispatchEvent(
+                new CustomEvent(
+                  'message-seen',
+                  {
+                    detail: data,
+                  }
+                )
+              );
+            };
+
+          const onCommunityDelivered =
+            (data: any) => {
+              window.dispatchEvent(
+                new CustomEvent(
+                  'community-message-delivered',
+                  {
+                    detail: data,
+                  }
+                )
+              );
+            };
+
+          const onCommunitySeen =
+            (data: any) => {
+              window.dispatchEvent(
+                new CustomEvent(
+                  'community-message-seen',
+                  {
+                    detail: data,
+                  }
+                )
+              );
+            };
+
+          const onMessageDeliveredAck =
+            (data: any) => {
+              window.dispatchEvent(
+                new CustomEvent(
+                  'message-delivered-ack',
+                  {
+                    detail: data,
+                  }
+                )
+              );
+            };
+
+          handlersRef.current = {
+            onSendState:
+              sendState,
+
+            onConnect,
+
+            onDelivered,
+            onSeen,
+            onUserStatus,
+
+            onCommunityDelivered,
+            onCommunitySeen,
+
+            onMessageDeliveredAck,
+
+            onSocketConnected,
+            onSocketDisconnected,
+          };
+
+          socket.on(
+            'connect',
+            onConnect
+          );
+
+          socket.on(
+            'connect',
+            onSocketConnected
+          );
+
+          socket.on(
+            'disconnect',
+            onSocketDisconnected
+          );
+
+          socket.on(
+            'delivered',
+            onDelivered
+          );
+
+          socket.on(
+            'seen',
+            onSeen
+          );
+  
+          socket.on(
+            'user_status',
+            onUserStatus
+          );
+
+          socket.on(
+            'community_delivered',
+            onCommunityDelivered
+          );
+
+          socket.on(
+            'community_seen',
+            onCommunitySeen
+          );
+
+          socket.on(
+            'message_delivered_ack',
+            onMessageDeliveredAck
+          );
+
+          const onReconnectAttempt =
+            (attempt: number) => {
+              console.log(
+                '🔄 SOCKET RECONNECT ATTEMPT',
+                attempt
+              );
+            };
+
+          const onReconnect =
+            (attempt: number) => {
+              console.log(
+                '🟢 SOCKET RECONNECTED',
+                attempt
+              );
+
+              if (
+                socket.connected
+              ) {
+                socket.emit(
+                  'network_online'
+                );
               }
-            )
+            };
+
+          const onConnectError =
+            (err: any) => {
+              console.error(
+                '❌ SOCKET CONNECT ERROR',
+                err
+              );
+            };
+
+          handlersRef.current.onReconnectAttempt =
+            onReconnectAttempt;
+
+          handlersRef.current.onReconnect =
+            onReconnect;
+
+          handlersRef.current.onConnectError =
+            onConnectError;
+
+          socket.io.on(
+            'reconnect_attempt',
+            onReconnectAttempt
           );
-        };
-  
-        const onCommunitySeen = (
-          data: any
-        ) => {
-        
-          console.log(
-            "👁️ COMMUNITY SEEN:",
-            data
+
+          socket.io.on(
+            'reconnect',
+            onReconnect
           );
-        
-          window.dispatchEvent(
-            new CustomEvent(
-              "community-message-seen",
-              {
-                detail: data,
-              }
-            )
+
+          socket.on(
+            'connect_error',
+            onConnectError
           );
-        };
-  
-        const onMessageDeliveredAck = (data: any) => {
-          window.dispatchEvent(
-            new CustomEvent("message-delivered-ack", {
-              detail: data,
-            })
+
+          if (
+            !socket.connected
+          ) {
+            socket.connect();
+          }
+
+        } catch (error) {
+          console.error(
+            '❌ GLOBAL SOCKET INIT FAILED',
+            error
           );
-        };
-
-        handlersRef.current = {
-          onSendState: sendState,
-          onConnect,
-          onDelivered,
-          onSeen,
-          onCommunityDelivered, 
-          onCommunitySeen,
-          onMessageDeliveredAck,
-        
-          onSocketConnected,
-          onSocketDisconnected,
-          onReconnectAttempt,
-          onReconnect,
-          onConnectError,
-        };
-
-        socket.on(
-          'connect',
-          onConnect
-        );
-  
-        socket.on(
-          "connect",
-          onSocketConnected
-        );
-  
-        socket.on(
-          "disconnect",
-          onSocketDisconnected
-        );
-  
-        socket.io.on(
-          "reconnect_attempt",
-          onReconnectAttempt
-        );
-  
-        socket.io.on(
-          "reconnect",
-          onReconnect
-        );
-  
-        socket.on(
-          "connect_error",
-          onConnectError
-        );
-
-        socket.on(
-          'delivered',
-          onDelivered
-        );
-  
-        socket.on(
-          'community_delivered',
-          onCommunityDelivered
-        );
-
-        socket.on(
-          'seen',
-          onSeen
-        );
-  
-        socket.on(
-          'community_seen',
-          onCommunitySeen
-        );
-  
-        socket.on(
-          "message_delivered_ack",
-          onMessageDeliveredAck
-        );
-
-        if (
-          !socket.connected
-        ) {
-          socket.connect();
         }
-      } catch (err) {
-        console.error(
-          'Global socket init failed:',
-          err
-        );
-      }
-    };
+      };
 
-    init();
+    void init();
 
     return () => {
       mounted = false;
@@ -897,77 +951,93 @@ export function useGlobalSocket(
       const h =
         handlersRef.current;
 
-      socket?.off(
-        "connect",
+      if (!socket) {
+        return;
+      }
+
+      socket.off(
+        'connect',
         h.onConnect
       );
-      
-      socket?.off(
-        "connect",
+
+      socket.off(
+        'connect',
         h.onSocketConnected
       );
-      
-      socket?.off(
-        "disconnect",
+
+      socket.off(
+        'user_status',
+        h.onUserStatus
+      );
+
+      socket.off(
+        'disconnect',
         h.onSocketDisconnected
       );
-      
-      socket?.off(
-        "connect",
+
+      socket.off(
+        'connect',
         h.onSendState
       );
-      
-      if (h.onSendState) {
+
+      if (
+        h.onSendState
+      ) {
         document.removeEventListener(
-          "visibilitychange",
+          'visibilitychange',
           h.onSendState
         );
       }
 
-      socket?.off(
-        "delivered",
+      socket.off(
+        'delivered',
         h.onDelivered
       );
 
-      socket?.off(
-        "community_delivered",
-        h.onCommunityDelivered
-      );
-      
-      socket?.off(
-        "message_delivered_ack",
-        h.onMessageDeliveredAck
-      );
-      
-      socket?.off(
-        "seen",
+      socket.off(
+        'seen',
         h.onSeen
       );
 
-      socket?.off(
-        "community_seen",
+      socket.off(
+        'community_delivered',
+        h.onCommunityDelivered
+      );
+
+      socket.off(
+        'community_seen',
         h.onCommunitySeen
       );
-      
-      socket?.off(
-        "connect_error",
+
+      socket.off(
+        'message_delivered_ack',
+        h.onMessageDeliveredAck
+      );
+
+      socket.off(
+        'connect_error',
         h.onConnectError
       );
-      
-      socket?.io.off(
-        "reconnect_attempt",
+
+      socket.io.off(
+        'reconnect_attempt',
         h.onReconnectAttempt
       );
-      
-      socket?.io.off(
-        "reconnect",
+
+      socket.io.off(
+        'reconnect',
         h.onReconnect
       );
 
       handlersRef.current =
         {};
     };
-  }, [currentUser?.id]);
+  }, [
+    currentUser?.id,
+  ]);
 
-  return socketRef;
+  return {
+    socketRef,
+    presence,
+  };
 }

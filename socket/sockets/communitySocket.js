@@ -1,9 +1,6 @@
 const {
-  joinCommunity,
-  leaveCommunity,
-  getCommunityCount,
-  getCommunityUsers,
-} = require('../servers/communityPresence');
+  getCommunityOnlineCount,
+} = require("../servers/communityPresence");
 const {
   getUserState,
 } = require("../servers/presence");
@@ -11,27 +8,6 @@ const {
 const {
   USER_ROOM,
 } = require('../servers/rooms');
-
-function emitCommunityPresence(
-  io,
-  communityId
-) {
-  const room =
-    `community_${communityId}`;
-
-  const onlineUserIds =
-    getCommunityUsers(
-      communityId
-    );
-
-  io.to(room).emit(
-    "community_presence_update",
-    {
-      communityId,
-      onlineUserIds,
-    }
-  );
-}
 
 async function ensureCommunityPermissions(socket, communityId) {
   socket.communityPermissions =
@@ -90,6 +66,10 @@ async function ensureCommunityPermissions(socket, communityId) {
 }
 
 module.exports = function communitySocket(io, socket) {
+  
+  socket.activeCommunityId = null;
+
+  socket.communityVisible = false;
   
   socket.onAny((event, ...args) => {
     console.log(
@@ -169,20 +149,12 @@ module.exports = function communitySocket(io, socket) {
           normalizedCommunityId
         );
   
-        console.log(
-          "5️⃣ BEFORE PRESENCE"
-        );
-  
-        joinCommunity(
-          normalizedCommunityId,
-          socket.user.id
-        );
-  
-        emitCommunityPresence(
+        await emitCommunityOnlineCount(
           io,
+          socket,
           normalizedCommunityId
         );
-  
+
         console.log(
           "6️⃣ ABOUT TO ACK"
         );
@@ -198,10 +170,6 @@ module.exports = function communitySocket(io, socket) {
         console.log(
           "7️⃣ ACK CALLED"
         );
-  
-        // IMPORTANT:
-        // Nothing else should be awaited
-        // before the ACK.
   
         try {
   
@@ -263,6 +231,131 @@ module.exports = function communitySocket(io, socket) {
             "Failed to join community",
         });
       }
+    }
+  );
+  
+  socket.on(
+    "network_online",
+    async ({ accessToken } = {}) => {
+  
+      try {
+  
+        if (
+          accessToken &&
+          typeof accessToken === "string"
+        ) {
+          socket.updateAccessToken?.(
+            accessToken
+          );
+        }
+  
+        console.log(
+          `🌐 COMMUNITY NETWORK ONLINE → MARKING DELIVERED: ${socket.user.username}`
+        );
+  
+        const res =
+          await socket.api.post(
+            "chats/communities/mark-all-community-delivered/"
+          );
+  
+        console.log(
+          "✅ COMMUNITY MARK ALL DELIVERED:",
+          res.data
+        );
+  
+        for (
+          const delivery of res.data
+        ) {
+  
+          const communityId =
+            Number(delivery.communityId);
+  
+          if (!communityId) {
+            continue;
+          }
+  
+          io.to(
+            `community_${communityId}`
+          ).emit(
+            "community_delivered",
+            {
+              communityId,
+  
+              messageIds:
+                delivery.messageIds || [],
+  
+              lastDeliveredMessageId:
+                delivery.lastDeliveredMessageId ?? null,
+  
+              userId:
+                socket.user.id,
+            }
+          );
+        }
+  
+      } catch (err) {
+  
+        console.error(
+          "❌ community network_online delivery failed:",
+          {
+            status:
+              err.response?.status,
+  
+            data:
+              err.response?.data,
+  
+            message:
+              err.message,
+          }
+        );
+      }
+    }
+  );
+  
+  socket.on(
+    "community_view",
+    ({ communityId, visible } = {}) => {
+  
+      if (
+        communityId === null ||
+        communityId === undefined
+      ) {
+  
+        socket.activeCommunityId = null;
+        socket.communityVisible = false;
+  
+        console.log(
+          `👁️ COMMUNITY VIEW CLEARED: ${socket.user.username}`
+        );
+  
+        return;
+      }
+  
+      const normalizedCommunityId =
+        Number(communityId);
+  
+      if (
+        !Number.isInteger(
+          normalizedCommunityId
+        )
+      ) {
+        console.error(
+          "❌ Invalid community_view communityId:",
+          communityId
+        );
+  
+        return;
+      }
+  
+      socket.activeCommunityId =
+        normalizedCommunityId;
+  
+      socket.communityVisible =
+        visible !== false;
+  
+      console.log(
+        `👁️ COMMUNITY VIEW: ${socket.user.username} → community_${normalizedCommunityId} | visible=${socket.communityVisible}`
+      );
     }
   );
 
@@ -859,13 +952,16 @@ module.exports = function communitySocket(io, socket) {
 
     socket.leave(room);
     joinedCommunities.delete(communityId);
+    
+    if (
+      socket.activeCommunityId ===
+      Number(communityId)
+    ) {
+      socket.activeCommunityId = null;
+      socket.communityVisible = false;
+    }
 
     leaveCommunity(communityId, socket.user.id);
-
-    emitCommunityPresence(
-      io,
-      communityId
-    );
   });
 
   // =========================
@@ -876,10 +972,6 @@ module.exports = function communitySocket(io, socket) {
       leaveCommunity(communityId, socket.user.id);
 
       const room = `community_${communityId}`;
-      emitCommunityPresence(
-        io,
-        communityId
-      );
     });
 
     joinedCommunities.clear();

@@ -25,7 +25,8 @@ type CompleteResponse = {
 
 async function putFileToR2(
   uploadUrl: string,
-  file: File
+  file: File,
+  signal?: AbortSignal
 ) {
   console.log(
     "=== R2 PUT START ===",
@@ -33,55 +34,98 @@ async function putFileToR2(
       name: file.name,
       type: file.type,
       size: file.size,
+      sizeMB: (file.size / 1024 / 1024).toFixed(2),
       uploadUrl,
-    }
-  );
-
-  const response = await fetch(
-    uploadUrl,
-    {
-      method: "PUT",
-      headers: {
-        "Content-Type": file.type,
-      },
-      body: file,
+      abortedBeforeStart: signal?.aborted,
     }
   );
 
   console.log(
-    "=== R2 PUT RESPONSE ===",
+    "=== R2 PUT BEFORE FETCH ===",
     {
-      status: response.status,
-      ok: response.ok,
-      statusText: response.statusText,
+      method: "PUT",
+      contentType: file.type,
+      contentLength: file.size,
+      hasSignal: !!signal,
     }
   );
 
-  if (!response.ok) {
-    const text = await response.text();
-
-    console.error(
-      "=== R2 PUT FAILED ===",
+  try {
+    const response = await fetch(
+      uploadUrl,
       {
-        status: response.status,
-        statusText: response.statusText,
-        body: text,
+        method: "PUT",
+        headers: {
+          "Content-Type": file.type,
+        },
+        body: file,
+        signal,
       }
     );
 
-    throw new Error(
-      `Media upload failed: ${response.status}`
+    console.log(
+      "=== R2 PUT RESPONSE ===",
+      {
+        status: response.status,
+        ok: response.ok,
+        statusText: response.statusText,
+      }
     );
-  }
 
-  console.log(
-    "=== R2 PUT SUCCESS ==="
-  );
+    if (!response.ok) {
+      const text = await response.text();
+
+      console.error(
+        "=== R2 PUT FAILED ===",
+        {
+          status: response.status,
+          statusText: response.statusText,
+          body: text,
+        }
+      );
+
+      throw new Error(
+        `Media upload failed: ${response.status}`
+      );
+    }
+
+    console.log(
+      "=== R2 PUT SUCCESS ==="
+    );
+
+    return response;
+
+  } catch (error) {
+
+    console.error(
+      "🔥 === R2 PUT FETCH ERROR ===",
+      {
+        error,
+        name:
+          error instanceof Error
+            ? error.name
+            : typeof error,
+        message:
+          error instanceof Error
+            ? error.message
+            : String(error),
+        stack:
+          error instanceof Error
+            ? error.stack
+            : undefined,
+        signalAborted:
+          signal?.aborted,
+      }
+    );
+
+    throw error;
+  }
 }
 
 export async function uploadMedia(
   file: File,
-  onProgress?: (percent: number) => void
+  onProgress?: (percent: number) => void,
+  signal?: AbortSignal
 ): Promise<CompleteResponse> {
 
   console.log(
@@ -149,7 +193,8 @@ export async function uploadMedia(
 
   await putFileToR2(
     session.upload_url,
-    file
+    file,
+    signal
   );
   
   console.log(

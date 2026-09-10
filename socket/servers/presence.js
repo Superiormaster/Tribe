@@ -70,7 +70,15 @@ function getUserState(userId) {
 }
 
 function isUserOnline(userId) {
-  return getUserState(userId) !== "offline";
+  const id = Number(userId);
+
+  const user =
+    onlineUsers.get(id);
+
+  return Boolean(
+    user &&
+    user.sockets.size > 0
+  );
 }
 
 function getUserSockets(userId) {

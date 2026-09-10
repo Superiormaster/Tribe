@@ -6,6 +6,33 @@ import { apiRequest } from "@/utils/api";
 let socketInstance: Socket | null = null;
 let authPromise: Promise<any> | null = null;
 
+export type TribeSocket = Socket & {
+  __privateChatHandlers?: Map<
+    number,
+    any
+  >;
+
+  __communityHandlers?: Map<
+    number,
+    any
+  >;
+
+  onTyping?: (data: any) => void;
+
+  onStopTyping?: (data: any) => void;
+
+  onMessage?: (message: any) => void;
+
+  setPrivateChatMessages?: (
+    chatId: number,
+    updater: (
+      setMessages: React.Dispatch<
+        React.SetStateAction<any[]>
+      >
+    ) => void
+  ) => void;
+};
+
 async function getSocketAuth() {
   if (authPromise) {
     return authPromise;

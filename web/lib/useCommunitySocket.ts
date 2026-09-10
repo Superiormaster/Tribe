@@ -3,12 +3,13 @@
 import {
   useEffect,
   useRef,
+  useCallback,
   useState,
 } from 'react';
 
 import { apiRequest } from '@/utils/api';
 import toast from 'react-hot-toast';
-
+import { useNetwork } from '@/components/networkConnection/NetworkContext';
 import {
   joinCommunity,
 } from '@/lib/communitySocket';
@@ -30,6 +31,8 @@ import type {
 import {
   updateCommunityMessage,
 } from '@/lib/communityMessageDB';
+
+import type { TribeSocket } from "@/lib/socket";
 
 import type {
   Dispatch,
@@ -57,8 +60,16 @@ type CommunityHandlers = {
 export function useCommunitySocket(
   communityId: number | null,
   currentUser: CurrentUser | null,
-  socketRef: React.MutableRefObject<any>,
+  socketRef: React.MutableRefObject<TribeSocket | null>,
 ) {
+  const { isOnline } = useNetwork();
+  const isOnlineRef =
+    useRef(isOnline);
+  
+  useEffect(() => {
+    isOnlineRef.current =
+      isOnline;
+  }, [isOnline]);
   const mountedRef =
     useRef(false);
 
@@ -70,6 +81,48 @@ export function useCommunitySocket(
       new Map<number, ReturnType<typeof setTimeout>>()
     );
 
+  const handlersRef =
+  useRef<
+    Map<
+      number,
+      {
+        setMessages?: Dispatch<
+          SetStateAction<Message[]>
+        >;
+
+        setTypingUsers?: Dispatch<
+          SetStateAction<any[]>
+        >;
+
+        setOnlineCount?: Dispatch<
+          SetStateAction<number>
+        >;
+      }
+    >
+  >(new Map());
+  
+  const setHandlers = useCallback(
+    (handlers: CommunityHandlers) => {
+      const id = Number(communityId);
+  
+      if (!id) {
+        return;
+      }
+  
+      handlersRef.current.set(id, {
+        setMessages:
+          handlers.setMessages,
+  
+        setTypingUsers:
+          handlers.setTypingUsers,
+  
+        setOnlineCount:
+          handlers.setOnlineCount,
+      });
+    },
+    [communityId]
+  );
+  
   useEffect(() => {
     if (
       !communityId ||
@@ -104,6 +157,87 @@ export function useCommunitySocket(
       localSocket = socket;
 
       return socket;
+    };
+
+    const markCommunityAsSeen = () => {
+      const socket = localSocket;
+    
+      if (!socket?.connected) {
+        return;
+      }
+    
+      if (!isOnlineRef.current) {
+        return;
+      }
+    
+      if (
+        document.visibilityState !==
+        "visible"
+      ) {
+        return;
+      }
+    
+      console.log(
+        "👁️ [COMMUNITY] AUTO MARK SEEN",
+        {
+          communityId: id,
+        }
+      );
+    
+      socket.emit(
+        "mark_community_seen",
+        {
+          communityId: id,
+        }
+      );
+    };
+
+    const sendCommunityView = (
+      visible: boolean
+    ) => {
+    
+      const socket = localSocket;
+    
+      if (!socket?.connected) {
+        return;
+      }
+    
+      socket.emit(
+        "community_view",
+        {
+          communityId:
+            visible
+              ? id
+              : null,
+    
+          visible,
+        }
+      );
+    
+      if (visible) {
+        markCommunityAsSeen();
+      }
+    };
+
+    const handleCommunityOnlineCount = ({
+      communityId: eventCommunityId,
+      onlineCount,
+    }: {
+      communityId: number;
+      onlineCount: number;
+    }) => {
+      if (
+        Number(eventCommunityId) !==
+        Number(communityId)
+      ) {
+        return;
+      }
+    
+      handlersRef.current
+        .get(Number(communityId))
+        ?.setOnlineCount?.(
+          Number(onlineCount) || 0
+        );
     };
 
     const doJoin = async () => {
@@ -159,6 +293,10 @@ export function useCommunitySocket(
           );
 
           setSocketReady(true);
+  
+          sendCommunityView(true);
+
+          markCommunityAsSeen();
         } else {
           console.error(
             "❌ [COMMUNITY] JOIN FAILED",
@@ -228,23 +366,29 @@ export function useCommunitySocket(
     const handleMessage = (
       message: Message
     ) => {
-      if (
+    
+      const messageCommunityId =
         Number(
-          message.community ??
-          message.communityId
-        ) !== id
+          (message as any)?.community ??
+          (message as any)?.communityId
+        );
+    
+      if (
+        messageCommunityId !== id
       ) {
         return;
       }
-
+    
       const handlers =
         localSocket
           ?.__communityHandlers
           ?.get(id);
-
+    
       handlers?.onMessage?.(
         message
       );
+    
+      markCommunityAsSeen();
     };
 
     const handleTyping = (
@@ -292,21 +436,6 @@ export function useCommunitySocket(
         ?.onDelete?.(data);
     };
 
-    const handlePresence = (
-      data: any
-    ) => {
-      if (
-        Number(data?.communityId) !== id
-      ) {
-        return;
-      }
-
-      localSocket
-        ?.__communityHandlers
-        ?.get(id)
-        ?.onPresence?.(data);
-    };
-
     const registerSocketHandlers = (
       socket: any
     ) => {
@@ -334,9 +463,6 @@ export function useCommunitySocket(
 
           onDelete:
             undefined,
-
-          onPresence:
-            undefined,
         }
       );
 
@@ -359,10 +485,10 @@ export function useCommunitySocket(
         "community_delete",
         handleDelete
       );
-
+  
       socket.on(
-        "community_presence_update",
-        handlePresence
+        "community_online_count",
+        handleCommunityOnlineCount
       );
     };
 
@@ -505,26 +631,6 @@ export function useCommunitySocket(
           );
         };
 
-      handlers.onPresence =
-        ({
-          onlineUserIds,
-        }: {
-          onlineUserIds: number[];
-        }) => {
-          const count =
-            onlineUserIds.filter(
-              userId =>
-                Number(userId) !==
-                Number(
-                  currentUser?.id
-                )
-            ).length;
-
-          setOnlineCount(
-            count
-          );
-        };
-
       handlers.onTyping =
         ({
           userId,
@@ -635,25 +741,6 @@ export function useCommunitySocket(
         };
     };
 
-    if (socket) {
-      setCommunityHandlers({
-        setMessages:
-          (() => {
-            return () => {};
-          }) as any,
-
-        setTypingUsers:
-          (() => {
-            return () => {};
-          }) as any,
-
-        setOnlineCount:
-          (() => {
-            return () => {};
-          }) as any,
-      });
-    }
-
     return () => {
       mountedRef.current =
         false;
@@ -682,6 +769,11 @@ export function useCommunitySocket(
               communityId: id,
             }
           );
+  
+          cleanupSocket.emit("community_view", {
+            communityId: null,
+            visible: false,
+          });
         }
 
         cleanupSocket
@@ -709,8 +801,8 @@ export function useCommunitySocket(
         );
 
         cleanupSocket.off(
-          "community_presence_update",
-          handlePresence
+          "community_online_count",
+          handleCommunityOnlineCount
         );
       }
 
@@ -834,5 +926,6 @@ export function useCommunitySocket(
     socketRef,
     pinMessage,
     socketReady,
+    setHandlers,
   };
 }

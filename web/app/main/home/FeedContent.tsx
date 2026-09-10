@@ -15,6 +15,7 @@ import {
   REPOST_DELETED_EVENT,
   SHARE_DELETED_EVENT,
   emitRepostDeleted,
+  POST_CREATED_EVENT,
 } from "@/lib/postEvents";
 import {
   removePostFromState,
@@ -484,6 +485,64 @@ export default function HomePage() {
     };
   
   }, [setPosts, setReels]);
+  
+  useEffect(() => {
+    const handlePostCreated = (
+      event: Event
+    ) => {
+      const customEvent =
+        event as CustomEvent<{
+          post: any;
+        }>;
+  
+      const post =
+        customEvent.detail?.post;
+  
+      if (!post?.id) return;
+  
+      console.log(
+        "🔥 [HOME][POST CREATED EVENT]",
+        {
+          postId: post.id,
+          communityId:
+            post.community_id,
+          currentFilter: filter,
+          selectedTribe,
+        }
+      );
+  
+      if (
+        filter === "tribes" &&
+        selectedTribe &&
+        Number(post.tribe_id) !==
+          Number(selectedTribe)
+      ) {
+        console.log(
+          "🔥 [HOME][POST CREATED] Not for current tribe"
+        );
+  
+        return;
+      }
+  
+      addFeedPost(post);
+    };
+  
+    window.addEventListener(
+      POST_CREATED_EVENT,
+      handlePostCreated
+    );
+  
+    return () => {
+      window.removeEventListener(
+        POST_CREATED_EVENT,
+        handlePostCreated
+      );
+    };
+  }, [
+    addFeedPost,
+    filter,
+    selectedTribe,
+  ]);
 
   const handlePostAction = async (
     action: string,

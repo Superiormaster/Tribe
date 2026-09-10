@@ -10,18 +10,27 @@ import { UserContext } from "@/components/UserContext";
 import { useGlobalSocket } from "@/lib/globalSocket/useGlobalSocket";
 
 type GlobalSocketContextType = {
-  socketRef: ReturnType<typeof useGlobalSocket>;
+  socketRef: ReturnType<
+    typeof useGlobalSocket
+  >["socketRef"];
+
+  presence: ReturnType<
+    typeof useGlobalSocket
+  >["presence"];
 };
 
 const GlobalSocketContext =
-  createContext<GlobalSocketContextType | null>(null);
+  createContext<GlobalSocketContextType | null>(
+    null
+  );
 
 export default function GlobalSocketProvider({
   children,
 }: {
   children: ReactNode;
 }) {
-  const userContext = useContext(UserContext);
+  const userContext =
+    useContext(UserContext);
 
   if (!userContext) {
     throw new Error(
@@ -31,12 +40,17 @@ export default function GlobalSocketProvider({
 
   const { user } = userContext;
 
-  const socketRef = useGlobalSocket(user);
+  const globalSocket =
+    useGlobalSocket(user);
 
   return (
     <GlobalSocketContext.Provider
       value={{
-        socketRef,
+        socketRef:
+          globalSocket.socketRef,
+
+        presence:
+          globalSocket.presence,
       }}
     >
       {children}

@@ -194,6 +194,10 @@ export async function compressVideo({
 
   const encoder =
     await loadFFmpeg(signal);
+  
+  encoder.on("log", ({ message }) => {
+    console.log("🎥 [FFMPEG LOG]", message);
+  });
 
   throwIfAborted(signal);
 
@@ -228,60 +232,138 @@ export async function compressVideo({
 
   try {
 
+    console.log("🎥 [FFMPEG][INPUT BEFORE WRITE]", {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      sizeMB: (file.size / 1024 / 1024).toFixed(2),
+      lastModified: file.lastModified,
+      constructor: file.constructor?.name,
+      instanceofFile:
+        typeof File !== "undefined" &&
+        file instanceof File,
+    });
+
+    console.log("🎥 [FFMPEG][READ][1] About to read File", {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      lastModified: file.lastModified,
+    });
+    
+    let inputBuffer: ArrayBuffer;
+    
+    try {
+      inputBuffer = await file.arrayBuffer();
+    
+      console.log("🎥 [FFMPEG][READ][2] File.arrayBuffer() SUCCESS", {
+        byteLength: inputBuffer.byteLength,
+      });
+      console.log("🎥 [FFMPEG][FILE HEALTH CHECK]", {
+        isFile: file instanceof File,
+        isBlob: file instanceof Blob,
+        constructor: file.constructor?.name,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        lastModified: file.lastModified,
+        sliceExists: typeof file.slice === "function",
+        arrayBufferExists: typeof file.arrayBuffer === "function",
+      });
+      
+      const testBlob = file.slice(0, Math.min(file.size, 1024));
+
+      console.log("🎥 [FFMPEG][SLICE TEST]", {
+        size: testBlob.size,
+        type: testBlob.type,
+      });
+      
+      try {
+        const testBuffer = await testBlob.arrayBuffer();
+      
+        console.log("🎥 [FFMPEG][SLICE READ SUCCESS]", {
+          byteLength: testBuffer.byteLength,
+        });
+      } catch (error) {
+        console.error("🎥 [FFMPEG][SLICE READ FAILED]", error);
+        throw error;
+      }
+    } catch (error) {
+      console.error("🎥 [FFMPEG][READ][ERROR] File.arrayBuffer() FAILED", {
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        lastModified: file.lastModified,
+        error,
+      });
+    
+      throw error;
+    }
+    
+    const inputData = new Uint8Array(inputBuffer);
+    
+    console.log("🎥 [FFMPEG][INPUT DATA]", {
+      inputName,
+      inputDataType: inputData.constructor.name,
+      byteLength: inputData.byteLength,
+    });
+    
+    if (!inputData || inputData.byteLength === 0) {
+      throw new Error(
+        "FFmpeg input data is empty."
+      );
+    }
+    
     await encoder.writeFile(
       inputName,
-      await fetchFile(file)
+      inputData
     );
+    
+    console.log("🎥 [FFMPEG][INPUT WRITTEN]", {
+      inputName,
+      inputBytes: inputData.byteLength,
+    });
 
     throwIfAborted(signal);
 
-    const scale =
-      is720p
-        ? "scale=1280:720:force_original_aspect_ratio=decrease"
-        : "scale=1920:1080:force_original_aspect_ratio=decrease";
+    const scale = is720p
+      ? "scale=1280:720:force_original_aspect_ratio=decrease:force_divisible_by=2"
+      : "scale=1920:1080:force_original_aspect_ratio=decrease:force_divisible_by=2";
 
-    await encoder.exec([
-
-      "-i",
-      inputName,
-
-      "-vf",
-      scale,
-
-      "-c:v",
-      "libx264",
-
-      "-preset",
-      "veryfast",
-
-      "-crf",
-      is720p
-        ? "28"
-        : "26",
-
-      "-maxrate",
-      is720p
-        ? "2500k"
-        : "5000k",
-
-      "-bufsize",
-      is720p
-        ? "5000k"
-        : "10000k",
-
-      "-c:a",
-      "aac",
-
-      "-b:a",
-      is720p
-        ? "96k"
-        : "128k",
-
-      "-movflags",
-      "+faststart",
-
-      outputName,
-    ]);
+    try {
+      await encoder.exec([
+        "-i",
+        inputName,
+        "-vf",
+        scale,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        is720p ? "28" : "26",
+        "-maxrate",
+        is720p ? "2500k" : "5000k",
+        "-bufsize",
+        is720p ? "5000k" : "10000k",
+        "-c:a",
+        "aac",
+        "-b:a",
+        is720p ? "96k" : "128k",
+        "-movflags",
+        "+faststart",
+        outputName,
+      ]);
+    } catch (error) {
+      console.error("[FFMPEG][EXEC ERROR]", {
+        error,
+        inputName,
+        outputName,
+        quality,
+      });
+    
+      throw error;
+    }
 
     throwIfAborted(signal);
 
@@ -399,19 +481,34 @@ export async function compressVideo({
   }
 }
 
-
 function getExtension(
   file: File
 ): string {
+  const name =
+    file.name?.toLowerCase() ?? "";
 
-  const parts =
-    file.name.split(".");
+  const match =
+    name.match(
+      /\.([a-z0-9]+)$/
+    );
 
-  return (
-    parts.length > 1
-      ? parts[parts.length - 1]
-      : "mp4"
-  ).toLowerCase();
+  if (match?.[1]) {
+    return match[1];
+  }
+
+  if (file.type === "video/quicktime") {
+    return "mov";
+  }
+
+  if (file.type === "video/webm") {
+    return "webm";
+  }
+
+  if (file.type === "video/x-matroska") {
+    return "mkv";
+  }
+
+  return "mp4";
 }
 
 

@@ -21,6 +21,10 @@ module.exports = function privateChatSocket(
 ) {
   console.log("privateChatSocket loaded");
   
+  socket.activeChatId = null;
+
+  socket.chatVisible = false;
+  
   socket.join(
     USER_ROOM(socket.user.id)
   );
@@ -135,15 +139,23 @@ module.exports = function privateChatSocket(
     }
   );
   
-  socket.on(
+    socket.on(
     "leave_chat",
     ({ chatId }) => {
       if (!chatId) return;
-  
+
       socket.leave(
         CHAT_ROOM(chatId)
       );
-  
+
+      if (
+        socket.activeChatId ===
+        Number(chatId)
+      ) {
+        socket.activeChatId = null;
+        socket.chatVisible = false;
+      }
+
       console.log(
         `📤 ${socket.user.username} left chat_${chatId}`
       );
@@ -151,7 +163,47 @@ module.exports = function privateChatSocket(
   );
   
   socket.on(
-    "user_online",
+    "chat_view",
+    ({ chatId, visible } = {}) => {
+      if (
+        chatId === null ||
+        chatId === undefined
+      ) {
+        socket.activeChatId = null;
+        socket.chatVisible = false;
+
+        console.log(
+          `👁️ CHAT VIEW CLEARED: ${socket.user.username}`
+        );
+
+        return;
+      }
+
+      const normalizedChatId =
+        Number(chatId);
+
+      if (
+        !Number.isInteger(
+          normalizedChatId
+        )
+      ) {
+        return;
+      }
+
+      socket.activeChatId =
+        normalizedChatId;
+
+      socket.chatVisible =
+        visible !== false;
+
+      console.log(
+        `👁️ CHAT VIEW: ${socket.user.username} → chat_${normalizedChatId} | visible=${socket.chatVisible}`
+      );
+    }
+  );
+  
+  socket.on(
+    "network_online",
     async ({
       accessToken,
     } = {}) => {
@@ -168,6 +220,10 @@ module.exports = function privateChatSocket(
           );
   
         }
+
+        console.log(
+          `🌐 NETWORK ONLINE → MARKING DELIVERED: ${socket.user.username}`
+        );
   
         const res =
           await socket.api.post(
@@ -180,10 +236,8 @@ module.exports = function privateChatSocket(
         );
   
         for (
-          const delivery
-          of res.data
+          const delivery of res.data
         ) {
-  
           io.to(
             CHAT_ROOM(
               delivery.chatId
@@ -205,15 +259,22 @@ module.exports = function privateChatSocket(
             }
           );
         }
-
-        await socket.api.post(
-          "notifications/push/flush/"
-        );
+  
+        try {
+          await socket.api.post(
+            "notifications/push/flush/"
+          );
+        } catch (pushError) {
+          console.error(
+            "❌ notification push flush failed:",
+            pushError.response?.data ||
+              pushError.message
+          );
+        }
   
       } catch (err) {
-  
         console.error(
-          "❌ mark-all-delivered failed:",
+          "❌ network_online mark-all-delivered failed:",
           {
             status:
               err.response?.status,
@@ -225,7 +286,6 @@ module.exports = function privateChatSocket(
               err.message,
           }
         );
-  
       }
     }
   );
