@@ -725,7 +725,6 @@ export function useHomeFeed({
   const refreshFeed =
     useCallback(async () => {
       if (
-        loadingRef.current ||
         loadingMoreRef.current
       ) {
         return;
@@ -918,34 +917,45 @@ export function useHomeFeed({
   const incrementPostView =
     useCallback(
       async (postId: number) => {
-        let newCount = 0;
-
+        const id = Number(postId);
+  
+        if (!id) return;
+  
+        let currentCount: number | null =
+          null;
+  
         setPosts(prev =>
           prev.map(post => {
             if (
-              Number(post.id) !==
-              Number(postId)
+              Number(post.id) !== id
             ) {
               return post;
             }
-
-            newCount =
-              (post.views_count || 0) +
-              1;
-
+  
+            currentCount =
+              Number(
+                post.views_count ?? 0
+              ) + 1;
+  
             return {
               ...post,
               views_count:
-                newCount,
+                currentCount,
             };
           })
         );
-
+  
+        if (
+          currentCount === null
+        ) {
+          return;
+        }
+  
         await updateFeedPost(
-          postId,
+          id,
           {
             views_count:
-              newCount,
+              currentCount,
           }
         );
       },

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from "react";
+
 import {
   getFeed,
   getReels,
@@ -21,15 +22,16 @@ interface UseHomeInitializationProps {
   setLoading: React.Dispatch<
     React.SetStateAction<boolean>
   >;
-  
+
   protectedPostIdsRef:
-  React.MutableRefObject<Set<number>>;
+    React.MutableRefObject<Set<number>>;
 
   setInitialLoad: React.Dispatch<
     React.SetStateAction<boolean>
   >;
 
-  hasCacheRef: React.MutableRefObject<boolean>;
+  hasCacheRef:
+    React.MutableRefObject<boolean>;
 
   fetchPosts: (
     page?: number,
@@ -59,6 +61,10 @@ export function useHomeInitialization({
 
     const initialize = async () => {
       try {
+        console.log(
+          "🏠 [HOME INIT] Loading cached feed..."
+        );
+
         const cachedPosts =
           await getFeed(
             filter,
@@ -81,13 +87,13 @@ export function useHomeInitialization({
           cachedPosts.forEach((post: any) => {
             if (post?._local_created) {
               const id = Number(post.id);
-        
+
               if (id) {
                 protectedPostIdsRef.current.add(id);
               }
             }
           });
-        
+
           setPosts(cachedPosts);
           setInitialLoad(false);
           setLoading(false);
@@ -97,6 +103,14 @@ export function useHomeInitialization({
           setReels(cachedReels);
         }
 
+        if (cancelled) return;
+
+        /*
+         * Normal HomePage initialization.
+         *
+         * IMPORTANT:
+         * This does NOT call refreshFeed().
+         */
         await fetchPosts(
           1,
           true,
@@ -104,16 +118,22 @@ export function useHomeInitialization({
           filter,
           selectedTribe
         );
-        
-        if (filter === "all") {
+
+        if (
+          filter === "all" &&
+          !cancelled
+        ) {
           await fetchReels();
         }
+
       } catch (err) {
+        if (cancelled) return;
+
         console.error(
           "Home initialization failed:",
           err
         );
-      
+
         window.dispatchEvent(
           new CustomEvent("network-error")
         );
@@ -128,5 +148,7 @@ export function useHomeInitialization({
   }, [
     filter,
     selectedTribe,
+    fetchPosts,
+    fetchReels,
   ]);
 }

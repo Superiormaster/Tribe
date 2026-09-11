@@ -4,6 +4,9 @@ const {
 const {
   getUserState,
 } = require("../servers/presence");
+const {
+  emitCommunityOnlineCount,
+} = require("../servers/communityOnline");
 
 const {
   USER_ROOM,
@@ -255,7 +258,7 @@ module.exports = function communitySocket(io, socket) {
   
         const res =
           await socket.api.post(
-            "chats/communities/mark-all-community-delivered/"
+            "chats/communities/mark-community-delivered/"
           );
   
         console.log(
@@ -945,35 +948,103 @@ module.exports = function communitySocket(io, socket) {
   // =========================
   // LEAVE COMMUNITY
   // =========================
-  socket.on('leave_community', ({ communityId }) => {
-    if (!communityId) return;
-
-    const room = `community_${communityId}`;
-
-    socket.leave(room);
-    joinedCommunities.delete(communityId);
-    
-    if (
-      socket.activeCommunityId ===
-      Number(communityId)
-    ) {
-      socket.activeCommunityId = null;
-      socket.communityVisible = false;
+  socket.on(
+    "leave_community",
+    async ({ communityId }) => {
+      if (!communityId) {
+        return;
+      }
+  
+      const normalizedCommunityId =
+        Number(communityId);
+  
+      const room =
+        `community_${normalizedCommunityId}`;
+  
+      socket.leave(room);
+  
+      joinedCommunities.delete(
+        normalizedCommunityId
+      );
+  
+      if (
+        socket.activeCommunityId ===
+        normalizedCommunityId
+      ) {
+        socket.activeCommunityId = null;
+        socket.communityVisible = false;
+      }
+  
+      console.log(
+        "👋 COMMUNITY LEFT:",
+        {
+          communityId:
+            normalizedCommunityId,
+          userId:
+            socket.user.id,
+          socketId:
+            socket.id,
+        }
+      );
+  
+      // Recalculate the remaining online count.
+      try {
+        await emitCommunityOnlineCount(
+          io,
+          socket,
+          normalizedCommunityId
+        );
+      } catch (err) {
+        console.error(
+          "❌ COMMUNITY LEAVE COUNT ERROR:",
+          err.message
+        );
+      }
     }
-
-    leaveCommunity(communityId, socket.user.id);
-  });
+  );
 
   // =========================
   // DISCONNECT CLEANUP
   // =========================
-  socket.on('disconnect', () => {
-    joinedCommunities.forEach((communityId) => {
-      leaveCommunity(communityId, socket.user.id);
-
-      const room = `community_${communityId}`;
-    });
-
-    joinedCommunities.clear();
-  });
+  socket.on(
+    "disconnect",
+    async () => {
+      const communities =
+        Array.from(joinedCommunities);
+  
+      console.log(
+        "🔌 COMMUNITY SOCKET DISCONNECT:",
+        {
+          userId:
+            socket.user.id,
+          socketId:
+            socket.id,
+          communities,
+        }
+      );
+  
+      for (
+        const communityId of communities
+      ) {
+        try {
+          await emitCommunityOnlineCount(
+            io,
+            socket,
+            communityId
+          );
+        } catch (err) {
+          console.error(
+            "❌ COMMUNITY DISCONNECT COUNT ERROR:",
+            {
+              communityId,
+              error:
+                err.message,
+            }
+          );
+        }
+      }
+  
+      joinedCommunities.clear();
+    }
+  );
 };

@@ -42,6 +42,8 @@ interface MediaFile {
   thumbnail?: string;
 }
 
+let homePageRefreshTriggered = false;
+
 export default function HomePage() {
   const {
     user,
@@ -50,6 +52,7 @@ export default function HomePage() {
     blockedUserIds,
   } = useContext(UserContext)!;
   const { replace, push } = useNavigation();
+  const isFullReloadRef = useRef(false);
   const installed = useIsInstalled();
   const [filter, setFilter] = useState<'all' | 'tribes'>('all');
   const {
@@ -115,19 +118,39 @@ export default function HomePage() {
     selectedTribe,
   });
   
+  useEffect(() => {
+    if (!isOnline) return;
+  
+    if (homePageRefreshTriggered) {
+      return;
+    }
+  
+    homePageRefreshTriggered = true;
+  
+    console.log(
+      "🔄 [HOME] First HomePage mount → refreshFeed()"
+    );
+  
+    void refreshFeed();
+  }, [isOnline, refreshFeed]);
+  
   const handleFeedPostStats = (
     postId: number,
     data: any
   ) => {
+    const id = Number(postId);
+  
+    if (!id) return;
   
     setPosts(prev =>
       prev.map((item: any) => {
-  
+    
         if (
-          Number(item.id) === Number(postId)
+          Number(item.id) === id
         ) {
           return {
             ...item,
+  
             likes_count:
               data.likes_count ??
               item.likes_count,
@@ -146,64 +169,27 @@ export default function HomePage() {
           };
         }
   
-        // repost
+        // ==========================
+        // REPOST / SHARE
+        // ==========================
+  
         if (
           item.type === "repost" ||
-          item.feed_type === "repost"
-        ) {
-  
-          const originalPostId = Number(
-            item.post?.id ??
-            item.data?.post?.id ??
-            item.post_id
-          );
-  
-          if (
-            originalPostId === Number(postId)
-          ) {
-  
-            return {
-              ...item,
-  
-              post: {
-                ...item.post,
-  
-                likes_count:
-                  data.likes_count ??
-                  item.post.likes_count,
-  
-                comments_count:
-                  data.comments_count ??
-                  item.post.comments_count,
-  
-                shares_count:
-                  data.shares_count ??
-                  item.post.shares_count,
-  
-                views_count:
-                  data.views_count ??
-                  item.post.views_count,
-              },
-            };
-          }
-        }
-  
-        // share
-        if (
+          item.feed_type === "repost" ||
           item.type === "share" ||
           item.feed_type === "share"
         ) {
-  
-          const originalPostId = Number(
-            item.post?.id ??
-            item.data?.post?.id ??
-            item.post_id
-          );
+          const originalPostId =
+            Number(
+              item?.post?.id ??
+              item?.data?.post?.id ??
+              item?.post_id ??
+              item?.original_post_id
+            );
   
           if (
-            originalPostId === Number(postId)
+            originalPostId === id
           ) {
-  
             return {
               ...item,
   
@@ -212,19 +198,19 @@ export default function HomePage() {
   
                 likes_count:
                   data.likes_count ??
-                  item.post.likes_count,
+                  item.post?.likes_count,
   
                 comments_count:
                   data.comments_count ??
-                  item.post.comments_count,
+                  item.post?.comments_count,
   
                 shares_count:
                   data.shares_count ??
-                  item.post.shares_count,
+                  item.post?.shares_count,
   
                 views_count:
                   data.views_count ??
-                  item.post.views_count,
+                  item.post?.views_count,
               },
             };
           }
@@ -233,8 +219,41 @@ export default function HomePage() {
         return item;
       })
     );
-  };
   
+    void updateFeedPost(
+      id,
+      {
+        ...(data.likes_count !== undefined && {
+          likes_count:
+            data.likes_count,
+        }),
+  
+        ...(data.comments_count !== undefined && {
+          comments_count:
+            data.comments_count,
+        }),
+  
+        ...(data.shares_count !== undefined && {
+          shares_count:
+            data.shares_count,
+        }),
+  
+        ...(data.views_count !== undefined && {
+          views_count:
+            data.views_count,
+        }),
+      }
+    ).catch(err => {
+      console.error(
+        "❌ Failed to persist feed stats",
+        {
+          postId: id,
+          error: err,
+        }
+      );
+    });
+  };
+
   useFeedSocket({
     type: 'global',
   
@@ -341,22 +360,6 @@ export default function HomePage() {
   
     check();
   }, [loadingUser, user]);
-  
-  {/*useEffect(() => {
-    if (filter !== "tribes" || !selectedTribe) return;
-  
-    resetFeedState();
-  
-    fetchPosts(
-      1,
-      true,
-      true,
-      filter,
-      selectedTribe
-    );
-  
-    fetchReels();
-  }, [selectedTribe]);*/}
   
   useEffect(() => {
 

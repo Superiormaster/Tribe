@@ -67,6 +67,10 @@ export async function updateFeedPost(
   const db = await getDB();
   if (!db) return;
 
+  const id = Number(postId);
+
+  if (!id) return;
+
   const keys = await db.getAllKeys("feed");
 
   for (const key of keys) {
@@ -77,20 +81,101 @@ export async function updateFeedPost(
     let changed = false;
 
     const updated = posts
-      .filter((post) => post && typeof post === "object")
-      .map((post) => {
-        if (post.id !== postId) return post;
+      .filter(
+        (post: any) =>
+          post &&
+          typeof post === "object"
+      )
+      .map((post: any) => {
 
-        changed = true;
+        // ==========================
+        // NORMAL POST
+        // ==========================
 
-        return {
-          ...post,
-          ...updates,
-        };
+        if (
+          Number(post.id) === id
+        ) {
+          changed = true;
+
+          return {
+            ...post,
+            ...updates,
+          };
+        }
+
+        // ==========================
+        // REPOST
+        // ==========================
+
+        if (
+          post.type === "repost" ||
+          post.feed_type === "repost"
+        ) {
+          const originalPostId =
+            Number(
+              post?.post?.id ??
+              post?.data?.post?.id ??
+              post?.post_id ??
+              post?.original_post_id
+            );
+
+          if (
+            originalPostId === id
+          ) {
+            changed = true;
+
+            return {
+              ...post,
+
+              post: {
+                ...post.post,
+                ...updates,
+              },
+            };
+          }
+        }
+
+        // ==========================
+        // SHARE
+        // ==========================
+
+        if (
+          post.type === "share" ||
+          post.feed_type === "share"
+        ) {
+          const originalPostId =
+            Number(
+              post?.post?.id ??
+              post?.data?.post?.id ??
+              post?.post_id ??
+              post?.original_post_id
+            );
+
+          if (
+            originalPostId === id
+          ) {
+            changed = true;
+
+            return {
+              ...post,
+
+              post: {
+                ...post.post,
+                ...updates,
+              },
+            };
+          }
+        }
+
+        return post;
       });
 
     if (changed) {
-      await db.put("feed", updated, key);
+      await db.put(
+        "feed",
+        updated,
+        key
+      );
     }
   }
 }

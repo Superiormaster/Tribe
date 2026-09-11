@@ -218,49 +218,43 @@ export function useChatSocket({
       setSocketReady(true);
     };
 
-    const markChatAsSeen = useCallback(
-      (targetChatId: number) => {
-        if (
-          !socket?.connected
-        ) {
-          return;
+    const markChatAsSeen = (
+      targetChatId: number
+    ) => {
+      if (!socket?.connected) {
+        return;
+      }
+    
+      if (!isOnlineRef.current) {
+        return;
+      }
+    
+      if (
+        document.visibilityState !==
+        "visible"
+      ) {
+        return;
+      }
+    
+      if (
+        Number(targetChatId) !==
+        Number(chatId)
+      ) {
+        return;
+      }
+    
+      socket.emit(
+        "mark_seen",
+        {
+          chatId: Number(targetChatId),
         }
+      );
     
-        if (!isOnlineRef.current) {
-          return;
-        }
-    
-        if (
-          document.visibilityState !==
-          "visible"
-        ) {
-          return;
-        }
-    
-        if (
-          Number(targetChatId) !==
-          Number(chatId)
-        ) {
-          return;
-        }
-    
-        socket.emit(
-          "mark_seen",
-          {
-            chatId: Number(targetChatId),
-          }
-        );
-    
-        console.log(
-          "👁️ AUTO MARK SEEN:",
-          targetChatId
-        );
-      },
-      [
-        socket,
-        chatId,
-      ]
-    );
+      console.log(
+        "👁️ AUTO MARK SEEN:",
+        targetChatId
+      );
+    };
 
     const handleReceiveMessage = (
       message: Message
