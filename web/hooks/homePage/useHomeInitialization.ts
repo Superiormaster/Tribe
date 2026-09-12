@@ -1,11 +1,13 @@
 'use client';
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import {
   getFeed,
   getReels,
 } from "@/lib/feedDb";
+
+import { useNetwork } from "@/components/networkConnection/NetworkContext";
 
 interface UseHomeInitializationProps {
   filter: "all" | "tribes";
@@ -44,8 +46,6 @@ interface UseHomeInitializationProps {
   fetchReels: () => Promise<void>;
 }
 
-let homeInitialized = false;
-
 export function useHomeInitialization({
   filter,
   selectedTribe,
@@ -58,8 +58,16 @@ export function useHomeInitialization({
   fetchReels,
   protectedPostIdsRef,
 }: UseHomeInitializationProps) {
+
+  const { isOnline } = useNetwork();
+
+  const [cacheReady, setCacheReady] =
+    useState(false);
+
   useEffect(() => {
     let cancelled = false;
+
+    setCacheReady(false);
 
     const initialize = async () => {
       try {
@@ -67,57 +75,117 @@ export function useHomeInitialization({
           "🏠 [HOME INIT] Loading cached feed..."
         );
 
-        const cachedPosts =
-          await getFeed(
+        const [
+          cachedPosts,
+          cachedReels,
+        ] = await Promise.all([
+          getFeed(
             filter,
             selectedTribe,
             1
-          );
+          ),
 
-        const cachedReels =
-          await getReels(
+          getReels(
             filter,
             selectedTribe
-          );
+          ),
+        ]);
 
         if (cancelled) return;
 
-        hasCacheRef.current =
+        const hasCachedPosts =
           cachedPosts.length > 0;
 
-        if (cachedPosts.length) {
-          cachedPosts.forEach((post: any) => {
-            if (post?._local_created) {
-              const id = Number(post.id);
+        const hasCachedReels =
+          cachedReels.length > 0;
 
-              if (id) {
-                protectedPostIdsRef.current.add(id);
+        console.log(
+          "🏠 [HOME INIT] Cache result:",
+          {
+            posts: cachedPosts.length,
+            reels: cachedReels.length,
+            hasCachedPosts,
+            hasCachedReels,
+          }
+        );
+
+        hasCacheRef.current =
+          hasCachedPosts;
+
+        if (hasCachedPosts) {
+          cachedPosts.forEach(
+            (post: any) => {
+              if (
+                post?._local_created
+              ) {
+                const id =
+                  Number(post.id);
+
+                if (id) {
+                  protectedPostIdsRef.current.add(
+                    id
+                  );
+                }
               }
             }
-          });
+          );
 
           setPosts(cachedPosts);
+
           setInitialLoad(false);
           setLoading(false);
         }
 
-        if (cachedReels.length) {
+        if (hasCachedReels) {
           setReels(cachedReels);
         }
 
-        if (cancelled) return;
+        setCacheReady(true);
+
+        if (hasCachedPosts) {
+          console.log(
+            "🏠 [HOME INIT] Cache exists — skipping feed API fetch."
+          );
+
+          return;
+        }
+
+        if (!isOnline) {
+          console.log(
+            "🏠 [HOME INIT] No cache + offline."
+          );
+
+          setInitialLoad(false);
+          setLoading(false);
+
+          return;
+        }
+
+        console.log(
+          "🏠 [HOME INIT] No cached posts — fetching feed."
+        );
+
+        setInitialLoad(true);
+        setLoading(true);
 
         await fetchPosts(
           1,
           true,
-          !cachedPosts.length,
+          true,
           filter,
           selectedTribe
         );
 
         if (
+          cancelled
+        ) {
+          return;
+        }
+
+        if (
           filter === "all" &&
-          !cancelled
+          !hasCachedReels &&
+          isOnline
         ) {
           await fetchReels();
         }
@@ -126,13 +194,21 @@ export function useHomeInitialization({
         if (cancelled) return;
 
         console.error(
-          "Home initialization failed:",
+          "❌ Home initialization failed:",
           err
         );
 
-        window.dispatchEvent(
-          new CustomEvent("network-error")
-        );
+        setCacheReady(true);
+        setInitialLoad(false);
+        setLoading(false);
+
+        if (!hasCacheRef.current) {
+          window.dispatchEvent(
+            new CustomEvent(
+              "network-error"
+            )
+          );
+        }
       }
     };
 
@@ -146,5 +222,16 @@ export function useHomeInitialization({
     selectedTribe,
     fetchPosts,
     fetchReels,
+    isOnline,
+    setPosts,
+    setReels,
+    setLoading,
+    setInitialLoad,
+    hasCacheRef,
+    protectedPostIdsRef,
   ]);
+
+  return {
+    cacheReady,
+  };
 }

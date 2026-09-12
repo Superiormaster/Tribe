@@ -98,6 +98,7 @@ export default function HomePage() {
     reachedLimit,
     feedResponse,
     loadMoreRef,
+    showConnectionProblem,
     
     setStarredUsers,
     starredUsers,
@@ -294,7 +295,9 @@ export default function HomePage() {
     return true;
   });
   
-  useHomeInitialization({
+  const {
+    cacheReady
+  } = useHomeInitialization({
     filter,
     selectedTribe,
     setPosts,
@@ -696,10 +699,15 @@ export default function HomePage() {
   const hasVisibleFeed = visiblePosts.length > 0;
 
   const showLoading =
-    initialLoad &&
-    loading &&
-    isOnline &&
-    !hasVisibleFeed;
+  !cacheReady
+    ? true
+    : (
+        initialLoad &&
+        loading &&
+        isOnline &&
+        !hasVisibleFeed &&
+        !showConnectionProblem
+      );
 
   return (
     <div className="mt-32 mb-14 overflow-x-hidden w-full space-y-4">
@@ -836,6 +844,12 @@ export default function HomePage() {
           <Skeleton />
           <Skeleton />
         </>
+      ) : showConnectionProblem && !hasVisibleFeed ? (
+        <FeedConnectionCard
+          onReload={() => {
+            window.location.reload();
+          }}
+        />
       ) : (
         <>
           {!isOnline && visiblePosts.length > 0 && (
@@ -852,6 +866,7 @@ export default function HomePage() {
       
           {visiblePosts.length > 0 ? (
             <>
+
               {visiblePosts.map((post: any, index: number) => {
                 if (post.content_type === "short_video") return null;
         
@@ -1022,6 +1037,36 @@ function NoInternetCard() {
         Please check your internet and
         try again.
       </p>
+    </div>
+  );
+}
+
+function FeedConnectionCard({
+  onReload,
+}: {
+  onReload: () => void;
+}) {
+  return (
+    <div className="mx-3 my-4 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-center dark:border-amber-800 dark:bg-amber-950">
+      <div className="text-3xl mb-2">
+        📡
+      </div>
+
+      <h3 className="font-semibold text-gray-800 dark:text-gray-100">
+        Connection is taking too long
+      </h3>
+
+      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+        We couldn't load the latest posts.
+        Your saved feed is still available.
+      </p>
+
+      <button
+        onClick={onReload}
+        className="mt-4 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-medium text-white"
+      >
+        Reload App
+      </button>
     </div>
   );
 }

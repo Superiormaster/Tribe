@@ -33,6 +33,9 @@ interface UseHomeFeedProps {
   selectedTribe: number | null;
 }
 
+const REFRESH_TIMEOUT = 10000;
+const FEED_SLOW_TIMEOUT = 10000;
+
 export function useHomeFeed({
   filter,
   selectedTribe,
@@ -44,7 +47,11 @@ export function useHomeFeed({
   const [feedResponse, setFeedResponse] = useState<any>(null);
   const protectedPostIdsRef = useRef<Set<number>>(new Set());
   const refreshingRef = useRef(false);
-
+  const [showConnectionProblem, setShowConnectionProblem] =
+    useState(false);
+  const slowNetworkTimerRef =
+    useRef<ReturnType<typeof setTimeout> | null>(null);
+  
   const [starredUsers, setStarredUsers] =
     useState<Set<number>>(new Set());
 
@@ -195,133 +202,188 @@ export function useHomeFeed({
       currentTribe = selectedTribe,
       isRefreshRequest = false
     ) => {
-      // Do not allow duplicate requests.
+  
+      if (
+        refreshingRef.current &&
+        !isRefreshRequest
+      ) {
+        return;
+      }
+  
       if (
         pageNumber > 1 &&
         loadingMoreRef.current
       ) {
         return;
       }
-
-      // Only stop pagination after page 1.
+  
       if (
         pageNumber > 1 &&
         !hasMoreRef.current
       ) {
         return;
       }
-
+  
       const requestId =
         ++postsRequestIdRef.current;
-
+  
       try {
-        if (
-          showSkeleton &&
-          !hasCacheRef.current &&
-          pageNumber === 1
-        ) {
-          setLoading(true);
+  
+        if (pageNumber === 1) {
+  
+          if (
+            showSkeleton &&
+            !hasCacheRef.current
+          ) {
+            setLoading(true);
+          }
+  
         } else {
+  
           setLoadingMore(true);
+          loadingMoreRef.current = true;
+  
         }
-
-        loadingMoreRef.current = true;
-
+  
         let url =
           `api/feed/?page=${pageNumber}`;
-
+  
         if (
           currentFilter === "tribes" &&
           currentTribe
         ) {
           url += `&tribe=${currentTribe}`;
         }
-
+  
+        if (
+          pageNumber === 1 &&
+          !hasCacheRef.current
+        ) {
+          setShowConnectionProblem(false);
+  
+          if (
+            slowNetworkTimerRef.current
+          ) {
+            clearTimeout(
+              slowNetworkTimerRef.current
+            );
+          }
+  
+          slowNetworkTimerRef.current =
+            setTimeout(() => {
+              setShowConnectionProblem(true);
+            }, FEED_SLOW_TIMEOUT);
+        }
+  
         const data =
           await apiRequest(url);
-
-        console.log("🔥 FEED RESPONSE", {
-          pageNumber,
-          filter: currentFilter,
-          tribe: currentTribe,
-          count: data.count,
-          next: data.next,
-          previous: data.previous,
-          resultsLength:
-            data.results?.length,
-        });
-        
+  
+        if (
+          slowNetworkTimerRef.current
+        ) {
+          clearTimeout(
+            slowNetworkTimerRef.current
+          );
+  
+          slowNetworkTimerRef.current =
+            null;
+        }
+  
+        setShowConnectionProblem(false);
+  
+        console.log(
+          "🔥 FEED RESPONSE",
+          {
+            pageNumber,
+            filter: currentFilter,
+            tribe: currentTribe,
+            count: data.count,
+            next: data.next,
+            previous: data.previous,
+            resultsLength:
+              data.results?.length,
+          }
+        );
+  
         if (
           refreshingRef.current &&
           !isRefreshRequest
         ) {
           return;
         }
-
-        // Request became obsolete.
+  
         if (
           requestId !==
           postsRequestIdRef.current
         ) {
           return;
         }
-
-        // Device went offline while request was running.
+  
         if (
-          typeof navigator !== "undefined" &&
-          !navigator.onLine
+          !isOnline
         ) {
           return;
         }
-
+  
         const results =
           data.results ?? [];
-
-        const newItems = results.map(
-          (item: any) => {
-            const data =
-              item?.data ?? item;
-
-            const type =
-              item?.type ?? "post";
-
-            let reactKey = `post-${data.id}`;
-
-            if (type === "repost") {
-              reactKey =
-                `repost-${data.id}`;
+  
+        const newItems =
+          results.map(
+            (item: any) => {
+  
+              const itemData =
+                item?.data ?? item;
+  
+              const type =
+                item?.type ?? "post";
+  
+              let reactKey =
+                `post-${itemData.id}`;
+  
+              if (
+                type === "repost"
+              ) {
+                reactKey =
+                  `repost-${itemData.id}`;
+              }
+  
+              if (
+                type === "share"
+              ) {
+                reactKey =
+                  `share-${itemData.id}`;
+              }
+  
+              return {
+                ...itemData,
+  
+                reactKey,
+  
+                feed_type: type,
+  
+                is_starred_by_user:
+                  starredUsers.has(
+                    itemData.user?.id
+                  ),
+              };
             }
-
-            if (type === "share") {
-              reactKey =
-                `share-${data.id}`;
-            }
-
-            return {
-              ...data,
-
-              reactKey,
-
-              feed_type: type,
-
-              is_starred_by_user:
-                starredUsers.has(
-                  data.user?.id
-                ),
-            };
-          }
-        );
-
-        let itemsToSave = newItems;
-
-        if (pageNumber === 1) {
+          );
+  
+        let itemsToSave =
+          newItems;
+  
+        if (
+          pageNumber === 1
+        ) {
+  
           const cached =
             await getFeed(
               currentFilter,
               currentTribe,
               1
             );
-        
+  
           const protectedLocalPosts =
             cached.filter(
               (post: any) =>
@@ -330,7 +392,7 @@ export function useHomeFeed({
                   Number(post.id)
                 )
             );
-        
+  
           const serverItems =
             newItems.filter(
               (post: any) =>
@@ -338,171 +400,261 @@ export function useHomeFeed({
                   Number(post.id)
                 )
             );
-        
+  
           itemsToSave = [
             ...protectedLocalPosts,
             ...serverItems,
           ];
         }
-        
+  
         pagesCache.current[
           pageNumber
         ] = newItems;
-        
-        hasCacheRef.current = true;
-        
+  
+        hasCacheRef.current =
+          true;
+  
         setFeedResponse(data);
-        
+  
         const nextExists =
           Boolean(data.next);
-        
+  
         hasMoreRef.current =
           nextExists;
-        
-        setHasMore(nextExists);
-        
+  
+        setHasMore(
+          nextExists
+        );
+  
         if (
           pageNumber === 1 &&
           replace
         ) {
-          setPosts(newItems);
+  
+          setPosts(
+            newItems
+          );
+  
         } else {
-          setPosts((prev: any) => {
-            const map =
-              new Map<string, any>();
-        
-            prev.forEach((post: any) => {
-              if (post?.reactKey) {
-                map.set(
-                  post.reactKey,
-                  post
-                );
-              }
-            });
-        
-            newItems.forEach((post: any) => {
-              if (!post?.reactKey) {
-                return;
-              }
-        
-              const postId =
-                Number(post.id);
-        
-              if (
-                postId &&
-                protectedPostIdsRef.current.has(
-                  postId
-                )
-              ) {
-                return;
-              }
-        
-              map.set(
-                post.reactKey,
-                post
+  
+          setPosts(
+            (prev: any[]) => {
+  
+              const map =
+                new Map<string, any>();
+  
+              prev.forEach(
+                (post: any) => {
+  
+                  if (
+                    post?.reactKey
+                  ) {
+                    map.set(
+                      post.reactKey,
+                      post
+                    );
+                  }
+  
+                }
               );
-            });
-        
-            return [...map.values()];
-          });
+  
+              newItems.forEach(
+                (post: any) => {
+  
+                  if (
+                    !post?.reactKey
+                  ) {
+                    return;
+                  }
+  
+                  const postId =
+                    Number(post.id);
+  
+                  if (
+                    postId &&
+                    protectedPostIdsRef.current.has(
+                      postId
+                    )
+                  ) {
+                    return;
+                  }
+  
+                  map.set(
+                    post.reactKey,
+                    post
+                  );
+  
+                }
+              );
+  
+              return [
+                ...map.values(),
+              ];
+            }
+          );
         }
-        
+  
         void saveFeed(
           currentFilter,
           currentTribe,
           pageNumber,
           itemsToSave
         ).catch(err => {
+  
           console.error(
             "❌ Failed to save feed cache",
             err
           );
+  
         });
-        
+  
         lastPageRef.current =
           pageNumber;
-        
-        setPage(pageNumber);
+  
+        setPage(
+          pageNumber
+        );
+  
       } catch (err) {
+  
         console.error(
           "❌ Failed to fetch feed",
           err
         );
-
+  
         try {
+  
           const cached =
             await getFeed(
               currentFilter,
               currentTribe,
               pageNumber
             );
-
-          if (cached.length) {
-            hasCacheRef.current = true;
-
-            setPosts(prev => {
-              const map =
-                new Map<string, any>();
-            
-              prev.forEach((post: any) => {
-                if (post?.reactKey) {
-                  map.set(
-                    post.reactKey,
-                    post
-                  );
-                }
-              });
-            
-              cached.forEach((post: any) => {
-                if (!post?.reactKey) {
-                  return;
-                }
-            
-                const postId =
-                  Number(post.id);
-            
-                if (
-                  postId &&
-                  protectedPostIdsRef.current.has(
-                    postId
-                  )
-                ) {
-                  return;
-                }
-            
-                map.set(
-                  post.reactKey,
-                  post
+  
+          if (
+            cached.length
+          ) {
+  
+            hasCacheRef.current =
+              true;
+  
+            setShowConnectionProblem(
+              false
+            );
+  
+            setPosts(
+              (prev: any[]) => {
+  
+                const map =
+                  new Map<string, any>();
+  
+                prev.forEach(
+                  (post: any) => {
+  
+                    if (
+                      post?.reactKey
+                    ) {
+                      map.set(
+                        post.reactKey,
+                        post
+                      );
+                    }
+  
+                  }
                 );
-              });
-            
-              return [...map.values()];
-            });
+  
+                cached.forEach(
+                  (post: any) => {
+  
+                    if (
+                      !post?.reactKey
+                    ) {
+                      return;
+                    }
+  
+                    const postId =
+                      Number(post.id);
+  
+                    if (
+                      postId &&
+                      protectedPostIdsRef.current.has(
+                        postId
+                      )
+                    ) {
+                      return;
+                    }
+  
+                    map.set(
+                      post.reactKey,
+                      post
+                    );
+  
+                  }
+                );
+  
+                return [
+                  ...map.values(),
+                ];
+              }
+            );
           }
+  
         } catch (cacheError) {
+  
           console.error(
             "❌ Failed to load feed cache",
             cacheError
           );
         }
-
-        window.dispatchEvent(
-          new CustomEvent(
-            "network-error"
-          )
-        );
+  
+        if (
+          !hasCacheRef.current
+        ) {
+          window.dispatchEvent(
+            new CustomEvent(
+              "network-error"
+            )
+          );
+        }
+  
       } finally {
-        loadingMoreRef.current =
-          false;
-
+  
+        if (
+          slowNetworkTimerRef.current
+        ) {
+  
+          clearTimeout(
+            slowNetworkTimerRef.current
+          );
+  
+          slowNetworkTimerRef.current =
+            null;
+        }
+  
+        if (
+          pageNumber > 1
+        ) {
+  
+          loadingMoreRef.current =
+            false;
+  
+          setLoadingMore(
+            false
+          );
+        }
+  
         loadingRef.current =
           false;
-
-        setLoading(false);
-        setLoadingMore(false);
-
-        setInitialLoad(false);
+  
+        setLoading(
+          false
+        );
+  
+        setInitialLoad(
+          false
+        );
       }
+  
     },
     [
       filter,
@@ -702,44 +854,43 @@ export function useHomeFeed({
       return;
     }
   
+    if (!isOnline) {
+      return;
+    }
+  
     refreshingRef.current = true;
   
-    // Invalidate every feed request that was already running.
     ++postsRequestIdRef.current;
     ++reelsRequestIdRef.current;
   
     try {
-      protectedPostIdsRef.current.clear();
+
+      const timeoutPromise =
+        new Promise((_, reject) => {
+          setTimeout(() => {
+            reject(
+              new Error(
+                "FEED_REFRESH_TIMEOUT"
+              )
+            );
+          }, REFRESH_TIMEOUT);
+        });
   
-      hasCacheRef.current = false;
+      await Promise.race([
+        apiRequest(
+          "api/feed/refresh/",
+          {
+            method: "POST",
+          }
+        ),
   
-      await clearFeed(
-        filter,
-        selectedTribe
-      );
-  
-      await clearReels(
-        filter,
-        selectedTribe
-      );
-  
-      resetFeedState();
-  
-      setInitialLoad(true);
-      setLoading(true);
-  
-      // Rebuild server-side feed cache.
-      await apiRequest(
-        "api/feed/refresh/",
-        {
-          method: "POST",
-        }
-      );
+        timeoutPromise,
+      ]);
   
       await fetchPosts(
         1,
         true,
-        true,
+        false,
         filter,
         selectedTribe,
         true
@@ -749,32 +900,34 @@ export function useHomeFeed({
         await fetchReels();
       }
   
-    } catch (err) {
+    } catch (err: any) {
+  
       console.error(
-        "❌ Feed refresh failed",
+        "❌ Feed refresh failed:",
         err
       );
   
-      window.dispatchEvent(
-        new CustomEvent(
-          "network-error",
-          {
-            detail:
-              "Couldn't refresh feed",
-          }
-        )
-      );
+      if (
+        err?.message ===
+        "FEED_REFRESH_TIMEOUT"
+      ) {
+        setShowConnectionProblem(true);
+      }
+  
     } finally {
+  
       refreshingRef.current = false;
   
       setLoading(false);
       setLoadingMore(false);
       setInitialLoad(false);
+  
     }
+  
   }, [
+    isOnline,
     filter,
     selectedTribe,
-    resetFeedState,
     fetchPosts,
     fetchReels,
   ]);
@@ -814,6 +967,7 @@ export function useHomeFeed({
 
         hasCacheRef.current =
           true;
+        setShowConnectionProblem(false);
 
         setPosts(prev => {
           const map =
@@ -999,5 +1153,6 @@ export function useHomeFeed({
     removePostEverywhere,
     removeFeedPost,
     updateReel,
+    showConnectionProblem,
   };
 }
