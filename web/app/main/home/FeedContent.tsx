@@ -52,7 +52,6 @@ export default function HomePage() {
     blockedUserIds,
   } = useContext(UserContext)!;
   const { replace, push } = useNavigation();
-  const isFullReloadRef = useRef(false);
   const installed = useIsInstalled();
   const [filter, setFilter] = useState<'all' | 'tribes'>('all');
   const {
@@ -99,6 +98,7 @@ export default function HomePage() {
     reachedLimit,
     feedResponse,
     loadMoreRef,
+    feedLoaded,
     
     setStarredUsers,
     starredUsers,
@@ -808,7 +808,7 @@ export default function HomePage() {
         </>
       ) : !isOnline ? (
         <NoInternetCard />
-      ) : posts.length === 0 && !loading ? (
+      ) : feedLoaded && posts.length === 0 ? (
         <div className="text-center text-gray-500 dark:text-gray-400 mt-10">
           No posts yet.
         </div>

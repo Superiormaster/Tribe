@@ -110,60 +110,107 @@ export default function DiscoverPeoplePage() {
   // STAR USER
   // =========================
   const handleStar = async (id: number) => {
-
+    // Save the previous state for rollback
+    const previousPerson = people.find(
+      person => person.id === id
+    )
+  
+    if (!previousPerson) return
+  
+    // 🚀 UPDATE UI FIRST
+    setPeople(prev =>
+      prev.map(person =>
+        person.id === id
+          ? {
+              ...person,
+              starred: true,
+            }
+          : person
+      )
+    )
+  
     try {
-
+      // 🔄 SYNC WITH BACKEND
       const res = await starCreator(id)
-
+  
+      // Keep the server's actual result
       setPeople(prev =>
         prev.map(person =>
           person.id === id
             ? {
                 ...person,
-                starred: res.starred
+                starred: res.starred,
               }
             : person
         )
       )
-
+  
     } catch (err: any) {
-
       console.error(err)
-
+  
+      // ↩️ ROLLBACK UI IF SYNC FAILS
+      setPeople(prev =>
+        prev.map(person =>
+          person.id === id
+            ? previousPerson
+            : person
+        )
+      )
+  
       alert(
-        err.message ||
+        err?.message ||
         'Failed to star user'
       )
     }
   }
-
+  
+  
   // =========================
   // CONNECT USER
   // =========================
   const handleConnect = async (
     id: number
   ) => {
-
+    // Save previous state for rollback
+    const previousPerson = people.find(
+      person => person.id === id
+    )
+  
+    if (!previousPerson) return
+  
+    // 🚀 UPDATE UI FIRST
+    setPeople(prev =>
+      prev.map(person =>
+        person.id === id
+          ? {
+              ...person,
+              connected: false,
+              requestPending: true,
+            }
+          : person
+      )
+    )
+  
     try {
-
+      // 🔄 SYNC WITH BACKEND
       await connectUser(id)
-
+  
+    } catch (err: any) {
+      console.error(err)
+  
+      // ↩️ ROLLBACK UI IF SYNC FAILS
       setPeople(prev =>
         prev.map(person =>
           person.id === id
-            ? {
-                ...person,
-                requestPending: true
-              }
+            ? previousPerson
             : person
         )
       )
-
-    } catch (err) {
-
-      console.error(err)
-
-      alert('Failed to connect')
+  
+      alert(
+        err?.message ||
+        'Failed to connect'
+      )
     }
   }
 

@@ -12,6 +12,7 @@ import React, {
 import {
   emitPostCreated,
 } from "@/lib/postEvents";
+import toast from "react-hot-toast";
 
 import { postUploadManager } from "@/utils/postUploadManager";
 
@@ -37,6 +38,8 @@ import {
 type CreatePostResponse = {
   id: number;
   content_type?: string;
+  require_post_approval?: boolean;
+  status?: string;
   [key: string]: unknown;
 };
 
@@ -395,41 +398,65 @@ export function PostUploadProvider({
         serverPost: CreatePostResponse,
       ) => {
         try {
+  
+          const requiresApproval =
+            serverPost.require_post_approval === true;
+  
+          console.log(
+            "[POST PROVIDER][POST CREATED]",
+            {
+              postId: serverPost.id,
+              status: serverPost.status,
+              requiresApproval,
+              contentType:
+                serverPost.content_type,
+            }
+          );
+  
           const feedPost = {
             ...serverPost,
-
+  
             reactKey:
               `post-${serverPost.id}`,
-
+  
             feed_type:
               "post",
-
+  
             is_starred_by_user:
               false,
-
+  
             _local_created:
               true,
+  
+            requires_approval:
+              requiresApproval,
+  
+            is_pending_approval:
+              requiresApproval,
           };
-
-          await insertFeedPost(
-            "all",
-            null,
-            feedPost,
-          );
-
-          if (
-            job.selected_community
-          ) {
+  
+          if (!requiresApproval) {
             await insertFeedPost(
-              "tribes",
-              job.selected_community,
+              "all",
+              null,
               feedPost,
             );
+  
+            if (
+              job.selected_community
+            ) {
+              await insertFeedPost(
+                "tribes",
+                job.selected_community,
+                feedPost,
+              );
+            }
           }
-
+  
           if (
+            !requiresApproval &&
             serverPost.content_type ===
-            "short_video"
+              "short_video"
           ) {
             if (
               typeof window !==
@@ -443,21 +470,31 @@ export function PostUploadProvider({
               );
             }
           }
-
+  
+          toast.success(
+            requiresApproval
+              ? "Post submitted for approval!"
+              : "Post created successfully!"
+          );
+  
           callbacksRef.current
             .onPostCreated?.(
               job,
               serverPost,
             );
-
-          emitPostCreated(feedPost);
-
+  
+          if (!requiresApproval) {
+            emitPostCreated(
+              feedPost,
+            );
+          }
+  
         } catch (error) {
           console.error(
             "[PostUploadProvider] Feed insertion failed:",
             error,
           );
-
+  
           callbacksRef.current
             .onError?.(
               job,

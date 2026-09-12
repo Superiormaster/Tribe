@@ -43,6 +43,7 @@ export function useHomeFeed({
   const [reels, setReels] = useState<any[]>([]);
   const [feedResponse, setFeedResponse] = useState<any>(null);
   const protectedPostIdsRef = useRef<Set<number>>(new Set());
+  const [feedLoaded, setFeedLoaded] = useState(false);
 
   const [starredUsers, setStarredUsers] =
     useState<Set<number>>(new Set());
@@ -167,6 +168,7 @@ export function useHomeFeed({
     setReachedLimit(false);
 
     setLoadingMore(false);
+    setFeedLoaded(false);
   }, []);
 
   const removePostEverywhere = useCallback(
@@ -237,6 +239,8 @@ export function useHomeFeed({
 
         const data =
           await apiRequest(url);
+  
+        setFeedLoaded(true);
 
         console.log("🔥 FEED RESPONSE", {
           pageNumber,
@@ -1019,5 +1023,6 @@ export function useHomeFeed({
     removePostEverywhere,
     removeFeedPost,
     updateReel,
+    feedLoaded,
   };
 }
