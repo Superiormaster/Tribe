@@ -43,7 +43,7 @@ export function useHomeFeed({
   const [reels, setReels] = useState<any[]>([]);
   const [feedResponse, setFeedResponse] = useState<any>(null);
   const protectedPostIdsRef = useRef<Set<number>>(new Set());
-  const [feedLoaded, setFeedLoaded] = useState(false);
+  const refreshingRef = useRef(false);
 
   const [starredUsers, setStarredUsers] =
     useState<Set<number>>(new Set());
@@ -160,15 +160,11 @@ export function useHomeFeed({
 
     hasCacheRef.current = false;
 
-    setPosts([]);
-    setReels([]);
-
     setPage(1);
     setHasMore(true);
     setReachedLimit(false);
 
     setLoadingMore(false);
-    setFeedLoaded(false);
   }, []);
 
   const removePostEverywhere = useCallback(
@@ -196,10 +192,14 @@ export function useHomeFeed({
       replace = false,
       showSkeleton = true,
       currentFilter = filter,
-      currentTribe = selectedTribe
+      currentTribe = selectedTribe,
+      isRefreshRequest = false
     ) => {
       // Do not allow duplicate requests.
-      if (loadingMoreRef.current) {
+      if (
+        pageNumber > 1 &&
+        loadingMoreRef.current
+      ) {
         return;
       }
 
@@ -239,8 +239,6 @@ export function useHomeFeed({
 
         const data =
           await apiRequest(url);
-  
-        setFeedLoaded(true);
 
         console.log("🔥 FEED RESPONSE", {
           pageNumber,
@@ -252,6 +250,13 @@ export function useHomeFeed({
           resultsLength:
             data.results?.length,
         });
+        
+        if (
+          refreshingRef.current &&
+          !isRefreshRequest
+        ) {
+          return;
+        }
 
         // Request became obsolete.
         if (
@@ -340,78 +345,32 @@ export function useHomeFeed({
           ];
         }
         
-        await saveFeed(
-          currentFilter,
-          currentTribe,
-          pageNumber,
-          itemsToSave
-        );
-
         pagesCache.current[
           pageNumber
         ] = newItems;
-
+        
         hasCacheRef.current = true;
-
+        
         setFeedResponse(data);
-
+        
         const nextExists =
           Boolean(data.next);
-
+        
         hasMoreRef.current =
           nextExists;
-
+        
         setHasMore(nextExists);
-
-        if (pageNumber === 1) {
-          let firstPage =
-            [...newItems];
-
-          setPosts(prev => {
-            const map =
-              new Map<string, any>();
-
-            // Preserve anything already present.
-            prev.forEach(post => {
-              if (post?.reactKey) {
-                map.set(
-                  post.reactKey,
-                  post
-                );
-              }
-            });
-
-            // Backend items take priority.
-            firstPage.forEach(post => {
-              if (!post?.reactKey) {
-                return;
-              }
-            
-              const postId =
-                Number(post.id);
-           
-              if (
-                postId &&
-                protectedPostIdsRef.current.has(
-                  postId
-                )
-              ) {
-                return;
-              }
-            
-              map.set(
-                post.reactKey,
-                post
-              );
-            });
-
-            return [...map.values()];
-          });
+        
+        if (
+          pageNumber === 1 &&
+          replace
+        ) {
+          setPosts(newItems);
         } else {
-          setPosts(prev => {
+          setPosts((prev: any) => {
             const map =
               new Map<string, any>();
-
+        
             prev.forEach((post: any) => {
               if (post?.reactKey) {
                 map.set(
@@ -420,15 +379,15 @@ export function useHomeFeed({
                 );
               }
             });
-
+        
             newItems.forEach((post: any) => {
               if (!post?.reactKey) {
                 return;
               }
-            
+        
               const postId =
                 Number(post.id);
-            
+        
               if (
                 postId &&
                 protectedPostIdsRef.current.has(
@@ -437,20 +396,32 @@ export function useHomeFeed({
               ) {
                 return;
               }
-            
+        
               map.set(
                 post.reactKey,
                 post
               );
             });
-
+        
             return [...map.values()];
           });
         }
-
+        
+        void saveFeed(
+          currentFilter,
+          currentTribe,
+          pageNumber,
+          itemsToSave
+        ).catch(err => {
+          console.error(
+            "❌ Failed to save feed cache",
+            err
+          );
+        });
+        
         lastPageRef.current =
           pageNumber;
-
+        
         setPage(pageNumber);
       } catch (err) {
         console.error(
@@ -726,82 +697,87 @@ export function useHomeFeed({
     ]
   );
 
-  const refreshFeed =
-    useCallback(async () => {
-      if (
-        loadingMoreRef.current
-      ) {
-        return;
-      }
-
-      // Invalidate previous requests.
-      postsRequestIdRef.current++;
-      reelsRequestIdRef.current++;
+  const refreshFeed = useCallback(async () => {
+    if (refreshingRef.current) {
+      return;
+    }
+  
+    refreshingRef.current = true;
+  
+    // Invalidate every feed request that was already running.
+    ++postsRequestIdRef.current;
+    ++reelsRequestIdRef.current;
+  
+    try {
       protectedPostIdsRef.current.clear();
-
-      hasCacheRef.current =
-        false;
-
+  
+      hasCacheRef.current = false;
+  
       await clearFeed(
         filter,
         selectedTribe
       );
-
+  
       await clearReels(
         filter,
         selectedTribe
       );
-
+  
       resetFeedState();
-
+  
       setInitialLoad(true);
       setLoading(true);
-
-      try {
-        await apiRequest(
-          "api/feed/refresh/",
-          {
-            method: "POST",
-          }
-        );
-
-        await fetchPosts(
-          1,
-          true,
-          true,
-          filter,
-          selectedTribe
-        );
-
-        if (filter === "all") {
-          await fetchReels();
+  
+      // Rebuild server-side feed cache.
+      await apiRequest(
+        "api/feed/refresh/",
+        {
+          method: "POST",
         }
-      } catch (err) {
-        console.error(
-          "❌ Feed refresh failed",
-          err
-        );
-
-        window.dispatchEvent(
-          new CustomEvent(
-            "network-error",
-            {
-              detail:
-                "Couldn't refresh feed",
-            }
-          )
-        );
-      } finally {
-        setLoading(false);
-        setInitialLoad(false);
+      );
+  
+      await fetchPosts(
+        1,
+        true,
+        true,
+        filter,
+        selectedTribe,
+        true
+      );
+  
+      if (filter === "all") {
+        await fetchReels();
       }
-    }, [
-      filter,
-      selectedTribe,
-      resetFeedState,
-      fetchPosts,
-      fetchReels,
-    ]);
+  
+    } catch (err) {
+      console.error(
+        "❌ Feed refresh failed",
+        err
+      );
+  
+      window.dispatchEvent(
+        new CustomEvent(
+          "network-error",
+          {
+            detail:
+              "Couldn't refresh feed",
+          }
+        )
+      );
+    } finally {
+      refreshingRef.current = false;
+  
+      setLoading(false);
+      setLoadingMore(false);
+      setInitialLoad(false);
+    }
+  }, [
+    filter,
+    selectedTribe,
+    resetFeedState,
+    fetchPosts,
+    fetchReels,
+  ]);
 
   const loadMore =
     useCallback(async () => {
@@ -1023,6 +999,5 @@ export function useHomeFeed({
     removePostEverywhere,
     removeFeedPost,
     updateReel,
-    feedLoaded,
   };
 }

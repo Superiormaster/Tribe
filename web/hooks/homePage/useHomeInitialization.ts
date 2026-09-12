@@ -44,6 +44,8 @@ interface UseHomeInitializationProps {
   fetchReels: () => Promise<void>;
 }
 
+let homeInitialized = false;
+
 export function useHomeInitialization({
   filter,
   selectedTribe,
@@ -105,12 +107,6 @@ export function useHomeInitialization({
 
         if (cancelled) return;
 
-        /*
-         * Normal HomePage initialization.
-         *
-         * IMPORTANT:
-         * This does NOT call refreshFeed().
-         */
         await fetchPosts(
           1,
           true,
