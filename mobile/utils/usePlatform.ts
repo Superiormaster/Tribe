@@ -1,4 +1,5 @@
 // usePlatform.ts
-import { Capacitor } from "@capacitor/core";
 
-export const isNative = Capacitor.isNativePlatform();
+import { Platform } from "react-native";
+
+export const isNative = Platform.OS === "android" || Platform.OS === "ios";

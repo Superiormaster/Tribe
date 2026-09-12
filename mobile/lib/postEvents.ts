@@ -9,12 +9,26 @@ export const REPOST_DELETED_EVENT =
 export const SHARE_DELETED_EVENT =
   "tribe:share-deleted";
 
+export const POST_CREATED_EVENT =
+  "tribe:post-created";
+
+export function emitPostCreated(post: any) {
+  DeviceEventEmitter.emit(
+    POST_CREATED_EVENT,
+    {
+      post,
+    }
+  );
+}
+
 export function emitPostDeleted(
   postId: number
 ) {
   DeviceEventEmitter.emit(
     POST_DELETED_EVENT,
-    { postId }
+    {
+      postId,
+    }
   );
 }
 
@@ -23,7 +37,9 @@ export function emitRepostDeleted(
 ) {
   DeviceEventEmitter.emit(
     REPOST_DELETED_EVENT,
-    { repostId }
+    {
+      repostId,
+    }
   );
 }
 
@@ -32,6 +48,8 @@ export function emitShareDeleted(
 ) {
   DeviceEventEmitter.emit(
     SHARE_DELETED_EVENT,
-    { shareId }
+    {
+      shareId,
+    }
   );
 }

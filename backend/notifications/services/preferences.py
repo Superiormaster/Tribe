@@ -55,12 +55,10 @@ def get_notification_preferences(user):
     return preferences
 
 def get_notification_preference_field(
+    user,
     notification_type,
 ):
-
-    preferences = (
-        get_notification_preferences(user)
-    )
+    preferences = get_notification_preferences(user)
 
     if not preferences:
         return True
@@ -69,39 +67,24 @@ def get_notification_preference_field(
         return False
 
     if notification_type in SOCIAL_TYPES:
-        return (
-            preferences.social_notifications
-        )
+        return preferences.social_notifications
 
-    
     if notification_type == "message":
-        return (
-            preferences.message_notifications
-        )
+        return preferences.message_notifications
 
     if notification_type in COMMUNITY_TYPES:
-        return (
-            preferences.community_notifications
-        )
+        return preferences.community_notifications
 
     if notification_type == "recommendation":
-        return (
-            preferences
-            .recommendation_notifications
-        )
+        return preferences.recommendation_notifications
 
     if notification_type in {
         "marketing",
         "announcement",
     }:
-        return (
-            preferences
-            .marketing_notifications
-        )
+        return preferences.marketing_notifications
 
-    return (
-        preferences.social_notifications
-    )
+    return preferences.social_notifications
 
 def can_send_message_push(user):
     preferences = (
@@ -211,24 +194,7 @@ def can_send_push(
     user,
     notification_type,
 ):
-
-    preferences, _ = (
-        UserNotificationPreference.objects
-        .get_or_create(user=user)
-    )
-
-    if not preferences.push_enabled:
-        return False
-  
-    if not preferences:
-        return True
-
-    field = get_notification_preference_field(
-        notification_type
-    )
-
-    return getattr(
-        preferences,
-        field,
-        True,
+    return get_notification_preference_field(
+        user,
+        notification_type,
     )
