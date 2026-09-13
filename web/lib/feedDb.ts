@@ -262,6 +262,44 @@ export async function getFeed(
     ) || [];
 }
 
+export async function replaceFeed(
+  filter: string,
+  tribeId: number | null,
+  posts: any[]
+) {
+  const db = await getDB();
+  if (!db) return;
+
+  const prefix =
+    `${filter}_${tribeId ?? "all"}_page_`;
+
+  const keys = await db.getAllKeys("feed");
+
+  // Remove ALL cached pages for this feed.
+  for (const key of keys) {
+    if (String(key).startsWith(prefix)) {
+      await db.delete("feed", key);
+    }
+  }
+
+  // Save the new backend feed as page 1.
+  const cleanPosts = (posts || []).filter(
+    post =>
+      post &&
+      typeof post === "object"
+  );
+
+  await db.put(
+    "feed",
+    cleanPosts,
+    feedKey(
+      filter,
+      tribeId,
+      1
+    )
+  );
+}
+
 export async function clearFeed(
     filter: string,
     tribeId: number | null

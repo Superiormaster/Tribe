@@ -39,9 +39,13 @@ export function useReconnect({
   const hasReconnected = useRef(false);
 
   useEffect(() => {
-    if (!isOnline || !reconnecting) return;
+    if (!isOnline || !reconnecting) {
+      return;
+    }
 
-    if (hasReconnected.current) return;
+    if (hasReconnected.current) {
+      return;
+    }
 
     hasReconnected.current = true;
 
@@ -53,19 +57,33 @@ export function useReconnect({
 
         await fetchPosts(
           1,
-          true,
+          false,
           false,
           filter,
           selectedTribe
         );
 
-        if (cancelled || !navigator.onLine) return;
+        if (
+          cancelled ||
+          !navigator.onLine
+        ) {
+          return;
+        }
 
         if (filter === "all") {
           await fetchReels();
         }
 
-        finishReconnect();
+        if (!cancelled) {
+          finishReconnect();
+        }
+
+      } catch (error) {
+        console.error(
+          "❌ Failed to refresh feed after reconnect:",
+          error
+        );
+
       } finally {
         if (!cancelled) {
           setRefreshingFeed(false);
@@ -73,11 +91,12 @@ export function useReconnect({
       }
     };
 
-    reconnectFeed();
+    void reconnectFeed();
 
     return () => {
       cancelled = true;
     };
+
   }, [
     isOnline,
     reconnecting,

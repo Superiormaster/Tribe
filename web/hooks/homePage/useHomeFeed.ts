@@ -13,6 +13,7 @@ import { REFRESH_HOME_EVENT } from "@/lib/authEvents";
 
 import {
   saveFeed,
+  replaceFeed,
   saveReels,
   getFeed,
   clearFeed,
@@ -46,6 +47,18 @@ export function useHomeFeed({
   const [reels, setReels] = useState<any[]>([]);
   const [feedResponse, setFeedResponse] = useState<any>(null);
   const protectedPostIdsRef = useRef<Set<number>>(new Set());
+  const getFeedKey = useCallback(
+    (
+      feedFilter: "all" | "tribes",
+      tribe: number | null
+    ) =>
+      `${feedFilter}:${tribe ?? "all"}`,
+    []
+  );
+  
+  const activeFeedKeyRef = useRef(
+    `${filter}:${selectedTribe ?? "all"}`
+  );
   const refreshingRef = useRef(false);
   const [showConnectionProblem, setShowConnectionProblem] =
     useState(false);
@@ -85,6 +98,15 @@ export function useHomeFeed({
   useEffect(() => {
     loadingRef.current = loading;
   }, [loading]);
+  
+  useEffect(() => {
+    activeFeedKeyRef.current =
+      getFeedKey(filter, selectedTribe);
+  }, [
+    filter,
+    selectedTribe,
+    getFeedKey,
+  ]);
 
   useEffect(() => {
     loadingMoreRef.current = loadingMore;
@@ -156,21 +178,36 @@ export function useHomeFeed({
   }, [starredUsers]);
 
   const resetFeedState = useCallback(() => {
+    /*
+     * Invalidate any request belonging to the
+     * previous feed identity.
+     */
+    ++postsRequestIdRef.current;
+    ++reelsRequestIdRef.current;
+  
+    if (slowNetworkTimerRef.current) {
+      clearTimeout(
+        slowNetworkTimerRef.current
+      );
+  
+      slowNetworkTimerRef.current = null;
+    }
+  
     pagesCache.current = {};
     reelsCache.current = [];
-
+  
     lastPageRef.current = 1;
-
+  
     loadingRef.current = false;
     loadingMoreRef.current = false;
     hasMoreRef.current = true;
-
+  
     hasCacheRef.current = false;
-
+  
     setPage(1);
     setHasMore(true);
     setReachedLimit(false);
-
+  
     setLoadingMore(false);
   }, []);
 
@@ -278,6 +315,28 @@ export function useHomeFeed({
         const data =
           await apiRequest(url);
   
+        const responseFeedKey =
+          getFeedKey(
+            currentFilter,
+            currentTribe
+          );
+        
+        if (
+          activeFeedKeyRef.current !==
+          responseFeedKey
+        ) {
+          console.log(
+            "🚫 [FEED] Ignoring stale response",
+            {
+              responseFeedKey,
+              activeFeedKey:
+                activeFeedKeyRef.current,
+            }
+          );
+        
+          return;
+        }
+  
         if (
           slowNetworkTimerRef.current
         ) {
@@ -327,7 +386,7 @@ export function useHomeFeed({
   
         const results =
           data.results ?? [];
-  
+
         const newItems =
           results.map(
             (item: any) => {
@@ -494,19 +553,22 @@ export function useHomeFeed({
           );
         }
   
-        void saveFeed(
-          currentFilter,
-          currentTribe,
-          pageNumber,
-          itemsToSave
-        ).catch(err => {
-  
-          console.error(
-            "❌ Failed to save feed cache",
-            err
-          );
-  
-        });
+        if (
+          activeFeedKeyRef.current ===
+          responseFeedKey
+        ) {
+          void saveFeed(
+            currentFilter,
+            currentTribe,
+            pageNumber,
+            itemsToSave
+          ).catch(err => {
+            console.error(
+              "❌ Failed to save feed cache",
+              err
+            );
+          });
+        }
   
         lastPageRef.current =
           pageNumber;
@@ -517,6 +579,28 @@ export function useHomeFeed({
   
       } catch (err) {
   
+        const responseFeedKey =
+          getFeedKey(
+            currentFilter,
+            currentTribe
+          );
+      
+        if (
+          activeFeedKeyRef.current !==
+          responseFeedKey
+        ) {
+          console.log(
+            "🚫 [FEED] Ignoring stale error/cache",
+            {
+              responseFeedKey,
+              activeFeedKey:
+                activeFeedKeyRef.current,
+            }
+          );
+      
+          return;
+        }
+
         console.error(
           "❌ Failed to fetch feed",
           err
@@ -775,6 +859,12 @@ export function useHomeFeed({
 
       const requestId =
         ++reelsRequestIdRef.current;
+  
+      const requestFeedKey =
+        getFeedKey(
+          filter,
+          selectedTribe
+        );
 
       try {
         let url =
@@ -790,6 +880,22 @@ export function useHomeFeed({
 
         const data =
           await apiRequest(url);
+  
+        if (
+          activeFeedKeyRef.current !==
+          requestFeedKey
+        ) {
+          console.log(
+            "🚫 [REELS] Ignoring stale response",
+            {
+              requestFeedKey,
+              activeFeedKey:
+                activeFeedKeyRef.current,
+            }
+          );
+        
+          return;
+        }
 
         if (
           typeof navigator !==
@@ -830,6 +936,13 @@ export function useHomeFeed({
 
         setReels(shuffled);
 
+        if (
+          activeFeedKeyRef.current !==
+          requestFeedKey
+        ) {
+          return;
+        }
+
         await saveReels(
           filter,
           selectedTribe,
@@ -864,7 +977,6 @@ export function useHomeFeed({
     ++reelsRequestIdRef.current;
   
     try {
-
       const timeoutPromise =
         new Promise((_, reject) => {
           setTimeout(() => {
@@ -883,25 +995,116 @@ export function useHomeFeed({
             method: "POST",
           }
         ),
-  
         timeoutPromise,
       ]);
   
-      await fetchPosts(
-        1,
-        true,
-        false,
+      const requestId =
+        ++postsRequestIdRef.current;
+  
+      let url =
+        "api/feed/?page=1";
+  
+      if (
+        filter === "tribes" &&
+        selectedTribe
+      ) {
+        url += `&tribe=${selectedTribe}`;
+      }
+  
+      const data =
+        await apiRequest(url);
+  
+      if (
+        requestId !==
+        postsRequestIdRef.current
+      ) {
+        return;
+      }
+  
+      if (
+        typeof navigator !== "undefined" &&
+        !navigator.onLine
+      ) {
+        return;
+      }
+  
+      const results =
+        data.results ?? [];
+  
+      const newItems =
+        results.map((item: any) => {
+          const itemData =
+            item?.data ?? item;
+  
+          const type =
+            item?.type ?? "post";
+  
+          let reactKey =
+            `post-${itemData.id}`;
+  
+          if (type === "repost") {
+            reactKey =
+              `repost-${itemData.id}`;
+          }
+  
+          if (type === "share") {
+            reactKey =
+              `share-${itemData.id}`;
+          }
+  
+          return {
+            ...itemData,
+  
+            reactKey,
+  
+            feed_type: type,
+  
+            is_starred_by_user:
+              starredUsers.has(
+                itemData.user?.id
+              ),
+          };
+        });
+  
+      setPosts(newItems);
+  
+      pagesCache.current = {
+        1: newItems,
+      };
+  
+      lastPageRef.current = 1;
+  
+      setPage(1);
+  
+      const nextExists =
+        Boolean(data.next);
+  
+      hasMoreRef.current =
+        nextExists;
+  
+      setHasMore(
+        nextExists
+      );
+  
+      setReachedLimit(false);
+  
+      setFeedResponse(data);
+  
+      hasCacheRef.current = true;
+  
+      await replaceFeed(
         filter,
         selectedTribe,
-        true
+        newItems
       );
   
       if (filter === "all") {
         await fetchReels();
       }
   
-    } catch (err: any) {
+      setShowConnectionProblem(false);
   
+    } catch (err: any) {
       console.error(
         "❌ Feed refresh failed:",
         err
@@ -911,25 +1114,29 @@ export function useHomeFeed({
         err?.message ===
         "FEED_REFRESH_TIMEOUT"
       ) {
-        setShowConnectionProblem(true);
+        setShowConnectionProblem(
+          posts.length === 0
+        );
       }
   
     } finally {
-  
       refreshingRef.current = false;
   
       setLoading(false);
       setLoadingMore(false);
       setInitialLoad(false);
   
+      loadingRef.current = false;
+      loadingMoreRef.current = false;
     }
   
   }, [
     isOnline,
     filter,
     selectedTribe,
-    fetchPosts,
+    starredUsers,
     fetchReels,
+    posts.length,
   ]);
 
   const loadMore =

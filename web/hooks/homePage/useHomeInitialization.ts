@@ -1,6 +1,9 @@
-'use client';
+"use client";
 
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
 
 import {
   getFeed,
@@ -12,6 +15,11 @@ import { useNetwork } from "@/components/networkConnection/NetworkContext";
 interface UseHomeInitializationProps {
   filter: "all" | "tribes";
   selectedTribe: number | null;
+
+  initializedFeedsRef:
+    React.MutableRefObject<Set<string>>;
+
+  resetFeedState: () => void;
 
   setPosts: React.Dispatch<
     React.SetStateAction<any[]>
@@ -49,6 +57,8 @@ interface UseHomeInitializationProps {
 export function useHomeInitialization({
   filter,
   selectedTribe,
+  initializedFeedsRef,
+  resetFeedState,
   setPosts,
   setReels,
   setLoading,
@@ -67,13 +77,35 @@ export function useHomeInitialization({
   useEffect(() => {
     let cancelled = false;
 
-    setCacheReady(false);
+    const feedKey =
+      `${filter}:${selectedTribe ?? "all"}`;
+
+    const alreadyInitialized =
+      initializedFeedsRef.current.has(
+        feedKey
+      );
 
     const initialize = async () => {
       try {
         console.log(
-          "🏠 [HOME INIT] Loading cached feed..."
+          "🏠 [HOME INIT]",
+          {
+            feedKey,
+            alreadyInitialized,
+            isOnline,
+          }
         );
+
+        resetFeedState();
+
+        setPosts([]);
+        setReels([]);
+
+        hasCacheRef.current = false;
+
+        setCacheReady(false);
+        setInitialLoad(true);
+        setLoading(true);
 
         const [
           cachedPosts,
@@ -100,40 +132,41 @@ export function useHomeInitialization({
           cachedReels.length > 0;
 
         console.log(
-          "🏠 [HOME INIT] Cache result:",
+          "🏠 [HOME INIT] Loaded cache",
           {
-            posts: cachedPosts.length,
-            reels: cachedReels.length,
-            hasCachedPosts,
-            hasCachedReels,
+            feedKey,
+            posts:
+              cachedPosts.length,
+            reels:
+              cachedReels.length,
           }
         );
 
         hasCacheRef.current =
           hasCachedPosts;
 
-        if (hasCachedPosts) {
-          cachedPosts.forEach(
-            (post: any) => {
-              if (
-                post?._local_created
-              ) {
-                const id =
-                  Number(post.id);
+        /*
+         * Restore local protected posts.
+         */
+        cachedPosts.forEach(
+          (post: any) => {
+            if (
+              post?._local_created
+            ) {
+              const id =
+                Number(post.id);
 
-                if (id) {
-                  protectedPostIdsRef.current.add(
-                    id
-                  );
-                }
+              if (id) {
+                protectedPostIdsRef.current.add(
+                  id
+                );
               }
             }
-          );
+          }
+        );
 
+        if (hasCachedPosts) {
           setPosts(cachedPosts);
-
-          setInitialLoad(false);
-          setLoading(false);
         }
 
         if (hasCachedReels) {
@@ -142,52 +175,50 @@ export function useHomeInitialization({
 
         setCacheReady(true);
 
-        if (hasCachedPosts) {
-          console.log(
-            "🏠 [HOME INIT] Cache exists — skipping feed API fetch."
-          );
-
-          return;
-        }
-
         if (!isOnline) {
           console.log(
-            "🏠 [HOME INIT] No cache + offline."
+            "🏠 [HOME INIT] Offline — cache only:",
+            feedKey
           );
 
           setInitialLoad(false);
           setLoading(false);
 
+          initializedFeedsRef.current.add(
+            feedKey
+          );
+
           return;
         }
 
-        console.log(
-          "🏠 [HOME INIT] No cached posts — fetching feed."
-        );
+        if (!alreadyInitialized) {
+          console.log(
+            "🏠 [HOME INIT] First network sync:",
+            feedKey
+          );
 
-        setInitialLoad(true);
-        setLoading(true);
+          await fetchPosts(
+            1,
+            true,
+            !hasCachedPosts,
+            filter,
+            selectedTribe
+          );
 
-        await fetchPosts(
-          1,
-          true,
-          true,
-          filter,
-          selectedTribe
-        );
+          if (cancelled) return;
 
-        if (
-          cancelled
-        ) {
-          return;
-        }
+          if (filter === "all") {
+            await fetchReels();
+          }
 
-        if (
-          filter === "all" &&
-          !hasCachedReels &&
-          isOnline
-        ) {
-          await fetchReels();
+          initializedFeedsRef.current.add(
+            feedKey
+          );
+        } else {
+          console.log(
+            "🏠 [HOME INIT] Using existing feed:",
+            feedKey
+          );
         }
 
       } catch (err) {
@@ -209,20 +240,29 @@ export function useHomeInitialization({
             )
           );
         }
+
+      } finally {
+        if (cancelled) return;
+
+        setInitialLoad(false);
+        setLoading(false);
       }
     };
 
-    initialize();
+    void initialize();
 
     return () => {
       cancelled = true;
     };
+
   }, [
     filter,
     selectedTribe,
+    isOnline,
+    initializedFeedsRef,
+    resetFeedState,
     fetchPosts,
     fetchReels,
-    isOnline,
     setPosts,
     setReels,
     setLoading,

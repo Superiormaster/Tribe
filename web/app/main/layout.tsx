@@ -4,11 +4,14 @@ import { useContext } from "react";
 import Navbar from "@/components/Navbar";
 import TopNavWrapper from "@/components/TopNavWrapper";
 import BottomWrapper from "@/components/BottomWrapper";
-import ProtectedRoute from "@/components/ProtectedRoute"
-import { NotificationProvider } from "@/components/NotificationContext"
+import ProtectedRoute from "@/components/ProtectedRoute";
+import { NotificationProvider } from "@/components/NotificationContext";
 import NotificationToast from "@/components/NotificationToast";
 import { AccountSwitcherProvider } from "@/components/AccountSwitcherContext";
 import { ShareProvider } from "@/components/share/ShareContext";
+import {
+  HomeFeedProvider,
+} from "@/components/homePage/HomeFeedProvider";
 import Providers from "@/components/providers";
 import { PostUploadProvider } from "@/components/PostUploadProvider";
 import { InviteProvider } from "@/components/invite/InviteContext";
@@ -34,25 +37,29 @@ function MainLayoutContent({
             <AccountSwitcherProvider>
               <Providers>
 
-                <div className="relative min-h-screen bg-gray-100 w-full dark:bg-gray-900 overflow-x-hidden">
+                <HomeFeedProvider>
 
-                  <TopNavWrapper />
+                  <div className="relative min-h-screen bg-gray-100 w-full dark:bg-gray-900 overflow-x-hidden">
 
-                  <div className="relative z-10">
+                    <TopNavWrapper />
 
-                    <div className="w-full max-w-6xl gap-6">
+                    <div className="relative z-10">
 
-                      <main className="max-w-2xl">
-                        {children}
-                        <NotificationToast />
-                      </main>
+                      <div className="w-full max-w-6xl gap-6">
 
+                        <main className="max-w-2xl">
+                          {children}
+                          <NotificationToast />
+                        </main>
+
+                      </div>
                     </div>
+
+                    <BottomWrapper />
+
                   </div>
 
-                  <BottomWrapper />
-
-                </div>
+                </HomeFeedProvider>
 
               </Providers>
             </AccountSwitcherProvider>

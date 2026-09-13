@@ -1,4 +1,3 @@
-// useReelView.ts
 'use client';
 
 import {
@@ -10,37 +9,45 @@ import {
 import { apiRequest } from "@/utils/api";
 
 type ReelViewProps = {
-  postId: number;
+  postId: number | null;
   videoRef: RefObject<HTMLVideoElement>;
   onViewed?: (views: number) => void;
+  enabled?: boolean;
 };
 
 export function useReelView({
   postId,
   videoRef,
   onViewed,
+  enabled = true,
 }: ReelViewProps) {
 
-  // already counted?
   const viewedRef = useRef(false);
-
-  // avoid duplicate requests
   const sendingRef = useRef(false);
 
-  // seconds watched
   const watchTimeRef = useRef(0);
-
-  // last currentTime sampled
   const lastTimeRef = useRef(0);
 
-  // currently visible?
   const visibleRef = useRef(false);
 
   useEffect(() => {
+    if (!enabled || !postId) return;
 
     const video = videoRef.current;
 
     if (!video) return;
+
+    //-----------------------------------
+    // Reset tracking for this post
+    //-----------------------------------
+
+    viewedRef.current = false;
+    sendingRef.current = false;
+
+    watchTimeRef.current = 0;
+    lastTimeRef.current = video.currentTime;
+
+    visibleRef.current = false;
 
     //-----------------------------------
     // Observe reel visibility
@@ -60,7 +67,7 @@ export function useReelView({
     observer.observe(video);
 
     //-----------------------------------
-    // Every 250ms measure watch time
+    // Measure watch time
     //-----------------------------------
 
     const interval =
@@ -74,8 +81,12 @@ export function useReelView({
 
         const current =
           video.currentTime;
-  
-        if (current < lastTimeRef.current) {
+
+        // Video looped/restarted
+        if (
+          current <
+          lastTimeRef.current
+        ) {
           lastTimeRef.current = current;
           return;
         }
@@ -83,7 +94,8 @@ export function useReelView({
         const delta =
           Math.max(
             0,
-            current - lastTimeRef.current
+            current -
+              lastTimeRef.current
           );
 
         lastTimeRef.current =
@@ -108,10 +120,9 @@ export function useReelView({
           return;
         }
 
-        viewedRef.current = true;
-
         if (sendingRef.current) return;
 
+        viewedRef.current = true;
         sendingRef.current = true;
 
         try {
@@ -131,11 +142,13 @@ export function useReelView({
             );
 
           onViewed?.(
-            res.views_count
+            res?.views_count ?? 1
           );
-  
+
           watchTimeRef.current = 0;
-          lastTimeRef.current = video.currentTime;
+
+          lastTimeRef.current =
+            video.currentTime;
 
         } catch (err) {
 
@@ -152,14 +165,23 @@ export function useReelView({
       }, 250);
 
     //-----------------------------------
-    // Flush watch time on exit
+    // Flush watch time
     //-----------------------------------
 
     const flush = async () => {
 
       if (viewedRef.current) return;
-      if (watchTimeRef.current <= 0)
+
+      if (
+        watchTimeRef.current <= 0
+      ) {
         return;
+      }
+
+      const watchTime =
+        watchTimeRef.current;
+
+      watchTimeRef.current = 0;
 
       try {
 
@@ -168,17 +190,21 @@ export function useReelView({
           {
             method: "POST",
             data: {
-              watch_time:
-                watchTimeRef.current,
-              completed:
-                video.ended,
-              skipped:
-                !video.ended,
+              watch_time: watchTime,
+              completed: video.ended,
+              skipped: !video.ended,
             },
           }
         );
 
-      } catch {}
+      } catch (err) {
+
+        console.error(
+          "Failed to flush reel view:",
+          err
+        );
+
+      }
 
     };
 
@@ -202,6 +228,10 @@ export function useReelView({
 
     };
 
-  }, [postId]);
-
+  }, [
+    enabled,
+    postId,
+    videoRef,
+    onViewed,
+  ]);
 }

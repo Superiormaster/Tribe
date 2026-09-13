@@ -1,67 +1,120 @@
-// usePostView.ts
-import { useEffect, useRef, RefObject } from "react";
+'use client';
+
+import {
+  useEffect,
+  useRef,
+  RefObject,
+} from "react";
+
 import { apiRequest } from "@/utils/api";
 import { registerView } from "@/lib/useViewTracker";
 
 type Props = {
-  postId: number;
+  postId: number | null;
   ref: RefObject<HTMLElement | null>;
   onViewed?: (views: number) => void;
+  enabled?: boolean;
 };
 
 export const usePostView = ({
   postId,
-  onViewed, ref
+  onViewed,
+  ref,
+  enabled = true,
 }: Props) => {
+
   useEffect(() => {
-    if (!ref || !ref.current) return; // ✅ SAFE GUARD
+
+    if (!enabled || !postId) {
+      return;
+    }
+
+    if (!ref || !ref.current) {
+      return;
+    }
 
     const element = ref.current;
 
-    if (!element) return;
+    if (!element) {
+      return;
+    }
 
-    let timer: NodeJS.Timeout;
+    let timer:
+      ReturnType<typeof setTimeout> | null =
+      null;
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (
-          entry.isIntersecting &&
-          entry.intersectionRatio >= 0.6
-        ) {
-          // visible for 2 seconds
-          timer = setTimeout(async () => {
-            const canView = registerView(postId);
+    const observer =
+      new IntersectionObserver(
+        ([entry]) => {
 
-            if (!canView) return;
+          if (
+            entry.isIntersecting &&
+            entry.intersectionRatio >= 0.6
+          ) {
 
-            try {
+            // visible for 2 seconds
+            timer = setTimeout(
+              async () => {
 
-              await apiRequest(
-                `api/post/${postId}/view/`,
-                {
-                  method: "POST",
+                const canView =
+                  registerView(postId);
+
+                if (!canView) {
+                  return;
                 }
-              );
 
-              onViewed?.(1);
-            } catch (err) {
-              console.error(err);
+                try {
+
+                  await apiRequest(
+                    `api/post/${postId}/view/`,
+                    {
+                      method: "POST",
+                    }
+                  );
+
+                  onViewed?.(1);
+
+                } catch (err) {
+
+                  console.error(err);
+
+                }
+
+              },
+              2000
+            );
+
+          } else {
+
+            if (timer) {
+              clearTimeout(timer);
+              timer = null;
             }
-          }, 2000);
-        } else {
-          clearTimeout(timer);
+
+          }
+
+        },
+        {
+          threshold: [0.6],
         }
-      },
-      {
-        threshold: [0.6],
-      }
-    );
+      );
 
     observer.observe(element);
 
     return () => {
+
       observer.disconnect();
-      clearTimeout(timer);
+
+      if (timer) {
+        clearTimeout(timer);
+      }
+
     };
-  }, [postId, ref, onViewed]);
+
+  }, [
+    enabled,
+    postId,
+    ref,
+    onViewed,
+  ]);
 };

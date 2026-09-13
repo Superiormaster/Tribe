@@ -11,6 +11,9 @@ import LoadingScreen from '@/components/LoadingScreen';
 import { useFeedSocket } from '@/lib/useFeedSocket';
 import Skeleton from '@/components/Skeleton';
 import {
+  useHomeFeedContext,
+} from "@/components/homePage/HomeFeedProvider";
+import {
   POST_DELETED_EVENT,
   REPOST_DELETED_EVENT,
   SHARE_DELETED_EVENT,
@@ -52,7 +55,6 @@ export default function HomePage() {
   } = useContext(UserContext)!;
   const { replace, push } = useNavigation();
   const installed = useIsInstalled();
-  const [filter, setFilter] = useState<'all' | 'tribes'>('all');
   const {
     isOnline,
     reconnecting,
@@ -63,21 +65,28 @@ export default function HomePage() {
   const refreshClickRef = useRef(false);
   
   const {
-    suggestedCommunities,
-    loadingSuggested,
-    fetchSuggested,
-  } = useSuggestedCommunities(filter);
+    filter,
+    setFilter,
   
-  const {
     tribes,
     selectedTribe,
     setSelectedTribe,
+  
     showAllTribes,
     setShowAllTribes,
     visibleTribes,
     currentTribe,
     loadingTribes,
-  } = useTribes(filter);
+  
+    feed,
+    cacheReady,
+  } = useHomeFeedContext();
+  
+  const {
+    suggestedCommunities,
+    loadingSuggested,
+    fetchSuggested,
+  } = useSuggestedCommunities(filter);
   
   const {
     posts,
@@ -99,11 +108,11 @@ export default function HomePage() {
     feedResponse,
     loadMoreRef,
     showConnectionProblem,
-    
+  
     setStarredUsers,
     starredUsers,
     protectedPostIdsRef,
-
+  
     refreshFeed,
     loadMore,
     removePostEverywhere,
@@ -113,10 +122,7 @@ export default function HomePage() {
     addFeedPost,
     removeFeedPost,
     updateReel,
-  } = useHomeFeed({
-    filter,
-    selectedTribe,
-  });
+  } = feed;
   
   const handleFeedPostStats = (
     postId: number,
@@ -293,21 +299,6 @@ export default function HomePage() {
     }
   
     return true;
-  });
-  
-  const {
-    cacheReady
-  } = useHomeInitialization({
-    filter,
-    selectedTribe,
-    setPosts,
-    setReels,
-    setLoading,
-    setInitialLoad,
-    hasCacheRef,
-    fetchPosts,
-    fetchReels,
-    protectedPostIdsRef,
   });
   
   useImagePreloader({
@@ -699,15 +690,12 @@ export default function HomePage() {
   const hasVisibleFeed = visiblePosts.length > 0;
 
   const showLoading =
-  !cacheReady
-    ? true
-    : (
-        initialLoad &&
-        loading &&
-        isOnline &&
-        !hasVisibleFeed &&
-        !showConnectionProblem
-      );
+    cacheReady &&
+    initialLoad &&
+    loading &&
+    isOnline &&
+    !hasVisibleFeed &&
+    !showConnectionProblem;
 
   return (
     <div className="mt-32 mb-14 overflow-x-hidden w-full space-y-4">
@@ -838,132 +826,136 @@ export default function HomePage() {
       )}
 
       {/* Posts Feed */}
-      {showLoading ? (
+      {!cacheReady ? null : (
         <>
-          <Skeleton />
-          <Skeleton />
-          <Skeleton />
-        </>
-      ) : showConnectionProblem && !hasVisibleFeed ? (
-        <FeedConnectionCard
-          onReload={() => {
-            window.location.reload();
-          }}
-        />
-      ) : (
-        <>
-          {!isOnline && visiblePosts.length > 0 && (
-            <div className="mx-3 mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 dark:border-amber-800 dark:bg-amber-950">
-              <div className="flex items-center gap-2">
-                <span className="text-sm">📡</span>
-      
-                <p className="text-xs text-amber-700 dark:text-amber-300">
-                  You're offline. Showing saved posts from your last visit.
-                </p>
-              </div>
-            </div>
-          )}
-      
-          {visiblePosts.length > 0 ? (
+          {showLoading ? (
             <>
-
-              {visiblePosts.map((post: any, index: number) => {
-                if (post.content_type === "short_video") return null;
-        
-                return (
-                  <div key={post.reactKey}>
-                    {/* REPOST */}
-                    {post.feed_type === "share" ||
-                      post.type === "share" ? (
-                      
-                        <ShareCard
-                          share={post}
-                          currentUser={user}
-                          starredUserIds={starredUsers}
-                        />
-      
-                      ) : post.feed_type === "repost" ||
-                        post.type === "repost" ? (
-                      
-                        <RepostCard
-                          repost={post}
-                          currentUser={user}
-                          handlePostAction={handlePostAction}
-                          starredUserIds={starredUsers}
-                        />
-      
-                    ) : (
-                    
-                      <PostCard
-                        post={post}
-                        setPosts={setPosts}
-                        updateFeedPost={updateFeedPost}
-                        removeFeedPost={removeFeedPost}
-                        starredUserIds={starredUsers}
-                        setStarredUsers={setStarredUsers}
-                    
-                        showJoinButton={
-                          !!post.community_id &&
-                          !post.community_joined
-                        }
-                    
-                        hideStarButton={
-                          (
-                            post.community_id &&
-                            !post.community_joined
-                          ) ||
-                          post.user.id === user?.id
-                        }
-                    
-                        handlePostAction={handlePostAction}
-                    
-                        canRepost={true}
-                        canReport={true}
-                    
-                        showManageButtons={true}
-                        showPinnedLabel={false}
-                    
-                        onViewed={() =>
-                          incrementPostView(post.id)
-                        }
-                      />
-                    
-                    )}
-      
-                    {/* 🔥 Inject reels after 3rd post */}
-                    {filter === 'all' &&
-                     reels.length > 0 &&
-                     (index + 1) % 5 === 0 && (() => {
-                    
-                       const reelIndex =
-                         Math.floor((index + 1) / 5) - 1;
-                    
-                       const reel =
-                         reels[reelIndex % reels.length];
-                    
-                       if (!reel) return null;
-                    
-                       return (
-                         <ReelCard
-                           post={reel}
-                           updateReel={updateReel}
-                           showEntertainment
-                         />
-                       );
-                    
-                     })()}
-                  </div>
-                )
-              })}
+              <Skeleton />
+              <Skeleton />
+              <Skeleton />
             </>
-          ) : !isOnline ? (
-            !initialLoad ? (
-              <NoInternetCard />
-            ) : null
+          ) : showConnectionProblem && !hasVisibleFeed ? (
+            <FeedConnectionCard
+              onReload={() => {
+                window.location.reload();
+              }}
+            />
           ) : (
-            <div className="text-center text-gray-500 dark:text-gray-400 mt-10">
-              No posts yet.
-            </div>
+            <>
+              {!isOnline && hasVisibleFeed && (
+                <div className="mx-3 mb-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 dark:border-amber-800 dark:bg-amber-950">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">📡</span>
+          
+                    <p className="text-xs text-amber-700 dark:text-amber-300">
+                      You're offline. Showing saved posts from your last visit.
+                    </p>
+                  </div>
+                </div>
+              )}
+          
+              {hasVisibleFeed ? (
+                <>
+    
+                  {visiblePosts.map((post: any, index: number) => {
+                    if (post.content_type === "short_video") return null;
+            
+                    return (
+                      <div key={post.reactKey}>
+                        {/* REPOST */}
+                        {post.feed_type === "share" ||
+                          post.type === "share" ? (
+                          
+                            <ShareCard
+                              share={post}
+                              currentUser={user}
+                              starredUserIds={starredUsers}
+                            />
+          
+                          ) : post.feed_type === "repost" ||
+                            post.type === "repost" ? (
+                          
+                            <RepostCard
+                              repost={post}
+                              currentUser={user}
+                              handlePostAction={handlePostAction}
+                              starredUserIds={starredUsers}
+                            />
+          
+                        ) : (
+                        
+                          <PostCard
+                            post={post}
+                            setPosts={setPosts}
+                            updateFeedPost={updateFeedPost}
+                            removeFeedPost={removeFeedPost}
+                            starredUserIds={starredUsers}
+                            setStarredUsers={setStarredUsers}
+                        
+                            showJoinButton={
+                              !!post.community_id &&
+                              !post.community_joined
+                            }
+                        
+                            hideStarButton={
+                              (
+                                post.community_id &&
+                                !post.community_joined
+                              ) ||
+                              post.user.id === user?.id
+                            }
+                        
+                            handlePostAction={handlePostAction}
+                        
+                            canRepost={true}
+                            canReport={true}
+                        
+                            showManageButtons={true}
+                            showPinnedLabel={false}
+                        
+                            onViewed={() =>
+                              incrementPostView(post.id)
+                            }
+                          />
+                        
+                        )}
+          
+                        {/* 🔥 Inject reels after 3rd post */}
+                        {filter === 'all' &&
+                         reels.length > 0 &&
+                         (index + 1) % 5 === 0 && (() => {
+                        
+                           const reelIndex =
+                             Math.floor((index + 1) / 5) - 1;
+                        
+                           const reel =
+                             reels[reelIndex % reels.length];
+                        
+                           if (!reel) return null;
+                        
+                           return (
+                             <ReelCard
+                               post={reel}
+                               updateReel={updateReel}
+                               showEntertainment
+                             />
+                           );
+                        
+                         })()}
+                      </div>
+                    )
+                  })}
+                </>
+              ) : !isOnline ? (
+                !initialLoad ? (
+                  <NoInternetCard />
+                ) : null
+              ) : (
+                <div className="text-center text-gray-500 dark:text-gray-400 mt-10">
+                  No posts yet.
+                </div>
+              )}
+            </>
           )}
         </>
       )}

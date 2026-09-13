@@ -23,35 +23,41 @@ export function useTribes(
 
   const fetchUserTribes = useCallback(async () => {
     if (filter !== "tribes") {
-      setTribes([]);
-      setSelectedTribe(null);
       setShowAllTribes(false);
       return;
     }
-
+  
     try {
       setLoadingTribes(true);
       setTribesError(null);
-
+  
       const data = await apiRequest(
         "api/tribes/"
       );
-
+  
       setTribes(data ?? []);
-
+  
       if (data?.length) {
-        setSelectedTribe(prev =>
-          prev ?? data[0].id
-        );
+        setSelectedTribe(prev => {
+          const stillExists = data.some(
+            (tribe: any) =>
+              Number(tribe.id) === Number(prev)
+          );
+  
+          return stillExists
+            ? prev
+            : data[0].id;
+        });
       } else {
         setSelectedTribe(null);
       }
+  
     } catch (err) {
       console.error(
         "Failed to fetch tribes",
         err
       );
-
+  
       setTribesError(err);
     } finally {
       setLoadingTribes(false);

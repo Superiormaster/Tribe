@@ -1,13 +1,14 @@
-// lib/useSmartPostView.ts
+'use client';
 
-import { RefObject } from "react";
 import { usePostView } from "@/lib/UsePostView";
 import { useVideoView } from "@/lib/useVideoView";
 import { useReelView } from "@/lib/UseReelView";
 
 type SmartViewProps = {
   post: any;
-  ref: React.RefObject<HTMLVideoElement | HTMLDivElement | null>;
+  ref: React.RefObject<
+    HTMLVideoElement | HTMLDivElement | null
+  >;
   onViewed?: (views: number) => void;
 };
 
@@ -16,30 +17,43 @@ export const useSmartPostView = ({
   ref,
   onViewed,
 }: SmartViewProps) => {
-  if (!post) return;
+  const type = post?.content_type;
+  const postId = post?.id ?? null;
 
-  const type = post.content_type;
+  const isShortVideo =
+    type === "short_video";
 
-  // SHORT REELS
-  if (type === "short_video") {
-    return useReelView({
-      postId: post.id,
-      videoRef: ref as React.RefObject<HTMLVideoElement>,
-      onViewed,
-    });
-  }
-  
-  if (type === "video" || type === "long_video") {
-    return useVideoView({
-      postId: post.id,
-      ref: ref as React.RefObject<HTMLVideoElement>,
-      onViewed,
-    });
-  }
-  
-  return usePostView({
-    postId: post.id,
-    ref: ref as React.RefObject<HTMLElement>,
+  const isVideo =
+    type === "video" ||
+    type === "long_video";
+
+  const isPost =
+    !isShortVideo &&
+    !isVideo;
+
+  // IMPORTANT:
+  // These hooks must ALWAYS be called in the same order.
+  useReelView({
+    postId,
+    videoRef:
+      ref as React.RefObject<HTMLVideoElement>,
     onViewed,
+    enabled: isShortVideo,
+  });
+
+  useVideoView({
+    postId,
+    ref:
+      ref as React.RefObject<HTMLVideoElement>,
+    onViewed,
+    enabled: isVideo,
+  });
+
+  usePostView({
+    postId,
+    ref:
+      ref as React.RefObject<HTMLElement | null>,
+    onViewed,
+    enabled: isPost,
   });
 };
